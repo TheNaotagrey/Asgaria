@@ -835,6 +835,28 @@
         pixelData[otherId].push([x, y]);
         drawPixel(x, y, otherId);
       });
+    } else if (op.type === 'swap') {
+      // revert swapping of two baronies
+      const { id1, id2, changes, oldName, newName } = op;
+      changes.forEach(({ x, y, oldId, newId }) => {
+        // remove from current assignment (newId)
+        const arr = pixelData[newId];
+        if (arr) {
+          const idx = arr.findIndex(([px, py]) => px === x && py === y);
+          if (idx >= 0) arr.splice(idx, 1);
+        }
+        // restore previous id
+        pixelMap[y][x] = oldId;
+        if (!pixelData[oldId]) pixelData[oldId] = [];
+        pixelData[oldId].push([x, y]);
+        drawPixel(x, y, oldId);
+      });
+      baronyMeta[id1] = { id: id1, name: oldName };
+      baronyMeta[id2] = { id: id2, name: newName };
+      if (currentSelectedId === id2) {
+        currentSelectedId = id1;
+        selectBarony(id1);
+      }
     } else if (op.type === 'create') {
       // remove created barony (should have no pixels or few)
       const id = op.id;
