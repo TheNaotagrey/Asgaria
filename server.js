@@ -63,7 +63,8 @@ CREATE TABLE IF NOT EXISTS barony_pixels (
 
 db.exec(initSql);
 
-app.use(express.json());
+// accept large pixel blobs
+app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname)));
 
 function list(table) {
