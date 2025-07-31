@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Administration Asgaria</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <h1>Administration</h1>
+  </header>
+  <main>
+    <div style="padding:10px;overflow:auto;flex:1">
+      <section>
+        <h2>Seigneurs</h2>
+        <input type="text" id="newSeigneur" placeholder="Nom">
+        <button onclick="addSeigneur()">Ajouter</button>
+        <ul id="listSeigneurs"></ul>
+      </section>
+      <section>
+        <h2>Religions</h2>
+        <input type="text" id="newReligion" placeholder="Nom">
+        <button onclick="addReligion()">Ajouter</button>
+        <ul id="listReligions"></ul>
+      </section>
+      <section>
+        <h2>Cultures</h2>
+        <input type="text" id="newCulture" placeholder="Nom">
+        <button onclick="addCulture()">Ajouter</button>
+        <ul id="listCultures"></ul>
+      </section>
+      <section>
+        <h2>Royaumes</h2>
+        <input type="text" id="newKingdom" placeholder="Nom">
+        <button onclick="addKingdom()">Ajouter</button>
+        <ul id="listKingdoms"></ul>
+      </section>
+      <section>
+        <h2>Comtés</h2>
+        <input type="text" id="newCounty" placeholder="Nom">
+        <select id="countyKingdom"></select>
+        <button onclick="addCounty()">Ajouter</button>
+        <ul id="listCounties"></ul>
+      </section>
+      <section>
+        <h2>Duchés</h2>
+        <input type="text" id="newDuchy" placeholder="Nom">
+        <select id="duchyCounty"></select>
+        <button onclick="addDuchy()">Ajouter</button>
+        <ul id="listDuchies"></ul>
+      </section>
+    </div>
+  </main>
+  <script src="admin.js"></script>
+</body>
+</html>
