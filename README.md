@@ -32,6 +32,7 @@ Le serveur écoute par défaut sur [http://localhost:3000](http://localhost:3000
 - `admin.html` : page d'administration pour ajouter royaumes, comtés, duchés, seigneurs, religions et cultures.
 
 Il suffit d'ouvrir ces fichiers dans le navigateur (par exemple <http://localhost:3000/mapEditor.html>) une fois le serveur lancé.
+Ne les ouvrez pas directement avec `file://`, car les requêtes vers l'API seraient bloquées par le navigateur.
 
 La base de données `asgaria.db` est créée dans le répertoire racine et stocke toutes les informations (baronnies, seigneurs, etc.).
 

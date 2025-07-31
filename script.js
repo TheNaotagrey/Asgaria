@@ -1,4 +1,5 @@
 (() => {
+  const API_BASE = location.origin === 'null' ? 'http://localhost:3000' : '';
   const originalWidth = 1724;
   const originalHeight = 1291;
 
@@ -106,7 +107,6 @@
   const editNameInput = document.getElementById('editName');
   const editSeigneur = document.getElementById('editSeigneur');
   const editReligionPop = document.getElementById('editReligionPop');
-  const editReligionSeigneur = document.getElementById('editReligionSeigneur');
   const editCulture = document.getElementById('editCulture');
   const editDuchy = document.getElementById('editDuchy');
   const updateBtn = document.getElementById('updateBarony');
@@ -118,10 +118,10 @@
 
   async function loadOptions() {
     const [seigneurs, religions, cultures, duchies] = await Promise.all([
-      fetch('/api/seigneurs').then(r=>r.json()),
-      fetch('/api/religions').then(r=>r.json()),
-      fetch('/api/cultures').then(r=>r.json()),
-      fetch('/api/duchies').then(r=>r.json()),
+      fetch(API_BASE + '/api/seigneurs').then(r=>r.json()),
+      fetch(API_BASE + '/api/religions').then(r=>r.json()),
+      fetch(API_BASE + '/api/cultures').then(r=>r.json()),
+      fetch(API_BASE + '/api/duchies').then(r=>r.json()),
     ]);
     seigneurOptions = seigneurs;
     religionOptions = religions;
@@ -129,7 +129,6 @@
     duchyOptions = duchies;
     if (editSeigneur) editSeigneur.innerHTML = seigneurs.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
     if (editReligionPop) editReligionPop.innerHTML = religions.map(r=>`<option value="${r.id}">${r.name}</option>`).join('');
-    if (editReligionSeigneur) editReligionSeigneur.innerHTML = religions.map(r=>`<option value="${r.id}">${r.name}</option>`).join('');
     if (editCulture) editCulture.innerHTML = cultures.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
     if (editDuchy) editDuchy.innerHTML = duchies.map(d=>`<option value="${d.id}">${d.name}</option>`).join('');
   }
@@ -252,12 +251,11 @@
     }
     if (editIdInput) editIdInput.value = baronyMeta[id].id;
     if (editNameInput) editNameInput.value = baronyMeta[id].name || '';
-    fetch(`/api/baronies?id=${id}`).then(r=>r.json()).then(list=>{
+    fetch(`${API_BASE}/api/baronies?id=${id}`).then(r=>r.json()).then(list=>{
       const info = list.find(b=>String(b.id)===String(id));
       if(!info) return;
       if (editSeigneur) editSeigneur.value = info.seigneur_id || '';
       if (editReligionPop) editReligionPop.value = info.religion_pop_id || '';
-      if (editReligionSeigneur) editReligionSeigneur.value = info.religion_seigneur_id || '';
       if (editCulture) editCulture.value = info.culture_id || '';
       if (editDuchy) editDuchy.value = info.duchy_id || '';
     });
@@ -272,7 +270,6 @@
     const newName = editNameInput.value.trim();
     const seigneurId = editSeigneur ? parseInt(editSeigneur.value || '') || null : null;
     const relPop = editReligionPop ? parseInt(editReligionPop.value || '') || null : null;
-    const relSeig = editReligionSeigneur ? parseInt(editReligionSeigneur.value || '') || null : null;
     const cultureId = editCulture ? parseInt(editCulture.value || '') || null : null;
     const duchyId = editDuchy ? parseInt(editDuchy.value || '') || null : null;
     if (newId === '') return;
@@ -281,7 +278,7 @@
       const op = { type: 'rename', oldId: oldId, newId: oldId, oldName: baronyMeta[oldId].name || '', newName: newName, coords: [] };
       undoStack.push(op);
       baronyMeta[oldId].name = newName;
-      saveBaronyToServer(oldId, { name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, religion_seigneur_id: relSeig, duchy_id: duchyId, culture_id: cultureId });
+      saveBaronyToServer(oldId, { name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, duchy_id: duchyId, culture_id: cultureId });
       return;
     }
     // Si un identifiant existe déjà, échanger les baronnies
@@ -317,8 +314,8 @@
       colorMap[oldId] = generateColor(oldId);
       drawAll();
       selectBarony(newId);
-      saveBaronyToServer(newId, { name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, religion_seigneur_id: relSeig, duchy_id: duchyId, culture_id: cultureId });
-      saveBaronyToServer(oldId, { name: tempName, seigneur_id: seigneurId, religion_pop_id: relPop, religion_seigneur_id: relSeig, duchy_id: duchyId, culture_id: cultureId });
+      saveBaronyToServer(newId, { name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, duchy_id: duchyId, culture_id: cultureId });
+      saveBaronyToServer(oldId, { name: tempName, seigneur_id: seigneurId, religion_pop_id: relPop, duchy_id: duchyId, culture_id: cultureId });
       return;
     }
     const coords = pixelData[oldId] || [];
@@ -337,11 +334,11 @@
     colorMap[newId] = generateColor(newId);
     drawAll();
     selectBarony(newId);
-    saveBaronyToServer(newId, { name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, religion_seigneur_id: relSeig, duchy_id: duchyId, culture_id: cultureId });
+    saveBaronyToServer(newId, { name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, duchy_id: duchyId, culture_id: cultureId });
   }
 
   function saveBaronyToServer(id, data) {
-    fetch('/api/baronies/' + id, {
+    fetch(API_BASE + '/api/baronies/' + id, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -365,7 +362,7 @@
     delete colorMap[id];
     currentSelectedId = null;
     if (infoPanel) infoPanel.style.display = 'none';
-    fetch('/api/baronies/' + id, { method: 'DELETE' });
+    fetch(API_BASE + '/api/baronies/' + id, { method: 'DELETE' });
   }
 
   // Créer un nouvel ID unique
@@ -840,7 +837,7 @@
       colorMap[newId] = generateColor(newId);
       currentSelectedId = newId;
       selectBarony(newId);
-      saveBaronyToServer(newId, { name: '', seigneur_id: null, religion_pop_id: null, religion_seigneur_id: null, duchy_id: null, culture_id: null });
+      saveBaronyToServer(newId, { name: '', seigneur_id: null, religion_pop_id: null, duchy_id: null, culture_id: null });
       setActiveTool('brush');
     });
   if (brushSizeInput)
