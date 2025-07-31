@@ -1,5 +1,6 @@
 const express = require('express');
 const sqlite3 = require('sqlite3');
+const zlib = require('zlib');
 const path = require('path');
 const app = express();
 const db = new sqlite3.Database('asgaria.db');
@@ -54,11 +55,16 @@ CREATE TABLE IF NOT EXISTS baronies (
   FOREIGN KEY(duchy_id) REFERENCES duchies(id),
   FOREIGN KEY(culture_id) REFERENCES cultures(id)
 );
+CREATE TABLE IF NOT EXISTS barony_pixels (
+  barony_id INTEGER PRIMARY KEY REFERENCES baronies(id),
+  data BLOB
+);
 `;
 
 db.exec(initSql);
 
-app.use(express.json());
+// accept large pixel blobs
+app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname)));
 
 function list(table) {
@@ -137,6 +143,50 @@ app.delete('/api/baronies/:id', (req,res)=>{
   db.run('DELETE FROM baronies WHERE id=?',[req.params.id], function(err){
     if(err) return res.status(500).json({error: err.message});
     res.json({deleted: this.changes});
+  });
+});
+
+// Pixel data API
+app.get('/api/barony_pixels', (req, res) => {
+  const id = req.query.id;
+  if (id) {
+    db.get('SELECT data FROM barony_pixels WHERE barony_id=?', [id], (err, row) => {
+      if (err) return res.status(500).json({error: err.message});
+      if (!row) return res.json([]);
+      try {
+        const json = zlib.gunzipSync(row.data).toString();
+        res.json(JSON.parse(json));
+      } catch(e){
+        res.status(500).json({error: e.message});
+      }
+    });
+  } else {
+    db.all('SELECT barony_id, data FROM barony_pixels', [], (err, rows) => {
+      if (err) return res.status(500).json({error: err.message});
+      const out = {};
+      rows.forEach(r => {
+        try {
+          const json = zlib.gunzipSync(r.data).toString();
+          out[r.barony_id] = JSON.parse(json);
+        } catch {}
+      });
+      res.json(out);
+    });
+  }
+});
+
+app.put('/api/barony_pixels', (req, res) => {
+  const data = req.body || {};
+  db.serialize(() => {
+    const stmt = db.prepare('INSERT OR REPLACE INTO barony_pixels(barony_id,data) VALUES (?,?)');
+    for (const [id, coords] of Object.entries(data)) {
+      const buf = zlib.gzipSync(JSON.stringify(coords));
+      stmt.run(id, buf);
+    }
+    stmt.finalize(err => {
+      if (err) return res.status(500).json({error: err.message});
+      res.json({ok: true});
+    });
   });
 });
 

@@ -1,25 +1,16 @@
 (() => {
+  const API_BASE = location.origin === 'null' ? 'http://localhost:3000' : '';
   const originalWidth = 1724;
   const originalHeight = 1291;
 
-  let pixelData;
-  const saved = localStorage.getItem('baronnies_pixels');
-  if (saved) {
-    try {
-      pixelData = JSON.parse(saved);
-    } catch {
-      pixelData = window.pixelData || {};
-    }
-  } else {
-    pixelData = window.pixelData || {};
-  }
+  let pixelData = {};
 
-  function safeSetLocalStorage(key, value) {
-    try {
-      localStorage.setItem(key, value);
-    } catch (e) {
-      console.warn('localStorage quota exceeded; data not saved', e);
-    }
+  async function loadPixelData() {
+    const resp = await fetch(API_BASE + '/api/barony_pixels');
+    pixelData = await resp.json();
+    rebuildPixelMap();
+    initColorMap();
+    drawAll();
   }
 
   const pixelMap = Array.from({ length: originalHeight }, () => new Array(originalWidth).fill(0));
@@ -79,7 +70,6 @@
   const pixelCanvas = document.getElementById('pixelCanvas');
   const panZoomGroup = document.getElementById('panZoomGroup');
   const mapContainer = document.getElementById('mapContainer');
-  const importInput = document.getElementById('jsonFileInput');
   const randomBtn = document.getElementById('randomColors');
 
   const ctx = pixelCanvas.getContext('2d');
@@ -132,7 +122,6 @@
     reader.onload = ev => {
       try {
         pixelData = JSON.parse(ev.target.result);
-        safeSetLocalStorage('baronnies_pixels', JSON.stringify(pixelData));
         rebuildPixelMap();
         initColorMap();
         drawAll();
@@ -179,10 +168,6 @@
     panning = false;
   }
 
-  if (importInput) importInput.addEventListener('change', e => {
-    const file = e.target.files[0];
-    if (file) importJson(file);
-  });
   if (randomBtn) randomBtn.addEventListener('click', randomizeColors);
 
   mapContainer.addEventListener('wheel', handleWheel, { passive: false });
@@ -195,14 +180,16 @@
   });
 
   document.addEventListener('DOMContentLoaded', () => {
-    if (baseMap.complete) {
-      fitToContainer();
-      drawAll();
-    } else {
-      baseMap.onload = () => {
+    loadPixelData().then(() => {
+      if (baseMap.complete) {
         fitToContainer();
         drawAll();
-      };
-    }
+      } else {
+        baseMap.onload = () => {
+          fitToContainer();
+          drawAll();
+        };
+      }
+    });
   });
 })();

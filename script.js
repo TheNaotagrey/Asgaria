@@ -3,42 +3,30 @@
   const originalWidth = 1724;
   const originalHeight = 1291;
 
-  // Charger les données de pixels (id → liste de coordonnées) depuis pixelData.js
-  let pixelData;
-  const saved = localStorage.getItem('baronnies_pixels');
-  if (saved) {
-    try {
-      pixelData = JSON.parse(saved);
-    } catch {
-      pixelData = window.pixelData || {};
-    }
-  } else {
-    pixelData = window.pixelData || {};
-  }
+  // Pixel data loaded from the server
+  let pixelData = {};
 
-  function safeSetLocalStorage(key, value) {
-    try {
-      localStorage.setItem(key, value);
-    } catch (e) {
-      console.warn('localStorage quota exceeded; data not saved', e);
-    }
+  async function loadPixelData() {
+    const resp = await fetch(API_BASE + '/api/barony_pixels');
+    pixelData = await resp.json();
+    baronyMeta = {};
+    Object.keys(pixelData).forEach(id => { baronyMeta[id] = { id, name: '' }; });
+    for (let y = 0; y < originalHeight; y++) pixelMap[y].fill(0);
+    Object.entries(pixelData).forEach(([id, coords]) => {
+      coords.forEach(([x, y]) => {
+        if (y >= 0 && y < originalHeight && x >= 0 && x < originalWidth) {
+          pixelMap[y][x] = String(id);
+        }
+      });
+    });
+    initColorMap();
+    drawAll();
   }
   // Métadonnées par baronnie : id et nom
   let baronyMeta = {};
-  Object.keys(pixelData).forEach((id) => {
-    baronyMeta[id] = { id: id, name: '' };
-  });
 
   // Carte de correspondance pixel : pixelMap[y][x] = id (ou 0 si aucun)
   const pixelMap = Array.from({ length: originalHeight }, () => new Array(originalWidth).fill(0));
-  Object.entries(pixelData).forEach(([id, coords]) => {
-    const iid = String(id);
-    coords.forEach(([x, y]) => {
-      if (y >= 0 && y < originalHeight && x >= 0 && x < originalWidth) {
-        pixelMap[y][x] = iid;
-      }
-    });
-  });
 
   // Convertisseur HSL→RGB (déterministe pour attribuer des couleurs aux baronnies)
   function hslToRgb(h, s, l) {
@@ -139,14 +127,13 @@
   const newBaronyBtn = document.getElementById('newBarony');
   const brushSizeInput = document.getElementById('brushSize');
 
-  // Nouveau bouton de sauvegarde
+  // Save pixels to the server
   if (saveBtn) saveBtn.addEventListener('click', () => {
-    const out = {};
-    Object.keys(pixelData).forEach((id) => {
-      out[id] = pixelData[id];
+    fetch(API_BASE + '/api/barony_pixels', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(pixelData)
     });
-    const json = JSON.stringify(out, null, 2);
-    safeSetLocalStorage('baronnies_pixels', json);
   });
 
   // Canvas context
@@ -1008,8 +995,10 @@
     }
   });
   document.addEventListener('DOMContentLoaded', () => {
-    if (baseMap.complete) init();
-    else baseMap.onload = init;
-    loadOptions();
+    loadPixelData().then(() => {
+      if (baseMap.complete) init();
+      else baseMap.onload = init;
+      loadOptions();
+    });
   });
 })();
