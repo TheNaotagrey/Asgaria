@@ -3,7 +3,17 @@
   const originalHeight = 1291;
 
   // Charger les données de pixels (id → liste de coordonnées) depuis pixelData.js
-  let pixelData = window.pixelData || {};
+  let pixelData;
+  const saved = localStorage.getItem('baronnies_pixels');
+  if (saved) {
+    try {
+      pixelData = JSON.parse(saved);
+    } catch {
+      pixelData = window.pixelData || {};
+    }
+  } else {
+    pixelData = window.pixelData || {};
+  }
   // Métadonnées par baronnie : id et nom
   let baronyMeta = {};
   Object.keys(pixelData).forEach((id) => {
@@ -37,31 +47,35 @@
     const num = parseInt(id, 10);
     const hue = (num * 137) % 360;
     const [r, g, b] = hslToRgb(hue, 65, 65);
-    // Alpha inférieur à 255 pour un rendu semi-transparent (180 ≃ 70 % d’opacité)
-    return [r, g, b, 180];
+    // Couleur légèrement translucide par défaut (alpha 100)
+    return [r, g, b, 100];
   }
 
   // Palette de couleurs courante pour chaque baronnie
   let colorMap = {};
+
   function initColorMap() {
     colorMap = {};
     Object.keys(pixelData).forEach((id) => {
-      colorMap[id] = generateColor(id);
+      if (!colorMap[id]) {
+        colorMap[id] = generateColor(id);
+      }
     });
     if (currentSelectedId && colorMap[currentSelectedId]) {
-      colorMap[currentSelectedId][3] = 255;
+      colorMap[currentSelectedId][3] = 180;
     }
   }
+
   function randomizeColors() {
     colorMap = {};
     Object.keys(pixelData).forEach((id) => {
       const hue = Math.floor(Math.random() * 360);
       const [r, g, b] = hslToRgb(hue, 65, 65);
-      // Définir l’alpha à 180 pour que les couleurs aléatoires soient semi-transparentes
-      colorMap[id] = [r, g, b, 180];
+      // Couleurs aléatoires translucides (alpha 100)
+      colorMap[id] = [r, g, b, 100];
     });
     if (currentSelectedId && colorMap[currentSelectedId]) {
-      colorMap[currentSelectedId][3] = 255;
+      colorMap[currentSelectedId][3] = 180;
     }
     drawAll();
   }
@@ -91,22 +105,13 @@
   const brushSizeInput = document.getElementById('brushSize');
 
   // Nouveau bouton de sauvegarde
-  saveBtn.addEventListener('click', () => {
-    // Sauvegarde identique à l'exportation mais avec un nom de fichier différent
+  if (saveBtn) saveBtn.addEventListener('click', () => {
     const out = {};
     Object.keys(pixelData).forEach((id) => {
       out[id] = pixelData[id];
     });
     const json = JSON.stringify(out, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'baronnies_pixels_sauvegarde.json';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    localStorage.setItem('baronnies_pixels', json);
   });
 
   // Canvas context
@@ -116,7 +121,8 @@
   ctx.imageSmoothingEnabled = false;
 
   // État de l’interface
-  let editMode = false;
+  const defaultEditMode = window.defaultEditMode || false;
+  let editMode = defaultEditMode;
   let currentTool = null;
   let brushSize = 1;
   let painting = false;
@@ -196,7 +202,7 @@
     }
     currentSelectedId = id;
     if (!id) {
-      infoPanel.style.display = 'none';
+      if (infoPanel) infoPanel.style.display = 'none';
       drawAll();
       return;
     }
@@ -204,10 +210,12 @@
     if (!colorMap[id]) {
       colorMap[id] = generateColor(id);
     }
-    colorMap[id][3] = 255;
-    infoPanel.style.display = 'block';
-    editIdInput.value = baronyMeta[id].id;
-    editNameInput.value = baronyMeta[id].name || '';
+    colorMap[id][3] = 180;
+    if (infoPanel) {
+      infoPanel.style.display = 'block';
+    }
+    if (editIdInput) editIdInput.value = baronyMeta[id].id;
+    if (editNameInput) editNameInput.value = baronyMeta[id].name || '';
     drawAll();
   }
 
@@ -292,8 +300,9 @@
     });
     delete pixelData[id];
     delete baronyMeta[id];
+    delete colorMap[id];
     currentSelectedId = null;
-    infoPanel.style.display = 'none';
+    if (infoPanel) infoPanel.style.display = 'none';
   }
 
   // Créer un nouvel ID unique
@@ -322,6 +331,7 @@
     undoStack.push(op);
     delete pixelData[otherId];
     delete baronyMeta[otherId];
+    delete colorMap[otherId];
     if (currentSelectedId === otherId) currentSelectedId = baseId;
     selectBarony(baseId);
   }
@@ -583,7 +593,7 @@
           });
         });
         currentSelectedId = null;
-        infoPanel.style.display = 'none';
+        if (infoPanel) infoPanel.style.display = 'none';
         initColorMap();
         drawAll();
       } catch (err) {
@@ -705,7 +715,7 @@
   }
 
   /* Écouteurs d’événements */
-  toggleEditBtn.addEventListener('click', () => {
+  if (toggleEditBtn) toggleEditBtn.addEventListener('click', () => {
     editMode = !editMode;
     toggleEditBtn.textContent = editMode ? 'Quitter le mode édition' : 'Mode édition';
     if (!editMode) {
@@ -715,60 +725,65 @@
       mergeMode = false;
       mergeBaseId = null;
       currentSelectedId = null;
-      infoPanel.style.display = 'none';
+      if (infoPanel) infoPanel.style.display = 'none';
     }
   });
-  randomBtn.addEventListener('click', randomizeColors);
-  exportBtn.addEventListener('click', exportJson);
-  importInput.addEventListener('change', (e) => {
+  if (randomBtn) randomBtn.addEventListener('click', randomizeColors);
+  if (exportBtn) exportBtn.addEventListener('click', exportJson);
+  if (importInput) importInput.addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (file) importJson(file);
   });
-  deleteBtn.addEventListener('click', deleteBarony);
-  mergeBtn.addEventListener('click', () => {
+  if (deleteBtn) deleteBtn.addEventListener('click', deleteBarony);
+  if (mergeBtn) mergeBtn.addEventListener('click', () => {
     if (!currentSelectedId) return;
     mergeMode = true;
     mergeBaseId = currentSelectedId;
     alert('Mode fusion activé : cliquez sur la baronnie à fusionner.');
   });
-  toggleMapBtn.addEventListener('click', toggleMap);
-  updateBtn.addEventListener('click', updateBarony);
+  if (toggleMapBtn) toggleMapBtn.addEventListener('click', toggleMap);
+  if (updateBtn) updateBtn.addEventListener('click', updateBarony);
 
   // Outils
-  brushToolBtn.addEventListener('click', () => {
-    if (!editMode) return;
-    setActiveTool('brush');
-    mergeMode = false;
-    mergeBaseId = null;
-  });
-  eraserToolBtn.addEventListener('click', () => {
-    if (!editMode) return;
-    setActiveTool('eraser');
-    mergeMode = false;
-    mergeBaseId = null;
-  });
-  bucketToolBtn.addEventListener('click', () => {
-    if (!editMode) return;
-    setActiveTool('bucket');
-    mergeMode = false;
-    mergeBaseId = null;
-  });
-  newBaronyBtn.addEventListener('click', () => {
-    if (!editMode) return;
-    const newId = createNewId();
-    // Enregistrer création pour l’undo
-    undoStack.push({ type: 'create', id: newId });
-    pixelData[newId] = [];
-    baronyMeta[newId] = { id: newId, name: '' };
-    colorMap[newId] = generateColor(newId);
-    currentSelectedId = newId;
-    selectBarony(newId);
-    setActiveTool('brush');
-  });
-  brushSizeInput.addEventListener('input', () => {
-    const val = parseInt(brushSizeInput.value, 10);
-    brushSize = isNaN(val) ? 1 : val;
-  });
+  if (brushToolBtn)
+    brushToolBtn.addEventListener('click', () => {
+      if (!editMode) return;
+      setActiveTool('brush');
+      mergeMode = false;
+      mergeBaseId = null;
+    });
+  if (eraserToolBtn)
+    eraserToolBtn.addEventListener('click', () => {
+      if (!editMode) return;
+      setActiveTool('eraser');
+      mergeMode = false;
+      mergeBaseId = null;
+    });
+  if (bucketToolBtn)
+    bucketToolBtn.addEventListener('click', () => {
+      if (!editMode) return;
+      setActiveTool('bucket');
+      mergeMode = false;
+      mergeBaseId = null;
+    });
+  if (newBaronyBtn)
+    newBaronyBtn.addEventListener('click', () => {
+      if (!editMode) return;
+      const newId = createNewId();
+      // Enregistrer création pour l’undo
+      undoStack.push({ type: 'create', id: newId });
+      pixelData[newId] = [];
+      baronyMeta[newId] = { id: newId, name: '' };
+      colorMap[newId] = generateColor(newId);
+      currentSelectedId = newId;
+      selectBarony(newId);
+      setActiveTool('brush');
+    });
+  if (brushSizeInput)
+    brushSizeInput.addEventListener('input', () => {
+      const val = parseInt(brushSizeInput.value, 10);
+      brushSize = isNaN(val) ? 1 : val;
+    });
 
   // Événements souris pour peinture et sélection
   pixelCanvas.addEventListener('mousedown', handleMouseDown);
@@ -793,11 +808,15 @@
   window.addEventListener('mouseup', handlePanEnd);
   window.addEventListener('resize', fitToContainer);
 
-  // Touche Escape : annuler la sélection de baronnie
+  // Touche Escape : annuler la sélection et tout mode actif
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       currentSelectedId = null;
-      infoPanel.style.display = 'none';
+      if (infoPanel) infoPanel.style.display = 'none';
+      painting = false;
+      mergeMode = false;
+      mergeBaseId = null;
+      setActiveTool(null);
     }
   });
 
@@ -886,7 +905,7 @@
       delete baronyMeta[id];
       if (currentSelectedId === id) {
         currentSelectedId = null;
-        infoPanel.style.display = 'none';
+        if (infoPanel) infoPanel.style.display = 'none';
       }
     } else if (op.type === 'rename') {
       const { oldId, newId, oldName, newName, coords } = op;
