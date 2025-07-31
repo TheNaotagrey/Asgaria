@@ -5,25 +5,102 @@ async function fetchJSON(url, options){
   return resp.json();
 }
 
-function renderList(elem, items){
-  elem.innerHTML = '';
-  items.forEach(it=>{
-    const li = document.createElement('li');
-    li.textContent = `${it.id} - ${it.name}`;
-    elem.appendChild(li);
-  });
-}
+function renderTable(container, rows, opts){
+  container.innerHTML = '';
+  const table = document.createElement('table');
+  table.className = 'admin-table';
+  const thead = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  headRow.innerHTML = '<th>ID</th>' + opts.fields.map(f=>`<th>${f}</th>`).join('') + '<th></th>';
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+  const tbody = document.createElement('tbody');
 
-function renderSeigneurs(elem, seigneurs, religions){
-  elem.innerHTML = '';
-  const relMap = {};
-  religions.forEach(r=>{ relMap[r.id] = r.name; });
-  seigneurs.forEach(s=>{
-    const li = document.createElement('li');
-    const relName = relMap[s.religion_id] || '';
-    li.textContent = relName ? `${s.id} - ${s.name} (${relName})` : `${s.id} - ${s.name}`;
-    elem.appendChild(li);
+  const makeInput = (val, field)=>{
+    if(opts.selects && opts.selects[field]){
+      const select = document.createElement('select');
+      const optList = opts.selects[field];
+      const blank = document.createElement('option');
+      blank.value = '';
+      blank.textContent = '';
+      select.appendChild(blank);
+      optList.forEach(o=>{
+        const op = document.createElement('option');
+        op.value = o.id;
+        op.textContent = o.name;
+        if(String(o.id) === String(val)) op.selected = true;
+        select.appendChild(op);
+      });
+      return select;
+    }
+    const input = document.createElement('input');
+    input.value = val ?? '';
+    return input;
+  };
+
+  rows.forEach(item=>{
+    const tr = document.createElement('tr');
+    let td = document.createElement('td');
+    td.textContent = item.id;
+    tr.appendChild(td);
+    opts.fields.forEach(f=>{
+      td = document.createElement('td');
+      td.appendChild(makeInput(item[f], f));
+      tr.appendChild(td);
+    });
+    td = document.createElement('td');
+    const btn = document.createElement('button');
+    btn.textContent = 'Enregistrer';
+    btn.addEventListener('click', async ()=>{
+      const payload = {};
+      opts.fields.forEach((f,i)=>{
+        const el = tr.children[i+1].firstChild;
+        if(opts.selects && opts.selects[f]){
+          payload[f] = el.value ? parseInt(el.value,10) : null;
+        } else {
+          payload[f] = el.value.trim();
+        }
+      });
+      await fetchJSON(`/api/${opts.endpoint}/${item.id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      loadAll();
+    });
+    td.appendChild(btn);
+    tr.appendChild(td);
+    tbody.appendChild(tr);
   });
+
+  const addRow = document.createElement('tr');
+  addRow.appendChild(document.createElement('td'));
+  const addInputs = {};
+  opts.fields.forEach(f=>{
+    const td = document.createElement('td');
+    const inp = makeInput('', f);
+    addInputs[f]=inp;
+    td.appendChild(inp);
+    addRow.appendChild(td);
+  });
+  const addTd = document.createElement('td');
+  const addBtn = document.createElement('button');
+  addBtn.textContent = 'Ajouter';
+  addBtn.addEventListener('click', async ()=>{
+    const payload = {};
+    opts.fields.forEach(f=>{
+      const el = addInputs[f];
+      if(opts.selects && opts.selects[f]){
+        payload[f] = el.value ? parseInt(el.value,10) : null;
+      } else {
+        payload[f] = el.value.trim();
+      }
+    });
+    await fetchJSON(`/api/${opts.endpoint}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    loadAll();
+  });
+  addTd.appendChild(addBtn);
+  addRow.appendChild(addTd);
+  tbody.appendChild(addRow);
+
+  table.appendChild(tbody);
+  container.appendChild(table);
 }
 
 async function loadAll(){
@@ -35,64 +112,39 @@ async function loadAll(){
     fetchJSON('/api/counties'),
     fetchJSON('/api/duchies'),
   ]);
-  renderSeigneurs(document.getElementById('listSeigneurs'), seigneurs, religions);
-  const seigneurRel = document.getElementById('seigneurReligion');
-  seigneurRel.innerHTML = religions.map(r=>`<option value="${r.id}">${r.name}</option>`).join('');
-  renderList(document.getElementById('listReligions'), religions);
-  renderList(document.getElementById('listCultures'), cultures);
-  renderList(document.getElementById('listKingdoms'), kingdoms);
-  renderList(document.getElementById('listCounties'), counties);
-  renderList(document.getElementById('listDuchies'), duchies);
-  const countyKingdom = document.getElementById('countyKingdom');
-  countyKingdom.innerHTML = kingdoms.map(k=>`<option value="${k.id}">${k.name}</option>`).join('');
-  const duchyCounty = document.getElementById('duchyCounty');
-  duchyCounty.innerHTML = counties.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
-}
 
-async function addSeigneur(){
-  const name = document.getElementById('newSeigneur').value.trim();
-  const religion_id = parseInt(document.getElementById('seigneurReligion').value,10) || null;
-  if(!name) return;
-  await fetchJSON('/api/seigneurs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,religion_id})});
-  document.getElementById('newSeigneur').value='';
-  loadAll();
-}
-async function addReligion(){
-  const name = document.getElementById('newReligion').value.trim();
-  if(!name) return;
-  await fetchJSON('/api/religions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
-  document.getElementById('newReligion').value='';
-  loadAll();
-}
-async function addCulture(){
-  const name = document.getElementById('newCulture').value.trim();
-  if(!name) return;
-  await fetchJSON('/api/cultures',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
-  document.getElementById('newCulture').value='';
-  loadAll();
-}
-async function addKingdom(){
-  const name = document.getElementById('newKingdom').value.trim();
-  if(!name) return;
-  await fetchJSON('/api/kingdoms',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
-  document.getElementById('newKingdom').value='';
-  loadAll();
-}
-async function addCounty(){
-  const name = document.getElementById('newCounty').value.trim();
-  const kingdom_id = parseInt(document.getElementById('countyKingdom').value,10);
-  if(!name) return;
-  await fetchJSON('/api/counties',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,kingdom_id})});
-  document.getElementById('newCounty').value='';
-  loadAll();
-}
-async function addDuchy(){
-  const name = document.getElementById('newDuchy').value.trim();
-  const county_id = parseInt(document.getElementById('duchyCounty').value,10);
-  if(!name) return;
-  await fetchJSON('/api/duchies',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,county_id})});
-  document.getElementById('newDuchy').value='';
-  loadAll();
+  renderTable(document.getElementById('tableReligions'), religions, {
+    endpoint:'religions',
+    fields:['name']
+  });
+
+  renderTable(document.getElementById('tableCultures'), cultures, {
+    endpoint:'cultures',
+    fields:['name']
+  });
+
+  renderTable(document.getElementById('tableKingdoms'), kingdoms, {
+    endpoint:'kingdoms',
+    fields:['name']
+  });
+
+  renderTable(document.getElementById('tableCounties'), counties, {
+    endpoint:'counties',
+    fields:['name','kingdom_id'],
+    selects:{kingdom_id:kingdoms}
+  });
+
+  renderTable(document.getElementById('tableDuchies'), duchies, {
+    endpoint:'duchies',
+    fields:['name','county_id'],
+    selects:{county_id:counties}
+  });
+
+  renderTable(document.getElementById('tableSeigneurs'), seigneurs, {
+    endpoint:'seigneurs',
+    fields:['name','religion_id','overlord_id'],
+    selects:{religion_id:religions, overlord_id:seigneurs}
+  });
 }
 
 loadAll();
