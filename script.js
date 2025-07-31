@@ -48,6 +48,9 @@
     Object.keys(pixelData).forEach((id) => {
       colorMap[id] = generateColor(id);
     });
+    if (currentSelectedId && colorMap[currentSelectedId]) {
+      colorMap[currentSelectedId][3] = 255;
+    }
   }
   function randomizeColors() {
     colorMap = {};
@@ -57,6 +60,9 @@
       // Définir l’alpha à 180 pour que les couleurs aléatoires soient semi-transparentes
       colorMap[id] = [r, g, b, 180];
     });
+    if (currentSelectedId && colorMap[currentSelectedId]) {
+      colorMap[currentSelectedId][3] = 255;
+    }
     drawAll();
   }
 
@@ -184,14 +190,25 @@
 
   // Gestion de la sélection
   function selectBarony(id) {
+    // remettre l'opacité par défaut sur l'ancienne sélection
+    if (currentSelectedId && colorMap[currentSelectedId]) {
+      colorMap[currentSelectedId][3] = 180;
+    }
     currentSelectedId = id;
     if (!id) {
       infoPanel.style.display = 'none';
+      drawAll();
       return;
     }
+    // s'assurer que la baronnie a une couleur puis la mettre en valeur
+    if (!colorMap[id]) {
+      colorMap[id] = generateColor(id);
+    }
+    colorMap[id][3] = 255;
     infoPanel.style.display = 'block';
     editIdInput.value = baronyMeta[id].id;
     editNameInput.value = baronyMeta[id].name || '';
+    drawAll();
   }
 
   // Mettre à jour ID/nom de la baronnie sélectionnée
