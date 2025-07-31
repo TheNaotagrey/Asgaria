@@ -14,6 +14,14 @@
   } else {
     pixelData = window.pixelData || {};
   }
+
+  function safeSetLocalStorage(key, value) {
+    try {
+      localStorage.setItem(key, value);
+    } catch (e) {
+      console.warn('localStorage quota exceeded; data not saved', e);
+    }
+  }
   // Métadonnées par baronnie : id et nom
   let baronyMeta = {};
   Object.keys(pixelData).forEach((id) => {
@@ -111,7 +119,7 @@
       out[id] = pixelData[id];
     });
     const json = JSON.stringify(out, null, 2);
-    localStorage.setItem('baronnies_pixels', json);
+    safeSetLocalStorage('baronnies_pixels', json);
   });
 
   // Canvas context

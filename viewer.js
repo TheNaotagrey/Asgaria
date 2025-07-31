@@ -14,6 +14,14 @@
     pixelData = window.pixelData || {};
   }
 
+  function safeSetLocalStorage(key, value) {
+    try {
+      localStorage.setItem(key, value);
+    } catch (e) {
+      console.warn('localStorage quota exceeded; data not saved', e);
+    }
+  }
+
   const pixelMap = Array.from({ length: originalHeight }, () => new Array(originalWidth).fill(0));
   function rebuildPixelMap() {
     for (let y = 0; y < originalHeight; y++) pixelMap[y].fill(0);
@@ -124,7 +132,7 @@
     reader.onload = ev => {
       try {
         pixelData = JSON.parse(ev.target.result);
-        localStorage.setItem('baronnies_pixels', JSON.stringify(pixelData));
+        safeSetLocalStorage('baronnies_pixels', JSON.stringify(pixelData));
         rebuildPixelMap();
         initColorMap();
         drawAll();
