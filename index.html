@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Éditeur de baronnies – Mode pixel</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <h1>Éditeur de baronnies – Mode pixel</h1>
+    <div id="controls" class="controls-row">
+      <button id="toggleEdit" class="control-btn">Mode&nbsp;édition</button>
+      <button id="randomColors" class="control-btn">Couleurs aléatoires</button>
+      <button id="exportJson" class="control-btn">Exporter JSON</button>
+      <button id="saveToFile" class="control-btn">Enregistrer</button>
+      <label class="file-label control-btn">
+        Importer JSON
+        <input type="file" id="jsonFileInput" accept=".json">
+      </label>
+      <button id="deleteBarony" class="control-btn">Supprimer</button>
+      <button id="mergeBarony" class="control-btn">Fusionner</button>
+      <button id="toggleMap" class="control-btn">Changer fond</button>
+    </div>
+    <div id="tools" class="tools-row">
+      <button id="brushTool" class="tool-btn" title="Pinceau">
+        <svg width="20" height="20" viewBox="0 0 20 20"><path d="M2 15 L14 3 L17 6 L5 18 Z" fill="currentColor"></path></svg>
+      </button>
+      <button id="eraserTool" class="tool-btn" title="Gomme">
+        <svg width="20" height="20" viewBox="0 0 20 20"><path d="M3 15 L8 10 L15 17 L10 17 Z" fill="currentColor"></path><path d="M8 10 L11 7 L17 13 L15 15 Z" fill="currentColor"></path></svg>
+      </button>
+      <button id="bucketTool" class="tool-btn" title="Pot de peinture">
+        <svg width="20" height="20" viewBox="0 0 20 20"><path d="M5 5 L15 5 L17 9 L3 9 Z" fill="currentColor"></path><path d="M7 9 L7 15 L13 15 L13 9 Z" fill="currentColor"></path></svg>
+      </button>
+      <button id="newBarony" class="tool-btn" title="Nouvelle baronnie">
+        <svg width="20" height="20" viewBox="0 0 20 20">
+          <rect x="9" y="2" width="2" height="16" fill="currentColor"></rect>
+          <rect x="2" y="9" width="16" height="2" fill="currentColor"></rect>
+        </svg>
+      </button>
+      <label for="brushSize" class="brush-size-label">Taille&nbsp;
+        <input type="range" id="brushSize" min="1" max="10" value="1">
+      </label>
+    </div>
+  </header>
+  <main>
+    <div id="mapContainer" class="map-container">
+      <div id="panZoomGroup" class="panzoom-group">
+        <img id="baseMap" src="Asgaria.png" alt="Carte d’Asgaria" class="base-map">
+        <canvas id="pixelCanvas" class="pixel-canvas"></canvas>
+      </div>
+    </div>
+    <aside id="infoPanel" class="info-panel" style="display: none;">
+      <h2>Baronnie sélectionnée</h2>
+      <label for="editId">Numéro&nbsp;:</label>
+      <input type="text" id="editId">
+      <label for="editName">Nom&nbsp;:</label>
+      <input type="text" id="editName">
+      <button id="updateBarony" class="control-btn">Mettre à jour</button>
+    </aside>
+  </main>
+  <script src="pixelData.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
