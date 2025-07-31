@@ -1,5 +1,7 @@
+const API_BASE = location.origin === 'null' ? 'http://localhost:3000' : '';
+
 async function fetchJSON(url, options){
-  const resp = await fetch(url, options);
+  const resp = await fetch(API_BASE + url, options);
   return resp.json();
 }
 
@@ -8,6 +10,18 @@ function renderList(elem, items){
   items.forEach(it=>{
     const li = document.createElement('li');
     li.textContent = `${it.id} - ${it.name}`;
+    elem.appendChild(li);
+  });
+}
+
+function renderSeigneurs(elem, seigneurs, religions){
+  elem.innerHTML = '';
+  const relMap = {};
+  religions.forEach(r=>{ relMap[r.id] = r.name; });
+  seigneurs.forEach(s=>{
+    const li = document.createElement('li');
+    const relName = relMap[s.religion_id] || '';
+    li.textContent = relName ? `${s.id} - ${s.name} (${relName})` : `${s.id} - ${s.name}`;
     elem.appendChild(li);
   });
 }
@@ -21,7 +35,9 @@ async function loadAll(){
     fetchJSON('/api/counties'),
     fetchJSON('/api/duchies'),
   ]);
-  renderList(document.getElementById('listSeigneurs'), seigneurs);
+  renderSeigneurs(document.getElementById('listSeigneurs'), seigneurs, religions);
+  const seigneurRel = document.getElementById('seigneurReligion');
+  seigneurRel.innerHTML = religions.map(r=>`<option value="${r.id}">${r.name}</option>`).join('');
   renderList(document.getElementById('listReligions'), religions);
   renderList(document.getElementById('listCultures'), cultures);
   renderList(document.getElementById('listKingdoms'), kingdoms);
@@ -35,8 +51,9 @@ async function loadAll(){
 
 async function addSeigneur(){
   const name = document.getElementById('newSeigneur').value.trim();
+  const religion_id = parseInt(document.getElementById('seigneurReligion').value,10) || null;
   if(!name) return;
-  await fetchJSON('/api/seigneurs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
+  await fetchJSON('/api/seigneurs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,religion_id})});
   document.getElementById('newSeigneur').value='';
   loadAll();
 }

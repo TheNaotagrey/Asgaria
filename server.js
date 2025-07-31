@@ -32,11 +32,12 @@ CREATE TABLE IF NOT EXISTS cultures (
 );
 CREATE TABLE IF NOT EXISTS seigneurs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT UNIQUE
+  name TEXT UNIQUE,
+  religion_id INTEGER,
+  FOREIGN KEY(religion_id) REFERENCES religions(id)
 );
 CREATE TABLE IF NOT EXISTS allegiances (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  seigneur_id INTEGER,
+  seigneur_id INTEGER PRIMARY KEY,
   overlord_id INTEGER,
   FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id),
   FOREIGN KEY(overlord_id) REFERENCES seigneurs(id)
@@ -46,12 +47,10 @@ CREATE TABLE IF NOT EXISTS baronies (
   name TEXT,
   seigneur_id INTEGER,
   religion_pop_id INTEGER,
-  religion_seigneur_id INTEGER,
   duchy_id INTEGER,
   culture_id INTEGER,
   FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id),
   FOREIGN KEY(religion_pop_id) REFERENCES religions(id),
-  FOREIGN KEY(religion_seigneur_id) REFERENCES religions(id),
   FOREIGN KEY(duchy_id) REFERENCES duchies(id),
   FOREIGN KEY(culture_id) REFERENCES cultures(id)
 );
@@ -111,7 +110,8 @@ app.get('/api/cultures', list('cultures'));
 app.post('/api/cultures', create('cultures',['name']));
 
 app.get('/api/seigneurs', list('seigneurs'));
-app.post('/api/seigneurs', create('seigneurs',['name']));
+app.post('/api/seigneurs', create('seigneurs',['name','religion_id']));
+app.put('/api/seigneurs/:id', update('seigneurs',['name','religion_id']));
 
 app.get('/api/allegiances', list('allegiances'));
 app.post('/api/allegiances', create('allegiances',['seigneur_id','overlord_id']));
@@ -128,10 +128,10 @@ app.get('/api/baronies', (req, res) => {
   }
 });
 app.post('/api/baronies', create('baronies',[
-  'id','name','seigneur_id','religion_pop_id','religion_seigneur_id','duchy_id','culture_id'
+  'id','name','seigneur_id','religion_pop_id','duchy_id','culture_id'
 ]));
 app.put('/api/baronies/:id', update('baronies',[
-  'name','seigneur_id','religion_pop_id','religion_seigneur_id','duchy_id','culture_id'
+  'name','seigneur_id','religion_pop_id','duchy_id','culture_id'
 ]));
 app.delete('/api/baronies/:id', (req,res)=>{
   db.run('DELETE FROM baronies WHERE id=?',[req.params.id], function(err){
