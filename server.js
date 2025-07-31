@@ -35,12 +35,8 @@ CREATE TABLE IF NOT EXISTS seigneurs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT UNIQUE,
   religion_id INTEGER,
-  FOREIGN KEY(religion_id) REFERENCES religions(id)
-);
-CREATE TABLE IF NOT EXISTS allegiances (
-  seigneur_id INTEGER PRIMARY KEY,
   overlord_id INTEGER,
-  FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id),
+  FOREIGN KEY(religion_id) REFERENCES religions(id),
   FOREIGN KEY(overlord_id) REFERENCES seigneurs(id)
 );
 CREATE TABLE IF NOT EXISTS baronies (
@@ -61,7 +57,13 @@ CREATE TABLE IF NOT EXISTS barony_pixels (
 );
 `;
 
-db.exec(initSql);
+db.exec(initSql, () => {
+  db.all("PRAGMA table_info(seigneurs)", (err, rows) => {
+    if (!err && rows && !rows.some(r => r.name === 'overlord_id')) {
+      db.run('ALTER TABLE seigneurs ADD COLUMN overlord_id INTEGER');
+    }
+  });
+});
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
@@ -115,11 +117,8 @@ app.get('/api/cultures', list('cultures'));
 app.post('/api/cultures', create('cultures',['name']));
 
 app.get('/api/seigneurs', list('seigneurs'));
-app.post('/api/seigneurs', create('seigneurs',['name','religion_id']));
-app.put('/api/seigneurs/:id', update('seigneurs',['name','religion_id']));
-
-app.get('/api/allegiances', list('allegiances'));
-app.post('/api/allegiances', create('allegiances',['seigneur_id','overlord_id']));
+app.post('/api/seigneurs', create('seigneurs',['name','religion_id','overlord_id']));
+app.put('/api/seigneurs/:id', update('seigneurs',['name','religion_id','overlord_id']));
 
 app.get('/api/baronies', (req, res) => {
   const id = req.query.id;

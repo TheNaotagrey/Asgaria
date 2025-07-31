@@ -182,3 +182,30 @@ main {
 .info-panel button:hover {
   background-color: #3d6db2;
 }
+
+/* Table d'administration */
+.admin-table {
+  border-collapse: collapse;
+  margin-bottom: 20px;
+}
+.admin-table th,
+.admin-table td {
+  border: 1px solid #ccc;
+  padding: 4px 6px;
+}
+.admin-table input,
+.admin-table select {
+  width: 100%;
+  box-sizing: border-box;
+}
+.admin-table button {
+  padding: 4px 8px;
+  background-color: #1d56a4;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.admin-table button:hover {
+  background-color: #3d6db2;
+}
