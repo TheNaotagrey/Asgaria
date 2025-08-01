@@ -147,8 +147,7 @@ async function loadAll(){
   renderTable(document.getElementById('tableSeigneurs'), seigneurs, {
     endpoint:'seigneurs',
     fields:['name','religion_id','overlord_id'],
-    selects:{religion_id:religions, overlord_id:seigneurs},
-    nullLabels:{religion_id:'Athée'}
+    selects:{religion_id:religions, overlord_id:seigneurs}
   });
 }
 
