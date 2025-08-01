@@ -24,6 +24,13 @@
   }
   // Métadonnées par baronnie : id et nom
   let baronyMeta = {};
+  let seigneurMap = {};
+  let religionMap = {};
+  let cultureMapInfo = {};
+  let countyMap = {};
+  let duchyMap = {};
+  let kingdomMap = {};
+  let currentFilter = '';
 
   // Carte de correspondance pixel : pixelMap[y][x] = id (ou 0 si aucun)
   const pixelMap = Array.from({ length: originalHeight }, () => new Array(originalWidth).fill(0));
@@ -64,11 +71,14 @@
   }
 
   function randomizeColors() {
+    if (currentFilter) {
+      applyFilter(currentFilter, true);
+      return;
+    }
     colorMap = {};
     Object.keys(pixelData).forEach((id) => {
       const hue = Math.floor(Math.random() * 360);
       const [r, g, b] = hslToRgb(hue, 65, 65);
-      // Couleurs aléatoires translucides (alpha 100)
       colorMap[id] = [r, g, b, 100];
     });
     if (currentSelectedId && colorMap[currentSelectedId]) {
@@ -99,6 +109,8 @@
   const editCulture = document.getElementById('editCulture');
   const editCounty = document.getElementById('editCounty');
   const updateBtn = document.getElementById('updateBarony');
+  const filterSelect = document.getElementById('colorFilter');
+  const legendDiv = document.getElementById('legend');
 
   let seigneurOptions = [];
   let religionOptions = [];
@@ -125,6 +137,32 @@
     }
     if (editCulture) editCulture.innerHTML = cultureOptions.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
     if (editCounty) editCounty.innerHTML = countyOptions.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  }
+
+  async function loadMetaData() {
+    const [baronies, seigneurs, religions, cultures, counties, duchies, kingdoms] = await Promise.all([
+      fetch(API_BASE + '/api/baronies').then(r => r.json()),
+      fetch(API_BASE + '/api/seigneurs').then(r => r.json()),
+      fetch(API_BASE + '/api/religions').then(r => r.json()),
+      fetch(API_BASE + '/api/cultures').then(r => r.json()),
+      fetch(API_BASE + '/api/counties').then(r => r.json()),
+      fetch(API_BASE + '/api/duchies').then(r => r.json()),
+      fetch(API_BASE + '/api/kingdoms').then(r => r.json())
+    ]);
+    baronyMeta = {};
+    baronies.forEach(b => { baronyMeta[b.id] = b; });
+    seigneurMap = {};
+    seigneurs.forEach(s => { seigneurMap[s.id] = s; });
+    religionMap = {};
+    religions.forEach(r => { religionMap[r.id] = r; });
+    cultureMapInfo = {};
+    cultures.forEach(c => { cultureMapInfo[c.id] = c; });
+    countyMap = {};
+    counties.forEach(c => { countyMap[c.id] = c; });
+    duchyMap = {};
+    duchies.forEach(d => { duchyMap[d.id] = d; });
+    kingdomMap = {};
+    kingdoms.forEach(k => { kingdomMap[k.id] = k; });
   }
   // Outils
   const brushToolBtn = document.getElementById('brushTool');
@@ -220,6 +258,82 @@
     const alpha = col.length > 3 ? col[3] / 255 : 1;
     ctx.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},${alpha})`;
     ctx.fillRect(x, y, 1, 1);
+  }
+
+  function updateLegend(groups) {
+    if (!legendDiv) return;
+    if (!groups) {
+      legendDiv.style.display = 'none';
+      legendDiv.innerHTML = '';
+      return;
+    }
+    legendDiv.innerHTML = '';
+    Object.entries(groups).forEach(([id, info]) => {
+      const item = document.createElement('div');
+      item.className = 'legend-item';
+      const colorBox = document.createElement('span');
+      colorBox.className = 'legend-color';
+      colorBox.style.backgroundColor = `rgb(${info.color[0]},${info.color[1]},${info.color[2]})`;
+      item.appendChild(colorBox);
+      const lab = document.createElement('span');
+      lab.textContent = info.name;
+      item.appendChild(lab);
+      legendDiv.appendChild(item);
+    });
+    legendDiv.style.display = 'block';
+  }
+
+  function applyFilter(type, randomize = false) {
+    currentFilter = type || '';
+    if (!type) {
+      initColorMap();
+      updateLegend(null);
+      if (currentSelectedId && colorMap[currentSelectedId]) colorMap[currentSelectedId][3] = 180;
+      drawAll();
+      return;
+    }
+    const groupColors = {};
+    colorMap = {};
+    Object.entries(baronyMeta).forEach(([id, info]) => {
+      let groupId = null;
+      let groupName = '';
+      if (type === 'religion') {
+        groupId = info.religion_pop_id;
+        groupName = religionMap[groupId]?.name || '';
+      } else if (type === 'culture') {
+        groupId = info.culture_id;
+        groupName = cultureMapInfo[groupId]?.name || '';
+      } else if (type === 'county') {
+        groupId = info.county_id;
+        groupName = countyMap[groupId]?.name || '';
+      } else if (type === 'duchy') {
+        const county = countyMap[info.county_id];
+        groupId = county ? county.duchy_id : null;
+        groupName = duchyMap[groupId]?.name || '';
+      } else if (type === 'kingdom') {
+        const county = countyMap[info.county_id];
+        const duchy = county ? duchyMap[county.duchy_id] : null;
+        groupId = duchy ? duchy.kingdom_id : null;
+        groupName = kingdomMap[groupId]?.name || '';
+      }
+      if (!groupColors[groupId]) {
+        let col;
+        if (randomize) {
+          const hue = Math.floor(Math.random() * 360);
+          col = hslToRgb(hue, 65, 65);
+        } else {
+          col = generateColor(String(groupId || 0)).slice(0, 3);
+        }
+        groupColors[groupId] = { color: col, name: groupName || 'N/A' };
+      }
+      const col = groupColors[groupId].color;
+      colorMap[id] = [col[0], col[1], col[2], 100];
+    });
+    if (currentSelectedId && colorMap[currentSelectedId]) {
+      colorMap[currentSelectedId][3] = 180;
+    }
+    updateLegend(groupColors);
+    drawAll();
   }
 
   // Gestion de la sélection
@@ -788,6 +902,7 @@
     }
   });
   if (randomBtn) randomBtn.addEventListener('click', randomizeColors);
+  if (filterSelect) filterSelect.addEventListener('change', () => applyFilter(filterSelect.value));
   if (exportBtn) exportBtn.addEventListener('click', exportJson);
   if (importInput) importInput.addEventListener('change', (e) => {
     const file = e.target.files[0];
@@ -875,8 +990,7 @@
   // Touche Escape : annuler la sélection et tout mode actif
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-      currentSelectedId = null;
-      if (infoPanel) infoPanel.style.display = 'none';
+      selectBarony(null);
       painting = false;
       mergeMode = false;
       mergeBaseId = null;
@@ -1011,10 +1125,16 @@
     }
   });
   document.addEventListener('DOMContentLoaded', () => {
-    loadPixelData().then(() => {
-      if (baseMap.complete) init();
-      else baseMap.onload = init;
-      loadOptions();
+    Promise.all([loadPixelData(), loadMetaData(), loadOptions()]).then(() => {
+      if (baseMap.complete) {
+        init();
+        applyFilter(filterSelect ? filterSelect.value : '');
+      } else {
+        baseMap.onload = () => {
+          init();
+          applyFilter(filterSelect ? filterSelect.value : '');
+        };
+      }
     });
   });
 })();

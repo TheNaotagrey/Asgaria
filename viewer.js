@@ -90,6 +90,10 @@
   initColorMap();
 
   function randomizeColors() {
+    if (filterSelect && filterSelect.value) {
+      applyFilter(filterSelect.value, true);
+      return;
+    }
     colorMap = {};
     Object.keys(pixelData).forEach(id => {
       const hue = Math.floor(Math.random() * 360);
@@ -286,7 +290,7 @@
     legendDiv.style.display = 'block';
   }
 
-  function applyFilter(type) {
+  function applyFilter(type, randomize = false) {
     if (!type) {
       initColorMap();
       updateLegend(null);
@@ -305,6 +309,9 @@
       } else if (type === 'culture') {
         groupId = info.culture_id;
         groupName = cultureMapInfo[groupId]?.name || '';
+      } else if (type === 'county') {
+        groupId = info.county_id;
+        groupName = countyMap[groupId]?.name || '';
       } else if (type === 'duchy') {
         const county = countyMap[info.county_id];
         groupId = county ? county.duchy_id : null;
@@ -316,8 +323,14 @@
         groupName = kingdomMap[groupId]?.name || '';
       }
       if (!groupColors[groupId]) {
-        const col = generateColor(String(groupId || 0));
-        groupColors[groupId] = { color: col.slice(0, 3), name: groupName || 'N/A' };
+        let col;
+        if (randomize) {
+          const hue = Math.floor(Math.random() * 360);
+          col = hslToRgb(hue, 65, 65);
+        } else {
+          col = generateColor(String(groupId || 0)).slice(0, 3);
+        }
+        groupColors[groupId] = { color: col, name: groupName || 'N/A' };
       }
       const col = groupColors[groupId].color;
       colorMap[id] = [col[0], col[1], col[2], 100];

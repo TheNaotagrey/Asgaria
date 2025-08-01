@@ -10,6 +10,15 @@
     <h1>Éditeur de baronnies – Mode pixel</h1>
     <div id="controls" class="controls-row">
       <button id="randomColors" class="control-btn">Couleurs aléatoires</button>
+      <label for="colorFilter">Filtre&nbsp;:</label>
+      <select id="colorFilter" class="control-btn">
+        <option value="">Aucun</option>
+        <option value="religion">Religion</option>
+        <option value="culture">Culture</option>
+        <option value="county">Comté</option>
+        <option value="duchy">Duché</option>
+        <option value="kingdom">Royaume</option>
+      </select>
       <button id="exportJson" class="control-btn">Exporter JSON</button>
       <button id="saveToFile" class="control-btn">Enregistrer</button>
       <label class="file-label control-btn">
@@ -66,6 +75,7 @@
       <select id="editCounty"></select>
       <button id="updateBarony" class="control-btn">Mettre à jour</button>
     </aside>
+    <div id="legend" class="legend" style="display:none;"></div>
   </main>
   <script>window.defaultEditMode = true;</script>
   <script src="pixelData.js"></script>
