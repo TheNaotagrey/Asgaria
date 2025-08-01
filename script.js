@@ -116,7 +116,10 @@
     cultureOptions = cultures;
     countyOptions = counties;
     if (editSeigneur) editSeigneur.innerHTML = seigneurs.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
-    if (editReligionPop) editReligionPop.innerHTML = religions.map(r=>`<option value="${r.id}">${r.name}</option>`).join('');
+    if (editReligionPop) {
+      const atheistOpt = '<option value="">Athée</option>';
+      editReligionPop.innerHTML = atheistOpt + religions.map(r=>`<option value="${r.id}">${r.name}</option>`).join('');
+    }
     if (editCulture) editCulture.innerHTML = cultures.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
     if (editCounty) editCounty.innerHTML = counties.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
   }

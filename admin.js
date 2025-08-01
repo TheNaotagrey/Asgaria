@@ -22,7 +22,11 @@ function renderTable(container, rows, opts){
       const optList = opts.selects[field];
       const blank = document.createElement('option');
       blank.value = '';
-      blank.textContent = '';
+      if (opts.nullLabels && opts.nullLabels[field]) {
+        blank.textContent = opts.nullLabels[field];
+      } else {
+        blank.textContent = '';
+      }
       select.appendChild(blank);
       optList.forEach(o=>{
         const op = document.createElement('option');
@@ -143,7 +147,8 @@ async function loadAll(){
   renderTable(document.getElementById('tableSeigneurs'), seigneurs, {
     endpoint:'seigneurs',
     fields:['name','religion_id','overlord_id'],
-    selects:{religion_id:religions, overlord_id:seigneurs}
+    selects:{religion_id:religions, overlord_id:seigneurs},
+    nullLabels:{religion_id:'Athée'}
   });
 }
 
