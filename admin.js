@@ -15,11 +15,16 @@ function renderTable(container, rows, opts){
   let sortCol = 'id';
   let sortDir = 'asc';
 
-  const headers = [{label:'ID', key:'id'}].concat(opts.fields.map(f=>({label:f, key:f})));
+  const headers = [{label:'ID', key:'id'}].concat(
+    opts.fields.map(f => ({
+      label: opts.labels && opts.labels[f] ? opts.labels[f] : f,
+      key: f
+    }))
+  );
   headers.forEach(h=>{
     const th = document.createElement('th');
-    th.textContent = h.label;
-    th.style.cursor = 'pointer';
+    th.dataset.key = h.key;
+    th.classList.add('sortable');
     th.addEventListener('click', ()=>{
       if(sortCol === h.key){
         sortDir = sortDir === 'asc' ? 'desc' : 'asc';
@@ -27,12 +32,23 @@ function renderTable(container, rows, opts){
         sortCol = h.key;
         sortDir = 'asc';
       }
+      updateHeaders();
       renderBody();
     });
     headRow.appendChild(th);
   });
   headRow.appendChild(document.createElement('th'));
   thead.appendChild(headRow);
+  const updateHeaders = () => {
+    Array.from(headRow.children).forEach(th => {
+      const key = th.dataset.key;
+      if(!key) return;
+      const base = headers.find(h => h.key === key).label;
+      let arrow = ' \u21C5';
+      if(sortCol === key) arrow = sortDir === 'asc' ? ' \u25B2' : ' \u25BC';
+      th.textContent = base + arrow;
+    });
+  };
   table.appendChild(thead);
   const tbody = document.createElement('tbody');
 
@@ -143,6 +159,7 @@ function renderTable(container, rows, opts){
 
   table.appendChild(tbody);
   container.appendChild(table);
+  updateHeaders();
   renderBody();
 }
 
@@ -172,35 +189,41 @@ async function loadAll(){
 
   renderTable(document.getElementById('tableReligions'), religionsById, {
     endpoint:'religions',
-    fields:['name']
+    fields:['name'],
+    labels:{name:'Nom'}
   });
 
   renderTable(document.getElementById('tableCultures'), culturesById, {
     endpoint:'cultures',
-    fields:['name']
+    fields:['name'],
+    labels:{name:'Nom'}
   });
 
   renderTable(document.getElementById('tableKingdoms'), kingdomsById, {
     endpoint:'kingdoms',
-    fields:['name']
+    fields:['name'],
+    labels:{name:'Nom'}
   });
 
   renderTable(document.getElementById('tableCounties'), countiesById, {
     endpoint:'counties',
     fields:['name','duchy_id'],
-    selects:{duchy_id:duchiesSelect}
+    selects:{duchy_id:duchiesSelect},
+    labels:{name:'Nom', duchy_id:'Duché'}
   });
 
   renderTable(document.getElementById('tableDuchies'), duchiesById, {
     endpoint:'duchies',
     fields:['name','kingdom_id'],
-    selects:{kingdom_id:kingdomsSelect}
+    selects:{kingdom_id:kingdomsSelect},
+    labels:{name:'Nom', kingdom_id:'Royaume'}
   });
 
   renderTable(document.getElementById('tableSeigneurs'), seigneursById, {
     endpoint:'seigneurs',
     fields:['name','religion_id','overlord_id'],
-    selects:{religion_id:religionsSelect, overlord_id:seigneursSelect}
+    selects:{religion_id:religionsSelect, overlord_id:seigneursSelect},
+    labels:{name:'Nom', religion_id:'Religion', overlord_id:'Seigneur'}
   });
 }
 

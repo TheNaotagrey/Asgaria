@@ -8,35 +8,56 @@
 <body>
   <header class="app-header">
     <h1>Administration</h1>
+    <div class="controls-row">
+      <button class="control-btn" onclick="location.href='mapEditor.html'">Éditeur de carte</button>
+    </div>
   </header>
   <main>
-    <div style="padding:10px;overflow:auto;flex:1">
-      <section>
-        <h2>Seigneurs</h2>
-        <div id="tableSeigneurs"></div>
-      </section>
-      <section>
-        <h2>Religions</h2>
-        <div id="tableReligions"></div>
-      </section>
-      <section>
-        <h2>Cultures</h2>
-        <div id="tableCultures"></div>
-      </section>
-      <section>
-        <h2>Royaumes</h2>
-        <div id="tableKingdoms"></div>
-      </section>
-      <section>
-        <h2>Comtés</h2>
-        <div id="tableCounties"></div>
-      </section>
-      <section>
-        <h2>Duchés</h2>
-        <div id="tableDuchies"></div>
-      </section>
+    <div class="tab-container" style="overflow:auto;flex:1">
+      <div class="tab-buttons">
+        <button class="tab-btn active" data-tab="seigneurs">Seigneurs</button>
+        <button class="tab-btn" data-tab="religions">Religions</button>
+        <button class="tab-btn" data-tab="cultures">Cultures</button>
+        <button class="tab-btn" data-tab="kingdoms">Royaumes</button>
+        <button class="tab-btn" data-tab="counties">Comtés</button>
+        <button class="tab-btn" data-tab="duchies">Duchés</button>
+      </div>
+      <div class="tab-panels">
+        <div id="tab-seigneurs" class="tab-panel active">
+          <div id="tableSeigneurs"></div>
+        </div>
+        <div id="tab-religions" class="tab-panel">
+          <div id="tableReligions"></div>
+        </div>
+        <div id="tab-cultures" class="tab-panel">
+          <div id="tableCultures"></div>
+        </div>
+        <div id="tab-kingdoms" class="tab-panel">
+          <div id="tableKingdoms"></div>
+        </div>
+        <div id="tab-counties" class="tab-panel">
+          <div id="tableCounties"></div>
+        </div>
+        <div id="tab-duchies" class="tab-panel">
+          <div id="tableDuchies"></div>
+        </div>
+      </div>
     </div>
   </main>
   <script src="admin.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const buttons = document.querySelectorAll('.tab-btn');
+      const panels = document.querySelectorAll('.tab-panel');
+      buttons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          buttons.forEach(b => b.classList.remove('active'));
+          panels.forEach(p => p.classList.remove('active'));
+          btn.classList.add('active');
+          document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+        });
+      });
+    });
+  </script>
 </body>
 </html>
