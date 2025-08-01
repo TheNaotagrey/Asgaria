@@ -106,24 +106,24 @@
 
   async function loadOptions() {
     const [seigneurs, religions, cultures, counties] = await Promise.all([
-      fetch(API_BASE + '/api/seigneurs').then(r=>r.json()),
-      fetch(API_BASE + '/api/religions').then(r=>r.json()),
-      fetch(API_BASE + '/api/cultures').then(r=>r.json()),
-      fetch(API_BASE + '/api/counties').then(r=>r.json()),
+      fetch(API_BASE + '/api/seigneurs').then(r => r.json()),
+      fetch(API_BASE + '/api/religions').then(r => r.json()),
+      fetch(API_BASE + '/api/cultures').then(r => r.json()),
+      fetch(API_BASE + '/api/counties').then(r => r.json()),
     ]);
-    seigneurOptions = seigneurs;
-    religionOptions = religions;
-    cultureOptions = cultures;
-    countyOptions = counties;
+    seigneurOptions = seigneurs.slice().sort((a, b) => a.name.localeCompare(b.name));
+    religionOptions = religions.slice().sort((a, b) => a.name.localeCompare(b.name));
+    cultureOptions = cultures.slice().sort((a, b) => a.name.localeCompare(b.name));
+    countyOptions = counties.slice().sort((a, b) => a.name.localeCompare(b.name));
     if (editSeigneur) {
       const blankOpt = '<option value=""></option>';
-      editSeigneur.innerHTML = blankOpt + seigneurs.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+      editSeigneur.innerHTML = blankOpt + seigneurOptions.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
     }
     if (editReligionPop) {
-      editReligionPop.innerHTML = religions.map(r=>`<option value="${r.id}">${r.name}</option>`).join('');
+      editReligionPop.innerHTML = religionOptions.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
     }
-    if (editCulture) editCulture.innerHTML = cultures.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
-    if (editCounty) editCounty.innerHTML = counties.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+    if (editCulture) editCulture.innerHTML = cultureOptions.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    if (editCounty) editCounty.innerHTML = countyOptions.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
   }
   // Outils
   const brushToolBtn = document.getElementById('brushTool');

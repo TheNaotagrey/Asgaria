@@ -117,37 +117,44 @@ async function loadAll(){
     fetchJSON('/api/duchies'),
   ]);
 
-  renderTable(document.getElementById('tableReligions'), religions, {
+  const seigneursSorted = seigneurs.slice().sort((a, b) => a.name.localeCompare(b.name));
+  const religionsSorted = religions.slice().sort((a, b) => a.name.localeCompare(b.name));
+  const culturesSorted = cultures.slice().sort((a, b) => a.name.localeCompare(b.name));
+  const kingdomsSorted = kingdoms.slice().sort((a, b) => a.name.localeCompare(b.name));
+  const countiesSorted = counties.slice().sort((a, b) => a.name.localeCompare(b.name));
+  const duchiesSorted = duchies.slice().sort((a, b) => a.name.localeCompare(b.name));
+
+  renderTable(document.getElementById('tableReligions'), religionsSorted, {
     endpoint:'religions',
     fields:['name']
   });
 
-  renderTable(document.getElementById('tableCultures'), cultures, {
+  renderTable(document.getElementById('tableCultures'), culturesSorted, {
     endpoint:'cultures',
     fields:['name']
   });
 
-  renderTable(document.getElementById('tableKingdoms'), kingdoms, {
+  renderTable(document.getElementById('tableKingdoms'), kingdomsSorted, {
     endpoint:'kingdoms',
     fields:['name']
   });
 
-  renderTable(document.getElementById('tableCounties'), counties, {
+  renderTable(document.getElementById('tableCounties'), countiesSorted, {
     endpoint:'counties',
     fields:['name','duchy_id'],
-    selects:{duchy_id:duchies}
+    selects:{duchy_id:duchiesSorted}
   });
 
-  renderTable(document.getElementById('tableDuchies'), duchies, {
+  renderTable(document.getElementById('tableDuchies'), duchiesSorted, {
     endpoint:'duchies',
     fields:['name','kingdom_id'],
-    selects:{kingdom_id:kingdoms}
+    selects:{kingdom_id:kingdomsSorted}
   });
 
-  renderTable(document.getElementById('tableSeigneurs'), seigneurs, {
+  renderTable(document.getElementById('tableSeigneurs'), seigneursSorted, {
     endpoint:'seigneurs',
     fields:['name','religion_id','overlord_id'],
-    selects:{religion_id:religions, overlord_id:seigneurs}
+    selects:{religion_id:religionsSorted, overlord_id:seigneursSorted}
   });
 }
 
