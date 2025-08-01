@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS baronies (
   religion_pop_id INTEGER,
   county_id INTEGER,
   culture_id INTEGER,
-  FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id),
+  FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id) ON DELETE SET NULL,
   FOREIGN KEY(religion_pop_id) REFERENCES religions(id),
   FOREIGN KEY(county_id) REFERENCES counties(id),
   FOREIGN KEY(culture_id) REFERENCES cultures(id)
@@ -78,9 +78,13 @@ function list(table) {
   };
 }
 
+function sanitize(val){
+  return val === '' ? null : val;
+}
+
 function create(table, fields) {
   return (req, res) => {
-    const values = fields.map(f => req.body[f]);
+    const values = fields.map(f => sanitize(req.body[f]));
     const placeholders = fields.map(() => '?').join(',');
     db.run(`INSERT INTO ${table} (${fields.join(',')}) VALUES (${placeholders})`, values, function(err){
       if (err) return res.status(500).json({error: err.message});
@@ -93,7 +97,7 @@ function update(table, fields) {
   return (req, res) => {
     const id = req.params.id;
     const set = fields.map(f => `${f}=?`).join(',');
-    const values = fields.map(f => req.body[f]);
+    const values = fields.map(f => sanitize(req.body[f]));
     values.push(id);
     db.run(`UPDATE ${table} SET ${set} WHERE id=?`, values, function(err){
       if (err) return res.status(500).json({error: err.message});
