@@ -4,6 +4,13 @@
   const originalHeight = 1291;
 
   let pixelData = {};
+  let baronyMeta = {};
+  let seigneurMap = {};
+  let religionMap = {};
+  let cultureMapInfo = {};
+  let countyMap = {};
+  let duchyMap = {};
+  let kingdomMap = {};
 
   async function loadPixelData() {
     const resp = await fetch(API_BASE + '/api/barony_pixels');
@@ -11,6 +18,32 @@
     rebuildPixelMap();
     initColorMap();
     drawAll();
+  }
+
+  async function loadMetaData() {
+    const [baronies, seigneurs, religions, cultures, counties, duchies, kingdoms] = await Promise.all([
+      fetch(API_BASE + '/api/baronies').then(r => r.json()),
+      fetch(API_BASE + '/api/seigneurs').then(r => r.json()),
+      fetch(API_BASE + '/api/religions').then(r => r.json()),
+      fetch(API_BASE + '/api/cultures').then(r => r.json()),
+      fetch(API_BASE + '/api/counties').then(r => r.json()),
+      fetch(API_BASE + '/api/duchies').then(r => r.json()),
+      fetch(API_BASE + '/api/kingdoms').then(r => r.json())
+    ]);
+    baronyMeta = {};
+    baronies.forEach(b => { baronyMeta[b.id] = b; });
+    seigneurMap = {};
+    seigneurs.forEach(s => { seigneurMap[s.id] = s; });
+    religionMap = {};
+    religions.forEach(r => { religionMap[r.id] = r; });
+    cultureMapInfo = {};
+    cultures.forEach(c => { cultureMapInfo[c.id] = c; });
+    countyMap = {};
+    counties.forEach(c => { countyMap[c.id] = c; });
+    duchyMap = {};
+    duchies.forEach(d => { duchyMap[d.id] = d; });
+    kingdomMap = {};
+    kingdoms.forEach(k => { kingdomMap[k.id] = k; });
   }
 
   const pixelMap = Array.from({ length: originalHeight }, () => new Array(originalWidth).fill(0));
@@ -71,6 +104,17 @@
   const panZoomGroup = document.getElementById('panZoomGroup');
   const mapContainer = document.getElementById('mapContainer');
   const randomBtn = document.getElementById('randomColors');
+  const filterSelect = document.getElementById('colorFilter');
+  const legendDiv = document.getElementById('legend');
+  const infoPanel = document.getElementById('infoPanel');
+  const infoId = document.getElementById('infoId');
+  const infoName = document.getElementById('infoName');
+  const infoSeigneur = document.getElementById('infoSeigneur');
+  const infoReligion = document.getElementById('infoReligion');
+  const infoCulture = document.getElementById('infoCulture');
+  const infoCounty = document.getElementById('infoCounty');
+  const infoDuchy = document.getElementById('infoDuchy');
+  const infoKingdom = document.getElementById('infoKingdom');
 
   const ctx = pixelCanvas.getContext('2d');
   pixelCanvas.width = originalWidth;
@@ -83,6 +127,13 @@
 
   function applyTransform() {
     panZoomGroup.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${scale})`;
+  }
+
+  function getMapCoordinates(e) {
+    const rect = panZoomGroup.getBoundingClientRect();
+    const x = Math.floor((e.clientX - rect.left) / scale);
+    const y = Math.floor((e.clientY - rect.top) / scale);
+    return [x, y];
   }
   function fitToContainer() {
     const contW = mapContainer.clientWidth;
@@ -168,11 +219,123 @@
     panning = false;
   }
 
+  let currentSelectedId = null;
+
+  function selectBarony(id) {
+    if (currentSelectedId && colorMap[currentSelectedId]) {
+      colorMap[currentSelectedId][3] = 100;
+    }
+    currentSelectedId = id;
+    if (!id) {
+      if (infoPanel) infoPanel.style.display = 'none';
+      drawAll();
+      return;
+    }
+    if (!colorMap[id]) colorMap[id] = generateColor(id);
+    colorMap[id][3] = 180;
+    if (infoPanel) {
+      const info = baronyMeta[id] || {};
+      infoId.textContent = info.id || '';
+      infoName.textContent = info.name || '';
+      infoSeigneur.textContent = seigneurMap[info.seigneur_id]?.name || '';
+      infoReligion.textContent = religionMap[info.religion_pop_id]?.name || '';
+      infoCulture.textContent = cultureMapInfo[info.culture_id]?.name || '';
+      const county = countyMap[info.county_id];
+      infoCounty.textContent = county ? county.name : '';
+      const duchy = county ? duchyMap[county.duchy_id] : null;
+      infoDuchy.textContent = duchy ? duchy.name : '';
+      const kingdom = duchy ? kingdomMap[duchy.kingdom_id] : null;
+      infoKingdom.textContent = kingdom ? kingdom.name : '';
+      infoPanel.style.display = 'block';
+    }
+    drawAll();
+  }
+
+  function handleCanvasClick(e) {
+    if (panning) return;
+    const [x, y] = getMapCoordinates(e);
+    if (x < 0 || y < 0 || x >= originalWidth || y >= originalHeight) return;
+    const idAtPixel = pixelMap[y][x];
+    if (idAtPixel) {
+      selectBarony(idAtPixel);
+    } else {
+      selectBarony(null);
+    }
+  }
+
+  function updateLegend(groups) {
+    if (!legendDiv) return;
+    if (!groups) {
+      legendDiv.style.display = 'none';
+      legendDiv.innerHTML = '';
+      return;
+    }
+    legendDiv.innerHTML = '';
+    Object.entries(groups).forEach(([id, info]) => {
+      const item = document.createElement('div');
+      item.className = 'legend-item';
+      const colorBox = document.createElement('span');
+      colorBox.className = 'legend-color';
+      colorBox.style.backgroundColor = `rgb(${info.color[0]},${info.color[1]},${info.color[2]})`;
+      item.appendChild(colorBox);
+      const lab = document.createElement('span');
+      lab.textContent = info.name;
+      item.appendChild(lab);
+      legendDiv.appendChild(item);
+    });
+    legendDiv.style.display = 'block';
+  }
+
+  function applyFilter(type) {
+    if (!type) {
+      initColorMap();
+      updateLegend(null);
+      if (currentSelectedId) colorMap[currentSelectedId][3] = 180;
+      drawAll();
+      return;
+    }
+    const groupColors = {};
+    colorMap = {};
+    Object.entries(baronyMeta).forEach(([id, info]) => {
+      let groupId = null;
+      let groupName = '';
+      if (type === 'religion') {
+        groupId = info.religion_pop_id;
+        groupName = religionMap[groupId]?.name || '';
+      } else if (type === 'culture') {
+        groupId = info.culture_id;
+        groupName = cultureMapInfo[groupId]?.name || '';
+      } else if (type === 'duchy') {
+        const county = countyMap[info.county_id];
+        groupId = county ? county.duchy_id : null;
+        groupName = duchyMap[groupId]?.name || '';
+      } else if (type === 'kingdom') {
+        const county = countyMap[info.county_id];
+        const duchy = county ? duchyMap[county.duchy_id] : null;
+        groupId = duchy ? duchy.kingdom_id : null;
+        groupName = kingdomMap[groupId]?.name || '';
+      }
+      if (!groupColors[groupId]) {
+        const col = generateColor(String(groupId || 0));
+        groupColors[groupId] = { color: col.slice(0, 3), name: groupName || 'N/A' };
+      }
+      const col = groupColors[groupId].color;
+      colorMap[id] = [col[0], col[1], col[2], 100];
+    });
+    if (currentSelectedId && colorMap[currentSelectedId]) {
+      colorMap[currentSelectedId][3] = 180;
+    }
+    updateLegend(groupColors);
+    drawAll();
+  }
+
   if (randomBtn) randomBtn.addEventListener('click', randomizeColors);
+  if (filterSelect) filterSelect.addEventListener('change', () => applyFilter(filterSelect.value));
 
   mapContainer.addEventListener('wheel', handleWheel, { passive: false });
   mapContainer.addEventListener('mousedown', handlePanStart);
   mapContainer.addEventListener('mousemove', handlePanMove);
+  mapContainer.addEventListener('click', handleCanvasClick);
   window.addEventListener('mouseup', handlePanEnd);
   window.addEventListener('resize', () => {
     fitToContainer();
@@ -180,13 +343,15 @@
   });
 
   document.addEventListener('DOMContentLoaded', () => {
-    loadPixelData().then(() => {
+    Promise.all([loadPixelData(), loadMetaData()]).then(() => {
       if (baseMap.complete) {
         fitToContainer();
+        applyFilter(filterSelect ? filterSelect.value : '');
         drawAll();
       } else {
         baseMap.onload = () => {
           fitToContainer();
+          applyFilter(filterSelect ? filterSelect.value : '');
           drawAll();
         };
       }
