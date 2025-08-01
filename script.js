@@ -247,6 +247,8 @@
     fetch(`${API_BASE}/api/baronies?id=${id}`).then(r=>r.json()).then(list=>{
       const info = list.find(b=>String(b.id)===String(id));
       if(!info) return;
+      if (editNameInput) editNameInput.value = info.name || '';
+      baronyMeta[id].name = info.name || '';
       if (editSeigneur) editSeigneur.value = info.seigneur_id || '';
       if (editReligionPop) editReligionPop.value = info.religion_pop_id || '';
       if (editCulture) editCulture.value = info.culture_id || '';
