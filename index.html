@@ -10,6 +10,14 @@
     <h1>Carte des baronnies</h1>
     <div id="controls" class="controls-row">
       <button id="randomColors" class="control-btn">Couleurs aléatoires</button>
+      <label for="colorFilter">Filtre :</label>
+      <select id="colorFilter" class="control-btn">
+        <option value="">Aucun</option>
+        <option value="religion">Religion</option>
+        <option value="culture">Culture</option>
+        <option value="duchy">Duché</option>
+        <option value="kingdom">Royaume</option>
+      </select>
     </div>
   </header>
   <main>
@@ -19,6 +27,18 @@
         <canvas id="pixelCanvas" class="pixel-canvas"></canvas>
       </div>
     </div>
+    <aside id="infoPanel" class="info-panel" style="display:none;">
+      <h2>Baronnie sélectionnée</h2>
+      <div><strong>ID :</strong> <span id="infoId"></span></div>
+      <div><strong>Nom :</strong> <span id="infoName"></span></div>
+      <div><strong>Seigneur :</strong> <span id="infoSeigneur"></span></div>
+      <div><strong>Religion :</strong> <span id="infoReligion"></span></div>
+      <div><strong>Culture :</strong> <span id="infoCulture"></span></div>
+      <div><strong>Comté :</strong> <span id="infoCounty"></span></div>
+      <div><strong>Duché :</strong> <span id="infoDuchy"></span></div>
+      <div><strong>Royaume :</strong> <span id="infoKingdom"></span></div>
+    </aside>
+    <div id="legend" class="legend" style="display:none;"></div>
   </main>
   <script src="pixelData.js"></script>
   <script src="viewer.js"></script>
