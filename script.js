@@ -220,7 +220,8 @@
   function selectBarony(id) {
     // remettre l'opacité par défaut sur l'ancienne sélection
     if (currentSelectedId && colorMap[currentSelectedId]) {
-      colorMap[currentSelectedId][3] = 180;
+      // Rétablir l'opacité normale
+      colorMap[currentSelectedId][3] = 100;
     }
     currentSelectedId = id;
     if (!id) {
