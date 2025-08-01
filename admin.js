@@ -130,14 +130,14 @@ async function loadAll(){
 
   renderTable(document.getElementById('tableCounties'), counties, {
     endpoint:'counties',
-    fields:['name','kingdom_id'],
-    selects:{kingdom_id:kingdoms}
+    fields:['name','duchy_id'],
+    selects:{duchy_id:duchies}
   });
 
   renderTable(document.getElementById('tableDuchies'), duchies, {
     endpoint:'duchies',
-    fields:['name','county_id'],
-    selects:{county_id:counties}
+    fields:['name','kingdom_id'],
+    selects:{kingdom_id:kingdoms}
   });
 
   renderTable(document.getElementById('tableSeigneurs'), seigneurs, {
