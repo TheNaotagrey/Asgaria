@@ -90,6 +90,7 @@
   const deleteBtn = document.getElementById('deleteBarony');
   const mergeBtn = document.getElementById('mergeBarony');
   const toggleMapBtn = document.getElementById('toggleMap');
+  const selectBtn = document.getElementById('selectBarony');
   const infoPanel = document.getElementById('infoPanel');
   const editIdInput = document.getElementById('editId');
   const editNameInput = document.getElementById('editName');
@@ -233,6 +234,9 @@
       if (infoPanel) infoPanel.style.display = 'none';
       drawAll();
       return;
+    }
+    if (!baronyMeta[id]) {
+      baronyMeta[id] = { id: id, name: '' };
     }
     // s'assurer que la baronnie a une couleur puis la mettre en valeur
     if (!colorMap[id]) {
@@ -797,6 +801,10 @@
     alert('Mode fusion activé : cliquez sur la baronnie à fusionner.');
   });
   if (toggleMapBtn) toggleMapBtn.addEventListener('click', toggleMap);
+  if (selectBtn) selectBtn.addEventListener('click', () => {
+    const id = prompt('ID de la baronnie à sélectionner ?');
+    if (id) selectBarony(id.trim());
+  });
   if (updateBtn) updateBtn.addEventListener('click', updateBarony);
 
   // Outils
