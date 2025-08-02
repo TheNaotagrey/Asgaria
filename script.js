@@ -2,6 +2,7 @@
   const API_BASE = location.origin === 'null' ? 'http://localhost:3000' : '';
   const originalWidth = 1724;
   const originalHeight = 1291;
+  const terrainColor = [239, 228, 176];
 
   // Pixel data loaded from the server
   let pixelData = {};
@@ -148,7 +149,7 @@
       editSeigneur.innerHTML = blankOpt + seigneurOptions.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
     }
     if (editReligionPop) {
-      editReligionPop.innerHTML = religionOptions.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
+      editReligionPop.innerHTML = blankOpt + religionOptions.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
     }
     if (editCulture) editCulture.innerHTML = cultureOptions.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
     if (editViscounty) editViscounty.innerHTML = blankOpt + viscountyOptions.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
@@ -361,6 +362,10 @@
         const kingdom = duchy ? kingdomMap[duchy.kingdom_id] : null;
         groupId = kingdom ? kingdom.empire_id : null;
         groupName = empireMap[groupId]?.name || '';
+      }
+      if (groupId == null) {
+        colorMap[id] = [...terrainColor, 100];
+        return;
       }
       if (!groupColors[groupId]) {
         let col;
