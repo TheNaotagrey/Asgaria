@@ -2,6 +2,7 @@
   const API_BASE = location.origin === 'null' ? 'http://localhost:3000' : '';
   const originalWidth = 1724;
   const originalHeight = 1291;
+  const terrainColor = [239, 228, 176];
 
   let pixelData = {};
   let baronyMeta = {};
@@ -374,6 +375,10 @@
         const kingdom = duchy ? kingdomMap[duchy.kingdom_id] : null;
         groupId = kingdom ? kingdom.empire_id : null;
         groupName = empireMap[groupId]?.name || '';
+      }
+      if (groupId == null) {
+        colorMap[id] = [...terrainColor, 100];
+        return;
       }
       if (!groupColors[groupId]) {
         let col;
