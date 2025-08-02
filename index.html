@@ -17,8 +17,17 @@
         <option value="culture">Culture</option>
         <option value="county">Comté</option>
         <option value="duchy">Duché</option>
-        <option value="kingdom">Royaume</option>
+      <option value="kingdom">Royaume</option>
       </select>
+    </div>
+    <div id="userControls" class="controls-row">
+      <nav id="adminNav" style="display:none; gap:6px;">
+        <a href="admin.html" class="control-btn">Admin</a>
+        <a href="mapEditor.html" class="control-btn">Éditeur</a>
+      </nav>
+      <a id="profileLink" href="profile.html" class="control-btn" style="display:none;">Mon profil</a>
+      <button id="authBtn" class="control-btn" style="display:none;">Connexion / Inscription</button>
+      <button id="logoutBtn" class="control-btn" style="display:none;">Déconnexion</button>
     </div>
   </header>
   <main>
@@ -41,7 +50,30 @@
     </aside>
     <div id="legend" class="legend" style="display:none;"></div>
   </main>
+  <div id="authModal" class="modal" style="display:none;">
+    <div class="modal-content">
+      <span id="closeAuth" style="float:right; cursor:pointer;">&times;</span>
+      <div id="loginForm">
+        <h2>Connexion</h2>
+        <input type="email" id="loginEmail" placeholder="Email">
+        <input type="password" id="loginPassword" placeholder="Mot de passe">
+        <button id="loginSubmit" class="control-btn">Connexion</button>
+        <p>Pas de compte? <a href="#" id="showRegister">Créer un compte</a></p>
+      </div>
+      <div id="registerForm" style="display:none;">
+        <h2>Créer un compte</h2>
+        <p>Utilisez votre vrai prénom et nom, pas un personnage.</p>
+        <input type="text" id="regFirst" placeholder="Prénom">
+        <input type="text" id="regLast" placeholder="Nom">
+        <input type="email" id="regEmail" placeholder="Email">
+        <input type="password" id="regPassword" placeholder="Mot de passe">
+        <button id="registerSubmit" class="control-btn">Créer</button>
+        <p>Déjà un compte? <a href="#" id="showLogin">Connexion</a></p>
+      </div>
+    </div>
+  </div>
   <script src="pixelData.js"></script>
   <script src="viewer.js"></script>
+  <script src="auth.js"></script>
 </body>
 </html>

@@ -2,6 +2,10 @@ const express = require('express');
 const sqlite3 = require('sqlite3');
 const zlib = require('zlib');
 const path = require('path');
+const session = require('express-session');
+const SQLiteStore = require('connect-sqlite3')(session);
+const bcrypt = require('bcrypt');
+
 const app = express();
 const db = new sqlite3.Database('asgaria.db');
 
@@ -57,6 +61,14 @@ CREATE TABLE IF NOT EXISTS barony_pixels (
   barony_id INTEGER PRIMARY KEY REFERENCES baronies(id),
   data BLOB
 );
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email TEXT UNIQUE,
+  password_hash TEXT,
+  first_name TEXT,
+  last_name TEXT,
+  is_admin INTEGER DEFAULT 0
+);
 `;
 
 db.exec(initSql, () => {
@@ -79,6 +91,30 @@ db.exec(initSql, () => {
 
 // accept large pixel blobs
 app.use(express.json({ limit: '50mb' }));
+
+// session handling
+app.use(session({
+  store: new SQLiteStore({ db: 'sessions.db', dir: '.' }),
+  secret: process.env.SESSION_SECRET || 'change_this_secret',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { secure: false }
+}));
+
+// protect certain pages
+app.use((req, res, next) => {
+  const adminPages = ['/admin.html', '/mapEditor.html'];
+  if (adminPages.includes(req.path)) {
+    if (!req.session.user || !req.session.user.is_admin) {
+      return res.status(403).send('Forbidden');
+    }
+  }
+  if (req.path === '/profile.html') {
+    if (!req.session.user) return res.redirect('/');
+  }
+  next();
+});
+
 app.use(express.static(path.join(__dirname)));
 
 function list(table) {
@@ -117,6 +153,83 @@ function update(table, fields) {
     });
   };
 }
+
+// --- User authentication ---
+app.post('/api/users/register', async (req, res) => {
+  const { email, password, first_name, last_name } = req.body;
+  if (!email || !password || !first_name || !last_name) {
+    return res.status(400).json({ error: 'Missing fields' });
+  }
+  try {
+    const hash = await bcrypt.hash(password, 10);
+    db.run(
+      'INSERT INTO users(email,password_hash,first_name,last_name,is_admin) VALUES (?,?,?,?,0)',
+      [email, hash, first_name, last_name],
+      function (err) {
+        if (err) return res.status(500).json({ error: err.message });
+        req.session.user = { id: this.lastID, email, first_name, last_name, is_admin: 0 };
+        res.json({ id: this.lastID });
+      }
+    );
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/users/login', (req, res) => {
+  const { email, password } = req.body;
+  db.get('SELECT * FROM users WHERE email=?', [email], async (err, user) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!user) return res.status(400).json({ error: 'Invalid credentials' });
+    const match = await bcrypt.compare(password, user.password_hash);
+    if (!match) return res.status(400).json({ error: 'Invalid credentials' });
+    req.session.user = {
+      id: user.id,
+      email: user.email,
+      first_name: user.first_name,
+      last_name: user.last_name,
+      is_admin: !!user.is_admin
+    };
+    res.json({ ok: true });
+  });
+});
+
+app.post('/api/users/logout', (req, res) => {
+  req.session.destroy(() => {
+    res.json({ ok: true });
+  });
+});
+
+app.get('/api/users/me', (req, res) => {
+  if (!req.session.user) return res.status(401).json({ error: 'Not logged in' });
+  res.json(req.session.user);
+});
+
+app.put('/api/users/me', (req, res) => {
+  if (!req.session.user) return res.status(401).json({ error: 'Not logged in' });
+  const { first_name, last_name } = req.body;
+  db.run('UPDATE users SET first_name=?, last_name=? WHERE id=?', [first_name, last_name, req.session.user.id], function (err) {
+    if (err) return res.status(500).json({ error: err.message });
+    req.session.user.first_name = first_name;
+    req.session.user.last_name = last_name;
+    res.json({ ok: true });
+  });
+});
+
+app.put('/api/users/password', (req, res) => {
+  if (!req.session.user) return res.status(401).json({ error: 'Not logged in' });
+  const { current_password, new_password } = req.body;
+  db.get('SELECT password_hash FROM users WHERE id=?', [req.session.user.id], async (err, row) => {
+    if (err) return res.status(500).json({ error: err.message });
+    const match = await bcrypt.compare(current_password, row.password_hash);
+    if (!match) return res.status(400).json({ error: 'Invalid password' });
+    const hash = await bcrypt.hash(new_password, 10);
+    db.run('UPDATE users SET password_hash=? WHERE id=?', [hash, req.session.user.id], function (err2) {
+      if (err2) return res.status(500).json({ error: err2.message });
+      res.json({ ok: true });
+    });
+  });
+});
 
 app.get('/api/kingdoms', list('kingdoms'));
 app.post('/api/kingdoms', create('kingdoms',['name']));

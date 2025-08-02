@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Mon profil</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <h1>Mon profil</h1>
+  <form id="infoForm">
+    <label>Prénom : <input type="text" id="firstName"></label><br>
+    <label>Nom : <input type="text" id="lastName"></label><br>
+    <button type="submit" class="control-btn">Mettre à jour</button>
+  </form>
+  <hr>
+  <form id="passwordForm">
+    <h2>Changer le mot de passe</h2>
+    <label>Mot de passe actuel : <input type="password" id="currentPassword"></label><br>
+    <label>Nouveau mot de passe : <input type="password" id="newPassword"></label><br>
+    <button type="submit" class="control-btn">Changer</button>
+  </form>
+  <script src="profile.js"></script>
+</body>
+</html>

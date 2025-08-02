@@ -1,3 +1,4 @@
 node_modules/
 asgaria.db
 /tmp/
+sessions.db
