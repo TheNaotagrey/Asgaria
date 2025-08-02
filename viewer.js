@@ -11,6 +11,10 @@
   let countyMap = {};
   let duchyMap = {};
   let kingdomMap = {};
+  let viscountyMap = {};
+  let marquisateMap = {};
+  let archduchyMap = {};
+  let empireMap = {};
 
   async function loadPixelData() {
     const resp = await fetch(API_BASE + '/api/barony_pixels');
@@ -21,14 +25,18 @@
   }
 
   async function loadMetaData() {
-    const [baronies, seigneurs, religions, cultures, counties, duchies, kingdoms] = await Promise.all([
+    const [baronies, seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires] = await Promise.all([
       fetch(API_BASE + '/api/baronies').then(r => r.json()),
       fetch(API_BASE + '/api/seigneurs').then(r => r.json()),
       fetch(API_BASE + '/api/religions').then(r => r.json()),
       fetch(API_BASE + '/api/cultures').then(r => r.json()),
       fetch(API_BASE + '/api/counties').then(r => r.json()),
       fetch(API_BASE + '/api/duchies').then(r => r.json()),
-      fetch(API_BASE + '/api/kingdoms').then(r => r.json())
+      fetch(API_BASE + '/api/kingdoms').then(r => r.json()),
+      fetch(API_BASE + '/api/viscounties').then(r => r.json()),
+      fetch(API_BASE + '/api/marquisates').then(r => r.json()),
+      fetch(API_BASE + '/api/archduchies').then(r => r.json()),
+      fetch(API_BASE + '/api/empires').then(r => r.json())
     ]);
     baronyMeta = {};
     baronies.forEach(b => { baronyMeta[b.id] = b; });
@@ -44,6 +52,14 @@
     duchies.forEach(d => { duchyMap[d.id] = d; });
     kingdomMap = {};
     kingdoms.forEach(k => { kingdomMap[k.id] = k; });
+    viscountyMap = {};
+    viscounties.forEach(v => { viscountyMap[v.id] = v; });
+    marquisateMap = {};
+    marquisates.forEach(m => { marquisateMap[m.id] = m; });
+    archduchyMap = {};
+    archduchies.forEach(a => { archduchyMap[a.id] = a; });
+    empireMap = {};
+    empires.forEach(e => { empireMap[e.id] = e; });
   }
 
   const pixelMap = Array.from({ length: originalHeight }, () => new Array(originalWidth).fill(0));
@@ -126,6 +142,10 @@
   const infoCounty = document.getElementById('infoCounty');
   const infoDuchy = document.getElementById('infoDuchy');
   const infoKingdom = document.getElementById('infoKingdom');
+  const infoViscounty = document.getElementById('infoViscounty');
+  const infoMarquisate = document.getElementById('infoMarquisate');
+  const infoArchduchy = document.getElementById('infoArchduchy');
+  const infoEmpire = document.getElementById('infoEmpire');
 
   const ctx = pixelCanvas.getContext('2d');
   pixelCanvas.width = originalWidth;
@@ -251,12 +271,20 @@
       infoSeigneur.textContent = seigneurMap[info.seigneur_id]?.name || '';
       infoReligion.textContent = religionMap[info.religion_pop_id]?.name || '';
       infoCulture.textContent = cultureMapInfo[info.culture_id]?.name || '';
+      const viscounty = viscountyMap[info.viscounty_id];
+      infoViscounty.textContent = viscounty ? viscounty.name : '';
       const county = countyMap[info.county_id];
       infoCounty.textContent = county ? county.name : '';
+      const marquisate = county ? marquisateMap[county.marquisate_id] : null;
+      infoMarquisate.textContent = marquisate ? marquisate.name : '';
       const duchy = county ? duchyMap[county.duchy_id] : null;
       infoDuchy.textContent = duchy ? duchy.name : '';
+      const archduchy = duchy ? archduchyMap[duchy.archduchy_id] : null;
+      infoArchduchy.textContent = archduchy ? archduchy.name : '';
       const kingdom = duchy ? kingdomMap[duchy.kingdom_id] : null;
       infoKingdom.textContent = kingdom ? kingdom.name : '';
+      const empire = kingdom ? empireMap[kingdom.empire_id] : null;
+      infoEmpire.textContent = empire ? empire.name : '';
       infoPanel.style.display = 'block';
     }
     drawAll();
@@ -316,18 +344,36 @@
       } else if (type === 'culture') {
         groupId = info.culture_id;
         groupName = cultureMapInfo[groupId]?.name || '';
+      } else if (type === 'viscounty') {
+        groupId = info.viscounty_id;
+        groupName = viscountyMap[groupId]?.name || '';
       } else if (type === 'county') {
         groupId = info.county_id;
         groupName = countyMap[groupId]?.name || '';
+      } else if (type === 'marquisate') {
+        const county = countyMap[info.county_id];
+        groupId = county ? county.marquisate_id : null;
+        groupName = marquisateMap[groupId]?.name || '';
       } else if (type === 'duchy') {
         const county = countyMap[info.county_id];
         groupId = county ? county.duchy_id : null;
         groupName = duchyMap[groupId]?.name || '';
+      } else if (type === 'archduchy') {
+        const county = countyMap[info.county_id];
+        const duchy = county ? duchyMap[county.duchy_id] : null;
+        groupId = duchy ? duchy.archduchy_id : null;
+        groupName = archduchyMap[groupId]?.name || '';
       } else if (type === 'kingdom') {
         const county = countyMap[info.county_id];
         const duchy = county ? duchyMap[county.duchy_id] : null;
         groupId = duchy ? duchy.kingdom_id : null;
         groupName = kingdomMap[groupId]?.name || '';
+      } else if (type === 'empire') {
+        const county = countyMap[info.county_id];
+        const duchy = county ? duchyMap[county.duchy_id] : null;
+        const kingdom = duchy ? kingdomMap[duchy.kingdom_id] : null;
+        groupId = kingdom ? kingdom.empire_id : null;
+        groupName = empireMap[groupId]?.name || '';
       }
       if (!groupColors[groupId]) {
         let col;

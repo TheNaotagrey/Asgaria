@@ -170,13 +170,17 @@ function renderTable(container, rows, opts){
 }
 
 async function loadAll(){
-  const [seigneurs, religions, cultures, kingdoms, counties, duchies] = await Promise.all([
+  const [seigneurs, religions, cultures, kingdoms, counties, duchies, viscounties, marquisates, archduchies, empires] = await Promise.all([
     fetchJSON('/api/seigneurs'),
     fetchJSON('/api/religions'),
     fetchJSON('/api/cultures'),
     fetchJSON('/api/kingdoms'),
     fetchJSON('/api/counties'),
     fetchJSON('/api/duchies'),
+    fetchJSON('/api/viscounties'),
+    fetchJSON('/api/marquisates'),
+    fetchJSON('/api/archduchies'),
+    fetchJSON('/api/empires'),
   ]);
 
   const seigneursSelect = seigneurs.slice().sort((a, b) => a.name.localeCompare(b.name));
@@ -185,6 +189,10 @@ async function loadAll(){
   const kingdomsSelect = kingdoms.slice().sort((a, b) => a.name.localeCompare(b.name));
   const countiesSelect = counties.slice().sort((a, b) => a.name.localeCompare(b.name));
   const duchiesSelect = duchies.slice().sort((a, b) => a.name.localeCompare(b.name));
+  const viscountiesSelect = viscounties.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const marquisatesSelect = marquisates.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const archduchiesSelect = archduchies.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const empiresSelect = empires.slice().sort((a,b)=>a.name.localeCompare(b.name));
 
   const seigneursById = seigneurs.slice().sort((a,b)=>a.id - b.id);
   const religionsById = religions.slice().sort((a,b)=>a.id - b.id);
@@ -192,6 +200,10 @@ async function loadAll(){
   const kingdomsById = kingdoms.slice().sort((a,b)=>a.id - b.id);
   const countiesById = counties.slice().sort((a,b)=>a.id - b.id);
   const duchiesById = duchies.slice().sort((a,b)=>a.id - b.id);
+  const viscountiesById = viscounties.slice().sort((a,b)=>a.id - b.id);
+  const marquisatesById = marquisates.slice().sort((a,b)=>a.id - b.id);
+  const archduchiesById = archduchies.slice().sort((a,b)=>a.id - b.id);
+  const empiresById = empires.slice().sort((a,b)=>a.id - b.id);
 
   renderTable(document.getElementById('tableReligions'), religionsById, {
     endpoint:'religions',
@@ -207,24 +219,53 @@ async function loadAll(){
     colorFields:['color']
   });
 
-  renderTable(document.getElementById('tableKingdoms'), kingdomsById, {
-    endpoint:'kingdoms',
-    fields:['name'],
-    labels:{name:'Nom'}
+  renderTable(document.getElementById('tableEmpires'), empiresById, {
+    endpoint:'empires',
+    fields:['name','seigneur_id'],
+    selects:{seigneur_id:seigneursSelect},
+    labels:{name:'Nom', seigneur_id:'Seigneur'}
   });
 
-  renderTable(document.getElementById('tableCounties'), countiesById, {
-    endpoint:'counties',
-    fields:['name','duchy_id'],
-    selects:{duchy_id:duchiesSelect},
-    labels:{name:'Nom', duchy_id:'Duché'}
+  renderTable(document.getElementById('tableKingdoms'), kingdomsById, {
+    endpoint:'kingdoms',
+    fields:['name','empire_id'],
+    selects:{empire_id:empiresSelect},
+    labels:{name:'Nom', empire_id:'Empire'}
+  });
+
+  renderTable(document.getElementById('tableArchduchies'), archduchiesById, {
+    endpoint:'archduchies',
+    fields:['name','seigneur_id'],
+    selects:{seigneur_id:seigneursSelect},
+    labels:{name:'Nom', seigneur_id:'Seigneur'}
   });
 
   renderTable(document.getElementById('tableDuchies'), duchiesById, {
     endpoint:'duchies',
-    fields:['name','kingdom_id'],
-    selects:{kingdom_id:kingdomsSelect},
-    labels:{name:'Nom', kingdom_id:'Royaume'}
+    fields:['name','kingdom_id','archduchy_id'],
+    selects:{kingdom_id:kingdomsSelect, archduchy_id:archduchiesSelect},
+    labels:{name:'Nom', kingdom_id:'Royaume', archduchy_id:'Archiduché'}
+  });
+
+  renderTable(document.getElementById('tableMarquisates'), marquisatesById, {
+    endpoint:'marquisates',
+    fields:['name','seigneur_id'],
+    selects:{seigneur_id:seigneursSelect},
+    labels:{name:'Nom', seigneur_id:'Seigneur'}
+  });
+
+  renderTable(document.getElementById('tableCounties'), countiesById, {
+    endpoint:'counties',
+    fields:['name','duchy_id','marquisate_id'],
+    selects:{duchy_id:duchiesSelect, marquisate_id:marquisatesSelect},
+    labels:{name:'Nom', duchy_id:'Duché', marquisate_id:'Marquisat'}
+  });
+
+  renderTable(document.getElementById('tableViscounties'), viscountiesById, {
+    endpoint:'viscounties',
+    fields:['name','seigneur_id'],
+    selects:{seigneur_id:seigneursSelect},
+    labels:{name:'Nom', seigneur_id:'Seigneur'}
   });
 
   renderTable(document.getElementById('tableSeigneurs'), seigneursById, {
