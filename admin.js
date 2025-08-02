@@ -87,6 +87,12 @@ function renderTable(container, rows, opts){
       });
       return select;
     }
+    if(opts.colorFields && opts.colorFields.includes(field)){
+      const input = document.createElement('input');
+      input.type = 'color';
+      input.value = val || '#000000';
+      return input;
+    }
     const input = document.createElement('input');
     input.value = val ?? '';
     return input;
@@ -189,14 +195,16 @@ async function loadAll(){
 
   renderTable(document.getElementById('tableReligions'), religionsById, {
     endpoint:'religions',
-    fields:['name'],
-    labels:{name:'Nom'}
+    fields:['name','color'],
+    labels:{name:'Nom', color:'Couleur'},
+    colorFields:['color']
   });
 
   renderTable(document.getElementById('tableCultures'), culturesById, {
     endpoint:'cultures',
-    fields:['name'],
-    labels:{name:'Nom'}
+    fields:['name','color'],
+    labels:{name:'Nom', color:'Couleur'},
+    colorFields:['color']
   });
 
   renderTable(document.getElementById('tableKingdoms'), kingdomsById, {

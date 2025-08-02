@@ -25,11 +25,13 @@ CREATE TABLE IF NOT EXISTS counties (
 );
 CREATE TABLE IF NOT EXISTS religions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT UNIQUE
+  name TEXT UNIQUE,
+  color TEXT
 );
 CREATE TABLE IF NOT EXISTS cultures (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT UNIQUE
+  name TEXT UNIQUE,
+  color TEXT
 );
 CREATE TABLE IF NOT EXISTS seigneurs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,6 +63,16 @@ db.exec(initSql, () => {
   db.all("PRAGMA table_info(seigneurs)", (err, rows) => {
     if (!err && rows && !rows.some(r => r.name === 'overlord_id')) {
       db.run('ALTER TABLE seigneurs ADD COLUMN overlord_id INTEGER');
+    }
+  });
+  db.all("PRAGMA table_info(religions)", (err, rows) => {
+    if (!err && rows && !rows.some(r => r.name === 'color')) {
+      db.run('ALTER TABLE religions ADD COLUMN color TEXT');
+    }
+  });
+  db.all("PRAGMA table_info(cultures)", (err, rows) => {
+    if (!err && rows && !rows.some(r => r.name === 'color')) {
+      db.run('ALTER TABLE cultures ADD COLUMN color TEXT');
     }
   });
 });
@@ -116,10 +128,12 @@ app.get('/api/duchies', list('duchies'));
 app.post('/api/duchies', create('duchies',['name','kingdom_id']));
 
 app.get('/api/religions', list('religions'));
-app.post('/api/religions', create('religions',['name']));
+app.post('/api/religions', create('religions',['name','color']));
+app.put('/api/religions/:id', update('religions',['name','color']));
 
 app.get('/api/cultures', list('cultures'));
-app.post('/api/cultures', create('cultures',['name']));
+app.post('/api/cultures', create('cultures',['name','color']));
+app.put('/api/cultures/:id', update('cultures',['name','color']));
 
 app.get('/api/seigneurs', list('seigneurs'));
 app.post('/api/seigneurs', create('seigneurs',['name','religion_id','overlord_id']));
