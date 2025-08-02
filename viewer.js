@@ -70,6 +70,13 @@
     };
     return [f(0), f(8), f(4)];
   }
+  function hexToRgb(hex) {
+    if (!hex) return null;
+    const m = hex.trim().match(/^#?([a-fA-F0-9]{6})$/);
+    if (!m) return null;
+    const num = parseInt(m[1], 16);
+    return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
+  }
   function generateColor(id) {
     const num = parseInt(id, 10);
     const hue = (num * 137) % 360;
@@ -328,7 +335,14 @@
           const hue = Math.floor(Math.random() * 360);
           col = hslToRgb(hue, 65, 65);
         } else {
-          col = generateColor(String(groupId || 0)).slice(0, 3);
+          if (type === 'religion') {
+            col = hexToRgb(religionMap[groupId]?.color);
+          } else if (type === 'culture') {
+            col = hexToRgb(cultureMapInfo[groupId]?.color);
+          }
+          if (!col) {
+            col = generateColor(String(groupId || 0)).slice(0, 3);
+          }
         }
         groupColors[groupId] = { color: col, name: groupName || 'N/A' };
       }
