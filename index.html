@@ -24,6 +24,7 @@
         <option value="empire">Empire</option>
       </select>
     </div>
+    <div id="authArea" class="auth-area"></div>
   </header>
   <main>
     <div id="mapContainer" class="map-container">
@@ -51,5 +52,25 @@
   </main>
   <script src="pixelData.js"></script>
   <script src="viewer.js"></script>
+  <dialog id="authDialog">
+    <form id="loginForm" method="dialog">
+      <h3>Connexion</h3>
+      <input type="email" name="email" placeholder="Email" required>
+      <input type="password" name="password" placeholder="Mot de passe" required>
+      <button type="submit" class="control-btn">Connexion</button>
+      <p><a href="#" id="showRegister">Créer un compte</a></p>
+    </form>
+    <form id="registerForm" method="dialog" style="display:none;flex-direction:column;">
+      <h3>Créer un compte</h3>
+      <input type="email" name="email" placeholder="Email" required>
+      <input type="password" name="password" placeholder="Mot de passe" required>
+      <input type="text" name="first_name" placeholder="Prénom réel" required>
+      <input type="text" name="last_name" placeholder="Nom de famille réel" required>
+      <small>Utilisez vos vrais prénom et nom (pas de personnage).</small>
+      <button type="submit" class="control-btn">Créer</button>
+      <p><a href="#" id="showLogin">Déjà un compte ?</a></p>
+    </form>
+  </dialog>
+  <script src="auth.js"></script>
 </body>
 </html>
