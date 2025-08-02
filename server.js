@@ -7,22 +7,6 @@ const db = new sqlite3.Database('asgaria.db');
 
 // create tables if they do not exist
 const initSql = `
-CREATE TABLE IF NOT EXISTS kingdoms (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT UNIQUE
-);
-CREATE TABLE IF NOT EXISTS duchies (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT UNIQUE,
-  kingdom_id INTEGER,
-  FOREIGN KEY(kingdom_id) REFERENCES kingdoms(id)
-);
-CREATE TABLE IF NOT EXISTS counties (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT UNIQUE,
-  duchy_id INTEGER,
-  FOREIGN KEY(duchy_id) REFERENCES duchies(id)
-);
 CREATE TABLE IF NOT EXISTS religions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT UNIQUE,
@@ -41,16 +25,64 @@ CREATE TABLE IF NOT EXISTS seigneurs (
   FOREIGN KEY(religion_id) REFERENCES religions(id),
   FOREIGN KEY(overlord_id) REFERENCES seigneurs(id)
 );
+CREATE TABLE IF NOT EXISTS empires (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT UNIQUE,
+  seigneur_id INTEGER,
+  FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id)
+);
+CREATE TABLE IF NOT EXISTS kingdoms (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT UNIQUE,
+  empire_id INTEGER,
+  FOREIGN KEY(empire_id) REFERENCES empires(id)
+);
+CREATE TABLE IF NOT EXISTS archduchies (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT UNIQUE,
+  seigneur_id INTEGER,
+  FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id)
+);
+CREATE TABLE IF NOT EXISTS duchies (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT UNIQUE,
+  kingdom_id INTEGER,
+  archduchy_id INTEGER,
+  FOREIGN KEY(kingdom_id) REFERENCES kingdoms(id),
+  FOREIGN KEY(archduchy_id) REFERENCES archduchies(id)
+);
+CREATE TABLE IF NOT EXISTS marquisates (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT UNIQUE,
+  seigneur_id INTEGER,
+  FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id)
+);
+CREATE TABLE IF NOT EXISTS counties (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT UNIQUE,
+  duchy_id INTEGER,
+  marquisate_id INTEGER,
+  FOREIGN KEY(duchy_id) REFERENCES duchies(id),
+  FOREIGN KEY(marquisate_id) REFERENCES marquisates(id)
+);
+CREATE TABLE IF NOT EXISTS viscounties (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT UNIQUE,
+  seigneur_id INTEGER,
+  FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id)
+);
 CREATE TABLE IF NOT EXISTS baronies (
   id INTEGER PRIMARY KEY,
   name TEXT,
   seigneur_id INTEGER,
   religion_pop_id INTEGER,
   county_id INTEGER,
+  viscounty_id INTEGER,
   culture_id INTEGER,
   FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id) ON DELETE SET NULL,
   FOREIGN KEY(religion_pop_id) REFERENCES religions(id),
   FOREIGN KEY(county_id) REFERENCES counties(id),
+  FOREIGN KEY(viscounty_id) REFERENCES viscounties(id),
   FOREIGN KEY(culture_id) REFERENCES cultures(id)
 );
 CREATE TABLE IF NOT EXISTS barony_pixels (
@@ -73,6 +105,26 @@ db.exec(initSql, () => {
   db.all("PRAGMA table_info(cultures)", (err, rows) => {
     if (!err && rows && !rows.some(r => r.name === 'color')) {
       db.run('ALTER TABLE cultures ADD COLUMN color TEXT');
+    }
+  });
+  db.all("PRAGMA table_info(baronies)", (err, rows) => {
+    if (!err && rows && !rows.some(r => r.name === 'viscounty_id')) {
+      db.run('ALTER TABLE baronies ADD COLUMN viscounty_id INTEGER');
+    }
+  });
+  db.all("PRAGMA table_info(counties)", (err, rows) => {
+    if (!err && rows && !rows.some(r => r.name === 'marquisate_id')) {
+      db.run('ALTER TABLE counties ADD COLUMN marquisate_id INTEGER');
+    }
+  });
+  db.all("PRAGMA table_info(duchies)", (err, rows) => {
+    if (!err && rows && !rows.some(r => r.name === 'archduchy_id')) {
+      db.run('ALTER TABLE duchies ADD COLUMN archduchy_id INTEGER');
+    }
+  });
+  db.all("PRAGMA table_info(kingdoms)", (err, rows) => {
+    if (!err && rows && !rows.some(r => r.name === 'empire_id')) {
+      db.run('ALTER TABLE kingdoms ADD COLUMN empire_id INTEGER');
     }
   });
 });
@@ -118,14 +170,33 @@ function update(table, fields) {
   };
 }
 
-app.get('/api/kingdoms', list('kingdoms'));
-app.post('/api/kingdoms', create('kingdoms',['name']));
+app.get('/api/empires', list('empires'));
+app.post('/api/empires', create('empires',['name','seigneur_id']));
+app.put('/api/empires/:id', update('empires',['name','seigneur_id']));
 
-app.get('/api/counties', list('counties'));
-app.post('/api/counties', create('counties',['name','duchy_id']));
+app.get('/api/kingdoms', list('kingdoms'));
+app.post('/api/kingdoms', create('kingdoms',['name','empire_id']));
+app.put('/api/kingdoms/:id', update('kingdoms',['name','empire_id']));
+
+app.get('/api/archduchies', list('archduchies'));
+app.post('/api/archduchies', create('archduchies',['name','seigneur_id']));
+app.put('/api/archduchies/:id', update('archduchies',['name','seigneur_id']));
 
 app.get('/api/duchies', list('duchies'));
-app.post('/api/duchies', create('duchies',['name','kingdom_id']));
+app.post('/api/duchies', create('duchies',['name','kingdom_id','archduchy_id']));
+app.put('/api/duchies/:id', update('duchies',['name','kingdom_id','archduchy_id']));
+
+app.get('/api/marquisates', list('marquisates'));
+app.post('/api/marquisates', create('marquisates',['name','seigneur_id']));
+app.put('/api/marquisates/:id', update('marquisates',['name','seigneur_id']));
+
+app.get('/api/counties', list('counties'));
+app.post('/api/counties', create('counties',['name','duchy_id','marquisate_id']));
+app.put('/api/counties/:id', update('counties',['name','duchy_id','marquisate_id']));
+
+app.get('/api/viscounties', list('viscounties'));
+app.post('/api/viscounties', create('viscounties',['name','seigneur_id']));
+app.put('/api/viscounties/:id', update('viscounties',['name','seigneur_id']));
 
 app.get('/api/religions', list('religions'));
 app.post('/api/religions', create('religions',['name','color']));
@@ -151,10 +222,10 @@ app.get('/api/baronies', (req, res) => {
   }
 });
 app.post('/api/baronies', create('baronies',[
-  'id','name','seigneur_id','religion_pop_id','county_id','culture_id'
+  'id','name','seigneur_id','religion_pop_id','county_id','viscounty_id','culture_id'
 ]));
 app.put('/api/baronies/:id', update('baronies',[
-  'name','seigneur_id','religion_pop_id','county_id','culture_id'
+  'name','seigneur_id','religion_pop_id','county_id','viscounty_id','culture_id'
 ]));
 app.delete('/api/baronies/:id', (req,res)=>{
   db.run('DELETE FROM baronies WHERE id=?',[req.params.id], function(err){

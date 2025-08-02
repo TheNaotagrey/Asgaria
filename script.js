@@ -30,6 +30,10 @@
   let countyMap = {};
   let duchyMap = {};
   let kingdomMap = {};
+  let viscountyMap = {};
+  let marquisateMap = {};
+  let archduchyMap = {};
+  let empireMap = {};
   let currentFilter = '';
 
   // Carte de correspondance pixel : pixelMap[y][x] = id (ou 0 si aucun)
@@ -114,6 +118,7 @@
   const editSeigneur = document.getElementById('editSeigneur');
   const editReligionPop = document.getElementById('editReligionPop');
   const editCulture = document.getElementById('editCulture');
+  const editViscounty = document.getElementById('editViscounty');
   const editCounty = document.getElementById('editCounty');
   const updateBtn = document.getElementById('updateBarony');
   const filterSelect = document.getElementById('colorFilter');
@@ -123,38 +128,46 @@
   let religionOptions = [];
   let cultureOptions = [];
   let countyOptions = [];
+  let viscountyOptions = [];
 
   async function loadOptions() {
-    const [seigneurs, religions, cultures, counties] = await Promise.all([
+    const [seigneurs, religions, cultures, counties, viscounties] = await Promise.all([
       fetch(API_BASE + '/api/seigneurs').then(r => r.json()),
       fetch(API_BASE + '/api/religions').then(r => r.json()),
       fetch(API_BASE + '/api/cultures').then(r => r.json()),
       fetch(API_BASE + '/api/counties').then(r => r.json()),
+      fetch(API_BASE + '/api/viscounties').then(r => r.json()),
     ]);
     seigneurOptions = seigneurs.slice().sort((a, b) => a.name.localeCompare(b.name));
     religionOptions = religions.slice().sort((a, b) => a.name.localeCompare(b.name));
     cultureOptions = cultures.slice().sort((a, b) => a.name.localeCompare(b.name));
     countyOptions = counties.slice().sort((a, b) => a.name.localeCompare(b.name));
+    viscountyOptions = viscounties.slice().sort((a, b) => a.name.localeCompare(b.name));
+    const blankOpt = '<option value=""></option>';
     if (editSeigneur) {
-      const blankOpt = '<option value=""></option>';
       editSeigneur.innerHTML = blankOpt + seigneurOptions.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
     }
     if (editReligionPop) {
       editReligionPop.innerHTML = religionOptions.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
     }
     if (editCulture) editCulture.innerHTML = cultureOptions.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    if (editViscounty) editViscounty.innerHTML = blankOpt + viscountyOptions.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
     if (editCounty) editCounty.innerHTML = countyOptions.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
   }
 
   async function loadMetaData() {
-    const [baronies, seigneurs, religions, cultures, counties, duchies, kingdoms] = await Promise.all([
+    const [baronies, seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires] = await Promise.all([
       fetch(API_BASE + '/api/baronies').then(r => r.json()),
       fetch(API_BASE + '/api/seigneurs').then(r => r.json()),
       fetch(API_BASE + '/api/religions').then(r => r.json()),
       fetch(API_BASE + '/api/cultures').then(r => r.json()),
       fetch(API_BASE + '/api/counties').then(r => r.json()),
       fetch(API_BASE + '/api/duchies').then(r => r.json()),
-      fetch(API_BASE + '/api/kingdoms').then(r => r.json())
+      fetch(API_BASE + '/api/kingdoms').then(r => r.json()),
+      fetch(API_BASE + '/api/viscounties').then(r => r.json()),
+      fetch(API_BASE + '/api/marquisates').then(r => r.json()),
+      fetch(API_BASE + '/api/archduchies').then(r => r.json()),
+      fetch(API_BASE + '/api/empires').then(r => r.json())
     ]);
     baronyMeta = {};
     baronies.forEach(b => { baronyMeta[b.id] = b; });
@@ -170,6 +183,14 @@
     duchies.forEach(d => { duchyMap[d.id] = d; });
     kingdomMap = {};
     kingdoms.forEach(k => { kingdomMap[k.id] = k; });
+    viscountyMap = {};
+    viscounties.forEach(v => { viscountyMap[v.id] = v; });
+    marquisateMap = {};
+    marquisates.forEach(m => { marquisateMap[m.id] = m; });
+    archduchyMap = {};
+    archduchies.forEach(a => { archduchyMap[a.id] = a; });
+    empireMap = {};
+    empires.forEach(e => { empireMap[e.id] = e; });
   }
   // Outils
   const brushToolBtn = document.getElementById('brushTool');
@@ -310,18 +331,36 @@
       } else if (type === 'culture') {
         groupId = info.culture_id;
         groupName = cultureMapInfo[groupId]?.name || '';
+      } else if (type === 'viscounty') {
+        groupId = info.viscounty_id;
+        groupName = viscountyMap[groupId]?.name || '';
       } else if (type === 'county') {
         groupId = info.county_id;
         groupName = countyMap[groupId]?.name || '';
+      } else if (type === 'marquisate') {
+        const county = countyMap[info.county_id];
+        groupId = county ? county.marquisate_id : null;
+        groupName = marquisateMap[groupId]?.name || '';
       } else if (type === 'duchy') {
         const county = countyMap[info.county_id];
         groupId = county ? county.duchy_id : null;
         groupName = duchyMap[groupId]?.name || '';
+      } else if (type === 'archduchy') {
+        const county = countyMap[info.county_id];
+        const duchy = county ? duchyMap[county.duchy_id] : null;
+        groupId = duchy ? duchy.archduchy_id : null;
+        groupName = archduchyMap[groupId]?.name || '';
       } else if (type === 'kingdom') {
         const county = countyMap[info.county_id];
         const duchy = county ? duchyMap[county.duchy_id] : null;
         groupId = duchy ? duchy.kingdom_id : null;
         groupName = kingdomMap[groupId]?.name || '';
+      } else if (type === 'empire') {
+        const county = countyMap[info.county_id];
+        const duchy = county ? duchyMap[county.duchy_id] : null;
+        const kingdom = duchy ? kingdomMap[duchy.kingdom_id] : null;
+        groupId = kingdom ? kingdom.empire_id : null;
+        groupName = empireMap[groupId]?.name || '';
       }
       if (!groupColors[groupId]) {
         let col;
@@ -384,6 +423,7 @@
       if (editSeigneur) editSeigneur.value = info.seigneur_id || '';
       if (editReligionPop) editReligionPop.value = info.religion_pop_id || '';
       if (editCulture) editCulture.value = info.culture_id || '';
+      if (editViscounty) editViscounty.value = info.viscounty_id || '';
       if (editCounty) editCounty.value = info.county_id || '';
     });
     drawAll();
@@ -398,6 +438,7 @@
     const seigneurId = editSeigneur ? parseInt(editSeigneur.value || '') || null : null;
     const relPop = editReligionPop ? parseInt(editReligionPop.value || '') || null : null;
     const cultureId = editCulture ? parseInt(editCulture.value || '') || null : null;
+    const viscountyId = editViscounty ? parseInt(editViscounty.value || '') || null : null;
     const countyId = editCounty ? parseInt(editCounty.value || '') || null : null;
     if (newId === '') return;
     if (newId === oldId) {
@@ -405,7 +446,7 @@
       const op = { type: 'rename', oldId: oldId, newId: oldId, oldName: baronyMeta[oldId].name || '', newName: newName, coords: [] };
       undoStack.push(op);
       baronyMeta[oldId].name = newName;
-      saveBaronyToServer(oldId, { name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, culture_id: cultureId });
+      saveBaronyToServer(oldId, { name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId });
       return;
     }
     // Si un identifiant existe déjà, échanger les baronnies
@@ -441,8 +482,8 @@
       colorMap[oldId] = generateColor(oldId);
       drawAll();
       selectBarony(newId);
-      saveBaronyToServer(newId, { name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, culture_id: cultureId });
-      saveBaronyToServer(oldId, { name: tempName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, culture_id: cultureId });
+      saveBaronyToServer(newId, { name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId });
+      saveBaronyToServer(oldId, { name: tempName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId });
       return;
     }
     const coords = pixelData[oldId] || [];
@@ -461,7 +502,7 @@
     colorMap[newId] = generateColor(newId);
     drawAll();
     selectBarony(newId);
-    saveBaronyToServer(newId, { name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, culture_id: cultureId });
+    saveBaronyToServer(newId, { name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId });
   }
 
   function saveBaronyToServer(id, data) {
@@ -969,7 +1010,7 @@
       colorMap[newId] = generateColor(newId);
       currentSelectedId = newId;
       selectBarony(newId);
-      saveBaronyToServer(newId, { name: '', seigneur_id: null, religion_pop_id: null, county_id: null, culture_id: null });
+      saveBaronyToServer(newId, { name: '', seigneur_id: null, religion_pop_id: null, county_id: null, viscounty_id: null, culture_id: null });
       setActiveTool('brush');
     });
   if (brushSizeInput)

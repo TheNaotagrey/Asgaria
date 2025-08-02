@@ -28,8 +28,8 @@ Le serveur écoute par défaut sur [http://localhost:3000](http://localhost:3000
 
 ## Utilisation
 - `index.html` : visualisation simple de la carte.
-- `mapEditor.html` : éditeur de baronnies. La barre latérale permet de modifier l'ID, le nom et les métadonnées (seigneur, religions, culture, duché).
-- `admin.html` : page d'administration pour consulter et modifier royaumes, comtés, duchés, seigneurs, religions et cultures. Les tableaux présentent les données existantes et une ligne vide permet d'en ajouter de nouvelles.
+- `mapEditor.html` : éditeur de baronnies. La barre latérale permet de modifier l'ID, le nom et les métadonnées (seigneur, religions, culture, vicomté, comté).
+- `admin.html` : page d'administration pour consulter et modifier empires, royaumes, archiduchés, duchés, marquisats, comtés, vicomtés, seigneurs, religions et cultures. Les tableaux présentent les données existantes et une ligne vide permet d'en ajouter de nouvelles.
 
 Il suffit d'ouvrir ces fichiers dans le navigateur (par exemple <http://localhost:3000/mapEditor.html>) une fois le serveur lancé.
 Ne les ouvrez pas directement avec `file://`, car les requêtes vers l'API seraient bloquées par le navigateur.
