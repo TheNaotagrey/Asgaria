@@ -71,6 +71,30 @@ main {
   padding: 6px;
 }
 
+.profile-form {
+  display: flex;
+  flex-direction: column;
+  max-width: 320px;
+  margin: 20px auto;
+  gap: 8px;
+}
+
+.profile-form fieldset {
+  border: 1px solid #ccc;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.profile-form legend {
+  padding: 0 4px;
+}
+
+.profile-form input {
+  padding: 6px;
+}
+
 /* Boutons généraux */
 .control-btn {
   background-color: #1d56a4;
