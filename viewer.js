@@ -18,6 +18,7 @@
   let marquisateMap = {};
   let archduchyMap = {};
   let empireMap = {};
+  let seigneurToCounty = {}, seigneurToDuchy = {}, seigneurToKingdom = {};
 
   async function loadPixelData() {
     const resp = await fetch(API_BASE + '/api/barony_pixels');
@@ -50,11 +51,14 @@
     cultureMapInfo = {};
     cultures.forEach(c => { cultureMapInfo[c.id] = c; });
     countyMap = {};
-    counties.forEach(c => { countyMap[c.id] = c; });
+    seigneurToCounty = {};
+    counties.forEach(c => { countyMap[c.id] = c; if (c.seigneur_id) seigneurToCounty[c.seigneur_id] = c.id; });
     duchyMap = {};
-    duchies.forEach(d => { duchyMap[d.id] = d; });
+    seigneurToDuchy = {};
+    duchies.forEach(d => { duchyMap[d.id] = d; if (d.seigneur_id) seigneurToDuchy[d.seigneur_id] = d.id; });
     kingdomMap = {};
-    kingdoms.forEach(k => { kingdomMap[k.id] = k; });
+    seigneurToKingdom = {};
+    kingdoms.forEach(k => { kingdomMap[k.id] = k; if (k.seigneur_id) seigneurToKingdom[k.seigneur_id] = k.id; });
     viscountyMap = {};
     viscounties.forEach(v => { viscountyMap[v.id] = v; });
     marquisateMap = {};
@@ -353,6 +357,17 @@
       } else if (type === 'county') {
         groupId = info.county_id;
         groupName = countyMap[groupId]?.name || '';
+      } else if (type === 'county_defacto') {
+        let sid = info.seigneur_id;
+        while (sid) {
+          const cId = seigneurToCounty[sid];
+          if (cId) {
+            groupId = cId;
+            groupName = countyMap[cId]?.name || '';
+            break;
+          }
+          sid = seigneurMap[sid]?.overlord_id;
+        }
       } else if (type === 'marquisate') {
         const county = countyMap[info.county_id];
         groupId = county ? county.marquisate_id : null;
@@ -361,6 +376,17 @@
         const county = countyMap[info.county_id];
         groupId = county ? county.duchy_id : null;
         groupName = duchyMap[groupId]?.name || '';
+      } else if (type === 'duchy_defacto') {
+        let sid = info.seigneur_id;
+        while (sid) {
+          const dId = seigneurToDuchy[sid];
+          if (dId) {
+            groupId = dId;
+            groupName = duchyMap[dId]?.name || '';
+            break;
+          }
+          sid = seigneurMap[sid]?.overlord_id;
+        }
       } else if (type === 'archduchy') {
         const county = countyMap[info.county_id];
         const duchy = county ? duchyMap[county.duchy_id] : null;
@@ -371,6 +397,17 @@
         const duchy = county ? duchyMap[county.duchy_id] : null;
         groupId = duchy ? duchy.kingdom_id : null;
         groupName = kingdomMap[groupId]?.name || '';
+      } else if (type === 'kingdom_defacto') {
+        let sid = info.seigneur_id;
+        while (sid) {
+          const kId = seigneurToKingdom[sid];
+          if (kId) {
+            groupId = kId;
+            groupName = kingdomMap[kId]?.name || '';
+            break;
+          }
+          sid = seigneurMap[sid]?.overlord_id;
+        }
       } else if (type === 'empire') {
         const county = countyMap[info.county_id];
         const duchy = county ? duchyMap[county.duchy_id] : null;
