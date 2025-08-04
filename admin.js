@@ -243,49 +243,49 @@ async function loadAll(){
     endpoint:'empires',
     fields:['name','seigneur_id'],
     selects:{seigneur_id:seigneursSelect},
-    labels:{name:'Nom', seigneur_id:'Seigneur'}
+    labels:{name:'Nom', seigneur_id:'Détenteur du titre'}
   });
 
   renderTable(document.getElementById('tableKingdoms'), kingdomsById, {
     endpoint:'kingdoms',
-    fields:['name','empire_id'],
-    selects:{empire_id:empiresSelect},
-    labels:{name:'Nom', empire_id:'Empire'}
+    fields:['name','seigneur_id','empire_id'],
+    selects:{seigneur_id:seigneursSelect, empire_id:empiresSelect},
+    labels:{name:'Nom', seigneur_id:'Détenteur du titre', empire_id:'Empire'}
   });
 
   renderTable(document.getElementById('tableArchduchies'), archduchiesById, {
     endpoint:'archduchies',
     fields:['name','seigneur_id'],
     selects:{seigneur_id:seigneursSelect},
-    labels:{name:'Nom', seigneur_id:'Seigneur'}
+    labels:{name:'Nom', seigneur_id:'Détenteur du titre'}
   });
 
   renderTable(document.getElementById('tableDuchies'), duchiesById, {
     endpoint:'duchies',
-    fields:['name','kingdom_id','archduchy_id'],
-    selects:{kingdom_id:kingdomsSelect, archduchy_id:archduchiesSelect},
-    labels:{name:'Nom', kingdom_id:'Royaume', archduchy_id:'Archiduché'}
+    fields:['name','seigneur_id','kingdom_id','archduchy_id'],
+    selects:{seigneur_id:seigneursSelect, kingdom_id:kingdomsSelect, archduchy_id:archduchiesSelect},
+    labels:{name:'Nom', seigneur_id:'Détenteur du titre', kingdom_id:'Royaume', archduchy_id:'Archiduché'}
   });
 
   renderTable(document.getElementById('tableMarquisates'), marquisatesById, {
     endpoint:'marquisates',
     fields:['name','seigneur_id'],
     selects:{seigneur_id:seigneursSelect},
-    labels:{name:'Nom', seigneur_id:'Seigneur'}
+    labels:{name:'Nom', seigneur_id:'Détenteur du titre'}
   });
 
   renderTable(document.getElementById('tableCounties'), countiesById, {
     endpoint:'counties',
-    fields:['name','duchy_id','marquisate_id'],
-    selects:{duchy_id:duchiesSelect, marquisate_id:marquisatesSelect},
-    labels:{name:'Nom', duchy_id:'Duché', marquisate_id:'Marquisat'}
+    fields:['name','seigneur_id','duchy_id','marquisate_id'],
+    selects:{seigneur_id:seigneursSelect, duchy_id:duchiesSelect, marquisate_id:marquisatesSelect},
+    labels:{name:'Nom', seigneur_id:'Détenteur du titre', duchy_id:'Duché', marquisate_id:'Marquisat'}
   });
 
   renderTable(document.getElementById('tableViscounties'), viscountiesById, {
     endpoint:'viscounties',
     fields:['name','seigneur_id'],
     selects:{seigneur_id:seigneursSelect},
-    labels:{name:'Nom', seigneur_id:'Seigneur'}
+    labels:{name:'Nom', seigneur_id:'Détenteur du titre'}
   });
 
   renderTable(document.getElementById('tableSeigneurs'), seigneursById, {
