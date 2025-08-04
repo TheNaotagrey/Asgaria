@@ -46,7 +46,9 @@ CREATE TABLE IF NOT EXISTS empires (
 CREATE TABLE IF NOT EXISTS kingdoms (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT UNIQUE,
+  seigneur_id INTEGER,
   empire_id INTEGER,
+  FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id),
   FOREIGN KEY(empire_id) REFERENCES empires(id)
 );
 CREATE TABLE IF NOT EXISTS archduchies (
@@ -58,8 +60,10 @@ CREATE TABLE IF NOT EXISTS archduchies (
 CREATE TABLE IF NOT EXISTS duchies (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT UNIQUE,
+  seigneur_id INTEGER,
   kingdom_id INTEGER,
   archduchy_id INTEGER,
+  FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id),
   FOREIGN KEY(kingdom_id) REFERENCES kingdoms(id),
   FOREIGN KEY(archduchy_id) REFERENCES archduchies(id)
 );
@@ -72,8 +76,10 @@ CREATE TABLE IF NOT EXISTS marquisates (
 CREATE TABLE IF NOT EXISTS counties (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT UNIQUE,
+  seigneur_id INTEGER,
   duchy_id INTEGER,
   marquisate_id INTEGER,
+  FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id),
   FOREIGN KEY(duchy_id) REFERENCES duchies(id),
   FOREIGN KEY(marquisate_id) REFERENCES marquisates(id)
 );
@@ -134,18 +140,33 @@ db.exec(initSql, () => {
     }
   });
   db.all("PRAGMA table_info(counties)", (err, rows) => {
-    if (!err && rows && !rows.some(r => r.name === 'marquisate_id')) {
-      db.run('ALTER TABLE counties ADD COLUMN marquisate_id INTEGER');
+    if (!err && rows) {
+      if (!rows.some(r => r.name === 'marquisate_id')) {
+        db.run('ALTER TABLE counties ADD COLUMN marquisate_id INTEGER');
+      }
+      if (!rows.some(r => r.name === 'seigneur_id')) {
+        db.run('ALTER TABLE counties ADD COLUMN seigneur_id INTEGER REFERENCES seigneurs(id)');
+      }
     }
   });
   db.all("PRAGMA table_info(duchies)", (err, rows) => {
-    if (!err && rows && !rows.some(r => r.name === 'archduchy_id')) {
-      db.run('ALTER TABLE duchies ADD COLUMN archduchy_id INTEGER');
+    if (!err && rows) {
+      if (!rows.some(r => r.name === 'archduchy_id')) {
+        db.run('ALTER TABLE duchies ADD COLUMN archduchy_id INTEGER');
+      }
+      if (!rows.some(r => r.name === 'seigneur_id')) {
+        db.run('ALTER TABLE duchies ADD COLUMN seigneur_id INTEGER REFERENCES seigneurs(id)');
+      }
     }
   });
   db.all("PRAGMA table_info(kingdoms)", (err, rows) => {
-    if (!err && rows && !rows.some(r => r.name === 'empire_id')) {
-      db.run('ALTER TABLE kingdoms ADD COLUMN empire_id INTEGER');
+    if (!err && rows) {
+      if (!rows.some(r => r.name === 'empire_id')) {
+        db.run('ALTER TABLE kingdoms ADD COLUMN empire_id INTEGER');
+      }
+      if (!rows.some(r => r.name === 'seigneur_id')) {
+        db.run('ALTER TABLE kingdoms ADD COLUMN seigneur_id INTEGER REFERENCES seigneurs(id)');
+      }
     }
   });
 });
@@ -311,24 +332,24 @@ app.post('/api/empires', create('empires',['name','seigneur_id']));
 app.put('/api/empires/:id', update('empires',['name','seigneur_id']));
 
 app.get('/api/kingdoms', list('kingdoms'));
-app.post('/api/kingdoms', create('kingdoms',['name','empire_id']));
-app.put('/api/kingdoms/:id', update('kingdoms',['name','empire_id']));
+app.post('/api/kingdoms', create('kingdoms',['name','seigneur_id','empire_id']));
+app.put('/api/kingdoms/:id', update('kingdoms',['name','seigneur_id','empire_id']));
 
 app.get('/api/archduchies', list('archduchies'));
 app.post('/api/archduchies', create('archduchies',['name','seigneur_id']));
 app.put('/api/archduchies/:id', update('archduchies',['name','seigneur_id']));
 
 app.get('/api/duchies', list('duchies'));
-app.post('/api/duchies', create('duchies',['name','kingdom_id','archduchy_id']));
-app.put('/api/duchies/:id', update('duchies',['name','kingdom_id','archduchy_id']));
+app.post('/api/duchies', create('duchies',['name','seigneur_id','kingdom_id','archduchy_id']));
+app.put('/api/duchies/:id', update('duchies',['name','seigneur_id','kingdom_id','archduchy_id']));
 
 app.get('/api/marquisates', list('marquisates'));
 app.post('/api/marquisates', create('marquisates',['name','seigneur_id']));
 app.put('/api/marquisates/:id', update('marquisates',['name','seigneur_id']));
 
 app.get('/api/counties', list('counties'));
-app.post('/api/counties', create('counties',['name','duchy_id','marquisate_id']));
-app.put('/api/counties/:id', update('counties',['name','duchy_id','marquisate_id']));
+app.post('/api/counties', create('counties',['name','seigneur_id','duchy_id','marquisate_id']));
+app.put('/api/counties/:id', update('counties',['name','seigneur_id','duchy_id','marquisate_id']));
 
 app.get('/api/viscounties', list('viscounties'));
 app.post('/api/viscounties', create('viscounties',['name','seigneur_id']));
