@@ -10,8 +10,11 @@
   async function loadPixelData() {
     const resp = await fetch(API_BASE + '/api/barony_pixels');
     pixelData = await resp.json();
-    baronyMeta = {};
-    Object.keys(pixelData).forEach(id => { baronyMeta[id] = { id, name: '' }; });
+    Object.keys(pixelData).forEach(id => {
+      if (!baronyMeta[id]) {
+        baronyMeta[id] = { id, name: '' };
+      }
+    });
     for (let y = 0; y < originalHeight; y++) pixelMap[y].fill(0);
     Object.entries(pixelData).forEach(([id, coords]) => {
       coords.forEach(([x, y]) => {
