@@ -23,17 +23,10 @@
         <option value="kingdom">Royaume</option>
         <option value="empire">Empire</option>
       </select>
-      <button id="exportJson" class="control-btn">Exporter JSON</button>
       <button id="saveToFile" class="control-btn">Enregistrer</button>
-      <label class="file-label control-btn">
-        Importer JSON
-        <input type="file" id="jsonFileInput" accept=".json">
-      </label>
       <button id="deleteBarony" class="control-btn">Supprimer</button>
-      <button id="mergeBarony" class="control-btn">Fusionner</button>
       <button id="toggleMap" class="control-btn">Changer fond</button>
       <button id="selectBarony" class="control-btn">Sélectionner</button>
-      <button class="control-btn" onclick="location.href='admin.html'">Administration</button>
       <span id="authArea" class="auth-area"></span>
     </div>
     <div id="tools" class="tools-row">
@@ -54,6 +47,7 @@
       </button>
       <label for="brushSize" class="brush-size-label">Taille&nbsp;
         <input type="range" id="brushSize" min="1" max="10" value="1">
+        <span id="brushSizeValue">1</span>
       </label>
     </div>
     <div id="authArea" class="auth-area"></div>

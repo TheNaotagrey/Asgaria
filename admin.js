@@ -5,6 +5,15 @@ async function fetchJSON(url, options){
   return resp.json();
 }
 
+function showSaveIndicator() {
+  const el = document.getElementById('saveIndicator');
+  if (!el) return;
+  el.style.display = 'block';
+  setTimeout(() => {
+    el.style.display = 'none';
+  }, 2000);
+}
+
 function renderTable(container, rows, opts){
   container.innerHTML = '';
   const table = document.createElement('table');
@@ -66,10 +75,11 @@ function renderTable(container, rows, opts){
     return 0;
   };
 
-  const makeInput = (val, field)=>{
+  const makeInput = (val, field, item)=>{
     if(opts.selects && opts.selects[field]){
       const select = document.createElement('select');
-      const optList = opts.selects[field];
+      let optList = opts.selects[field];
+      if (typeof optList === 'function') optList = optList(item);
       const blank = document.createElement('option');
       blank.value = '';
       if (opts.nullLabels && opts.nullLabels[field]) {
@@ -108,7 +118,7 @@ function renderTable(container, rows, opts){
       tr.appendChild(td);
       opts.fields.forEach(f=>{
         td = document.createElement('td');
-        td.appendChild(makeInput(item[f], f));
+        td.appendChild(makeInput(item[f], f, item));
         tr.appendChild(td);
       });
       td = document.createElement('td');
@@ -125,6 +135,7 @@ function renderTable(container, rows, opts){
           }
         });
         await fetchJSON(`/api/${opts.endpoint}/${item.id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+        showSaveIndicator();
         loadAll();
       });
       td.appendChild(btn);
@@ -137,7 +148,7 @@ function renderTable(container, rows, opts){
     const addInputs = {};
     opts.fields.forEach(f=>{
       const td = document.createElement('td');
-      const inp = makeInput('', f);
+      const inp = makeInput('', f, null);
       addInputs[f]=inp;
       td.appendChild(inp);
       addRow.appendChild(td);
@@ -156,6 +167,7 @@ function renderTable(container, rows, opts){
         }
       });
       await fetchJSON(`/api/${opts.endpoint}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      showSaveIndicator();
       loadAll();
     });
     addTd.appendChild(addBtn);
@@ -170,7 +182,7 @@ function renderTable(container, rows, opts){
 }
 
 async function loadAll(){
-  const [seigneurs, religions, cultures, kingdoms, counties, duchies, viscounties, marquisates, archduchies, empires] = await Promise.all([
+  const [seigneurs, religions, cultures, kingdoms, counties, duchies, viscounties, marquisates, archduchies, empires, users] = await Promise.all([
     fetchJSON('/api/seigneurs'),
     fetchJSON('/api/religions'),
     fetchJSON('/api/cultures'),
@@ -181,6 +193,7 @@ async function loadAll(){
     fetchJSON('/api/marquisates'),
     fetchJSON('/api/archduchies'),
     fetchJSON('/api/empires'),
+    fetchJSON('/api/users'),
   ]);
 
   const seigneursSelect = seigneurs.slice().sort((a, b) => a.name.localeCompare(b.name));
@@ -193,6 +206,10 @@ async function loadAll(){
   const marquisatesSelect = marquisates.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const archduchiesSelect = archduchies.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const empiresSelect = empires.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const usersSelectRaw = users.slice().sort((a,b)=> (a.email || '').localeCompare(b.email || ''));
+  const usersSelect = usersSelectRaw.map(u => ({ id: u.id, name: u.email }));
+  const assignedUserIds = new Set(seigneurs.filter(s => s.user_id).map(s => s.user_id));
+  const userSelectFn = (item) => usersSelect.filter(u => !assignedUserIds.has(u.id) || (item && u.id === item.user_id));
 
   const seigneursById = seigneurs.slice().sort((a,b)=>a.id - b.id);
   const religionsById = religions.slice().sort((a,b)=>a.id - b.id);
@@ -270,9 +287,9 @@ async function loadAll(){
 
   renderTable(document.getElementById('tableSeigneurs'), seigneursById, {
     endpoint:'seigneurs',
-    fields:['name','religion_id','overlord_id'],
-    selects:{religion_id:religionsSelect, overlord_id:seigneursSelect},
-    labels:{name:'Nom', religion_id:'Religion', overlord_id:'Seigneur'}
+    fields:['name','user_id','religion_id','overlord_id'],
+    selects:{user_id:userSelectFn, religion_id:religionsSelect, overlord_id:seigneursSelect},
+    labels:{name:'Nom', user_id:'Utilisateur', religion_id:'Religion', overlord_id:'Suzerain'}
   });
 }
 

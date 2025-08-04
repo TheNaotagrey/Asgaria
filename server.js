@@ -258,6 +258,13 @@ app.get('/api/me', (req, res) => {
   res.json(req.session.user || null);
 });
 
+app.get('/api/users', (req, res) => {
+  db.all('SELECT id, email, first_name, last_name FROM users', [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
+});
+
 app.post('/api/profile', (req, res) => {
   if (!req.session.user) return res.status(401).json({ error: 'Unauthorized' });
   const { first_name, last_name, password, current_password } = req.body;
