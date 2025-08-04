@@ -106,11 +106,8 @@
   const mapContainer = document.getElementById('mapContainer');
   const toggleEditBtn = document.getElementById('toggleEdit');
   const randomBtn = document.getElementById('randomColors');
-  const exportBtn = document.getElementById('exportJson');
   const saveBtn = document.getElementById('saveToFile');
-  const importInput = document.getElementById('jsonFileInput');
   const deleteBtn = document.getElementById('deleteBarony');
-  const mergeBtn = document.getElementById('mergeBarony');
   const toggleMapBtn = document.getElementById('toggleMap');
   const selectBtn = document.getElementById('selectBarony');
   const infoPanel = document.getElementById('infoPanel');
@@ -199,6 +196,7 @@
   const bucketToolBtn = document.getElementById('bucketTool');
   const newBaronyBtn = document.getElementById('newBarony');
   const brushSizeInput = document.getElementById('brushSize');
+  const brushSizeValue = document.getElementById('brushSizeValue');
 
   // Save pixels to the server
   if (saveBtn) saveBtn.addEventListener('click', () => {
@@ -220,6 +218,7 @@
   let editMode = defaultEditMode;
   let currentTool = null;
   let brushSize = 1;
+  if (brushSizeValue) brushSizeValue.textContent = brushSize;
   let painting = false;
   let currentSelectedId = null;
   let mergeMode = false;
@@ -963,18 +962,7 @@
   });
   if (randomBtn) randomBtn.addEventListener('click', randomizeColors);
   if (filterSelect) filterSelect.addEventListener('change', () => applyFilter(filterSelect.value));
-  if (exportBtn) exportBtn.addEventListener('click', exportJson);
-  if (importInput) importInput.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (file) importJson(file);
-  });
   if (deleteBtn) deleteBtn.addEventListener('click', deleteBarony);
-  if (mergeBtn) mergeBtn.addEventListener('click', () => {
-    if (!currentSelectedId) return;
-    mergeMode = true;
-    mergeBaseId = currentSelectedId;
-    alert('Mode fusion activé : cliquez sur la baronnie à fusionner.');
-  });
   if (toggleMapBtn) toggleMapBtn.addEventListener('click', toggleMap);
   if (selectBtn) selectBtn.addEventListener('click', () => {
     const id = prompt('ID de la baronnie à sélectionner ?');
@@ -1022,6 +1010,7 @@
     brushSizeInput.addEventListener('input', () => {
       const val = parseInt(brushSizeInput.value, 10);
       brushSize = isNaN(val) ? 1 : val;
+      if (brushSizeValue) brushSizeValue.textContent = brushSize;
     });
 
   // Événements souris pour peinture et sélection

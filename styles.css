@@ -320,3 +320,17 @@ main {
   height: 14px;
   border: 1px solid #000;
 }
+
+/* Indicateur de sauvegarde */
+.save-indicator {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  background-color: #4caf50;
+  color: white;
+  padding: 6px 8px;
+  border-radius: 50%;
+  font-size: 1.2rem;
+  display: none;
+  z-index: 1000;
+}

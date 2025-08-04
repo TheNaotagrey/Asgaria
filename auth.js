@@ -45,18 +45,21 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   if (user && controls) {
-    if (user.is_admin) {
+    const current = location.pathname.split('/').pop();
+    if (user.is_admin && current !== 'admin.html') {
       const adminBtn = document.createElement('button');
       adminBtn.className = 'control-btn';
       adminBtn.textContent = 'Admin';
       adminBtn.onclick = () => location.href = 'admin.html';
       controls.appendChild(adminBtn);
     }
-    const editorBtn = document.createElement('button');
-    editorBtn.className = 'control-btn';
-    editorBtn.textContent = 'Éditeur';
-    editorBtn.onclick = () => location.href = 'mapEditor.html';
-    controls.appendChild(editorBtn);
+    if (current !== 'mapEditor.html') {
+      const editorBtn = document.createElement('button');
+      editorBtn.className = 'control-btn';
+      editorBtn.textContent = 'Éditeur';
+      editorBtn.onclick = () => location.href = 'mapEditor.html';
+      controls.appendChild(editorBtn);
+    }
   }
 
   const loginForm = document.getElementById('loginForm');
