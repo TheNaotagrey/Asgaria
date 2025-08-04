@@ -32,8 +32,10 @@ CREATE TABLE IF NOT EXISTS seigneurs (
   name TEXT UNIQUE,
   religion_id INTEGER,
   overlord_id INTEGER,
+  user_id INTEGER UNIQUE,
   FOREIGN KEY(religion_id) REFERENCES religions(id),
-  FOREIGN KEY(overlord_id) REFERENCES seigneurs(id)
+  FOREIGN KEY(overlord_id) REFERENCES seigneurs(id),
+  FOREIGN KEY(user_id) REFERENCES users(id)
 );
 CREATE TABLE IF NOT EXISTS empires (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -103,8 +105,13 @@ CREATE TABLE IF NOT EXISTS barony_pixels (
 
 db.exec(initSql, () => {
   db.all("PRAGMA table_info(seigneurs)", (err, rows) => {
-    if (!err && rows && !rows.some(r => r.name === 'overlord_id')) {
-      db.run('ALTER TABLE seigneurs ADD COLUMN overlord_id INTEGER');
+    if (!err && rows) {
+      if (!rows.some(r => r.name === 'overlord_id')) {
+        db.run('ALTER TABLE seigneurs ADD COLUMN overlord_id INTEGER');
+      }
+      if (!rows.some(r => r.name === 'user_id')) {
+        db.run('ALTER TABLE seigneurs ADD COLUMN user_id INTEGER UNIQUE');
+      }
     }
   });
   db.all("PRAGMA table_info(religions)", (err, rows) => {
@@ -249,7 +256,7 @@ app.get('/api/me', (req, res) => {
 
 app.post('/api/profile', (req, res) => {
   if (!req.session.user) return res.status(401).json({ error: 'Unauthorized' });
-  const { first_name, last_name, password } = req.body;
+  const { first_name, last_name, password, current_password } = req.body;
   const fields = [];
   const values = [];
   if (first_name) {
@@ -262,16 +269,30 @@ app.post('/api/profile', (req, res) => {
     values.push(last_name);
     req.session.user.last_name = last_name;
   }
+
+  const finalize = () => {
+    if (fields.length === 0) return res.json({ ok: true });
+    values.push(req.session.user.id);
+    db.run(`UPDATE users SET ${fields.join(',')} WHERE id=?`, values, function (err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ ok: true });
+    });
+  };
+
   if (password) {
-    fields.push('password=?');
-    values.push(bcrypt.hashSync(password, 10));
+    if (!current_password) return res.status(400).json({ error: 'Missing current password' });
+    db.get('SELECT password FROM users WHERE id=?', [req.session.user.id], (err, row) => {
+      if (err) return res.status(500).json({ error: err.message });
+      if (!row || !bcrypt.compareSync(current_password, row.password)) {
+        return res.status(400).json({ error: 'Incorrect current password' });
+      }
+      fields.push('password=?');
+      values.push(bcrypt.hashSync(password, 10));
+      finalize();
+    });
+  } else {
+    finalize();
   }
-  if (fields.length === 0) return res.json({ ok: true });
-  values.push(req.session.user.id);
-  db.run(`UPDATE users SET ${fields.join(',')} WHERE id=?`, values, function (err) {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ ok: true });
-  });
 });
 
 app.get('/api/empires', list('empires'));
@@ -311,8 +332,8 @@ app.post('/api/cultures', create('cultures',['name','color']));
 app.put('/api/cultures/:id', update('cultures',['name','color']));
 
 app.get('/api/seigneurs', list('seigneurs'));
-app.post('/api/seigneurs', create('seigneurs',['name','religion_id','overlord_id']));
-app.put('/api/seigneurs/:id', update('seigneurs',['name','religion_id','overlord_id']));
+app.post('/api/seigneurs', create('seigneurs',['name','religion_id','overlord_id','user_id']));
+app.put('/api/seigneurs/:id', update('seigneurs',['name','religion_id','overlord_id','user_id']));
 
 app.get('/api/baronies', (req, res) => {
   const id = req.query.id;

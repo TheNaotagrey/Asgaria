@@ -14,7 +14,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const controls = document.getElementById('controls');
   const authDialog = document.getElementById('authDialog');
 
-  const showLogin = (!user || params.has('auth')) && authDialog;
+  const showLogin = !user && params.has('auth') && authDialog;
   if (authArea && showLogin) {
     const loginBtn = document.createElement('button');
     loginBtn.id = 'loginBtn';
@@ -44,13 +44,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     authArea.appendChild(logoutBtn);
   }
 
-  if (user && user.is_admin && controls) {
-    const adminBtn = document.createElement('button');
-    adminBtn.className = 'control-btn';
-    adminBtn.textContent = 'Admin';
-    adminBtn.onclick = () => location.href = 'admin.html';
-    controls.appendChild(adminBtn);
-
+  if (user && controls) {
+    if (user.is_admin) {
+      const adminBtn = document.createElement('button');
+      adminBtn.className = 'control-btn';
+      adminBtn.textContent = 'Admin';
+      adminBtn.onclick = () => location.href = 'admin.html';
+      controls.appendChild(adminBtn);
+    }
     const editorBtn = document.createElement('button');
     editorBtn.className = 'control-btn';
     editorBtn.textContent = 'Éditeur';
