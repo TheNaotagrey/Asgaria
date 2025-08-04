@@ -110,7 +110,11 @@ db.exec(initSql, () => {
         db.run('ALTER TABLE seigneurs ADD COLUMN overlord_id INTEGER');
       }
       if (!rows.some(r => r.name === 'user_id')) {
-        db.run('ALTER TABLE seigneurs ADD COLUMN user_id INTEGER UNIQUE');
+        db.run('ALTER TABLE seigneurs ADD COLUMN user_id INTEGER', () => {
+          db.run('CREATE UNIQUE INDEX IF NOT EXISTS idx_seigneurs_user_id ON seigneurs(user_id)');
+        });
+      } else {
+        db.run('CREATE UNIQUE INDEX IF NOT EXISTS idx_seigneurs_user_id ON seigneurs(user_id)');
       }
     }
   });
