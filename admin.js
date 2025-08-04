@@ -5,9 +5,12 @@ async function fetchJSON(url, options){
   return resp.json();
 }
 
-function showSaveIndicator() {
+function showSaveIndicator(target) {
   const el = document.getElementById('saveIndicator');
-  if (!el) return;
+  if (!el || !target) return;
+  const rect = target.getBoundingClientRect();
+  el.style.top = `${rect.top}px`;
+  el.style.left = `${rect.right + 5}px`;
   el.style.display = 'block';
   setTimeout(() => {
     el.style.display = 'none';
@@ -135,7 +138,7 @@ function renderTable(container, rows, opts){
           }
         });
         await fetchJSON(`/api/${opts.endpoint}/${item.id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-        showSaveIndicator();
+        showSaveIndicator(btn.parentElement);
         loadAll();
       });
       td.appendChild(btn);
@@ -167,7 +170,7 @@ function renderTable(container, rows, opts){
         }
       });
       await fetchJSON(`/api/${opts.endpoint}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-      showSaveIndicator();
+      showSaveIndicator(addBtn.parentElement);
       loadAll();
     });
     addTd.appendChild(addBtn);
