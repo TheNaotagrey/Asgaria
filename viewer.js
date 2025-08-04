@@ -3,6 +3,8 @@
   const originalWidth = 1724;
   const originalHeight = 1291;
   const terrainColor = [239, 228, 176];
+  const playerColor = [82, 190, 128];
+  const npcColor = [231, 76, 60];
 
   let pixelData = {};
   let baronyMeta = {};
@@ -375,6 +377,20 @@
         const kingdom = duchy ? kingdomMap[duchy.kingdom_id] : null;
         groupId = kingdom ? kingdom.empire_id : null;
         groupName = empireMap[groupId]?.name || '';
+      } else if (type === 'occupation') {
+        if (!info.seigneur_id) {
+          groupId = 'unoccupied';
+          groupName = 'Non occupée';
+        } else {
+          const s = seigneurMap[info.seigneur_id];
+          if (s && s.user_id) {
+            groupId = 'player';
+            groupName = 'Joueur';
+          } else {
+            groupId = 'npc';
+            groupName = 'PNJ';
+          }
+        }
       }
       if (groupId == null) {
         colorMap[id] = [...terrainColor, 100];
@@ -382,7 +398,11 @@
       }
       if (!groupColors[groupId]) {
         let col;
-        if (randomize) {
+        if (type === 'occupation') {
+          if (groupId === 'player') col = playerColor;
+          else if (groupId === 'npc') col = npcColor;
+          else col = terrainColor;
+        } else if (randomize) {
           const hue = Math.floor(Math.random() * 360);
           col = hslToRgb(hue, 65, 65);
         } else {
