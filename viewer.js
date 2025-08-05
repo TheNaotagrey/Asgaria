@@ -19,6 +19,9 @@
   let archduchyMap = {};
   let empireMap = {};
   let seigneurToCounty = {}, seigneurToDuchy = {}, seigneurToKingdom = {};
+  let canonicalLandMap = {};
+  let canonicalPatterns = {};
+  let currentFilter = '';
 
   async function loadPixelData() {
     const resp = await fetch(API_BASE + '/api/barony_pixels');
@@ -29,7 +32,7 @@
   }
 
   async function loadMetaData() {
-    const [baronies, seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires] = await Promise.all([
+    const [baronies, seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires, canonicalLands] = await Promise.all([
       fetch(API_BASE + '/api/baronies').then(r => r.json()),
       fetch(API_BASE + '/api/seigneurs').then(r => r.json()),
       fetch(API_BASE + '/api/religions').then(r => r.json()),
@@ -40,7 +43,8 @@
       fetch(API_BASE + '/api/viscounties').then(r => r.json()),
       fetch(API_BASE + '/api/marquisates').then(r => r.json()),
       fetch(API_BASE + '/api/archduchies').then(r => r.json()),
-      fetch(API_BASE + '/api/empires').then(r => r.json())
+      fetch(API_BASE + '/api/empires').then(r => r.json()),
+      fetch(API_BASE + '/api/canonical_lands').then(r => r.json())
     ]);
     baronyMeta = {};
     baronies.forEach(b => { baronyMeta[b.id] = b; });
@@ -67,6 +71,11 @@
     archduchies.forEach(a => { archduchyMap[a.id] = a; });
     empireMap = {};
     empires.forEach(e => { empireMap[e.id] = e; });
+    canonicalLandMap = {};
+    canonicalLands.forEach(cl => {
+      if (!canonicalLandMap[cl.barony_id]) canonicalLandMap[cl.barony_id] = [];
+      canonicalLandMap[cl.barony_id].push(cl.religion_id);
+    });
   }
 
   const pixelMap = Array.from({ length: originalHeight }, () => new Array(originalWidth).fill(0));
@@ -111,6 +120,7 @@
   let colorMap = {};
   function initColorMap() {
     colorMap = {};
+    canonicalPatterns = {};
     Object.keys(pixelData).forEach(id => {
       if (!colorMap[id]) {
         colorMap[id] = generateColor(id);
@@ -153,6 +163,12 @@
   const infoMarquisate = document.getElementById('infoMarquisate');
   const infoArchduchy = document.getElementById('infoArchduchy');
   const infoEmpire = document.getElementById('infoEmpire');
+  const infoSanctuary = document.getElementById('infoSanctuary');
+  const infoPriory = document.getElementById('infoPriory');
+  const infoChurch = document.getElementById('infoChurch');
+  const infoCathedral = document.getElementById('infoCathedral');
+  const infoPlayer = document.getElementById('infoPlayer');
+  const infoCanonical = document.getElementById('infoCanonical');
 
   const ctx = pixelCanvas.getContext('2d');
   pixelCanvas.width = originalWidth;
@@ -189,12 +205,21 @@
     for (let y = 0; y < originalHeight; y++) {
       for (let x = 0; x < originalWidth; x++) {
         const id = pixelMap[y][x];
-        if (id && colorMap[id]) {
-          const col = colorMap[id];
-          data[idx++] = col[0];
-          data[idx++] = col[1];
-          data[idx++] = col[2];
-          data[idx++] = col[3];
+        if (id && (colorMap[id] || (currentFilter === 'canonical' && canonicalPatterns[id]))) {
+          if (currentFilter === 'canonical' && canonicalPatterns[id]) {
+            const cols = canonicalPatterns[id];
+            const col = cols[(x + y) % cols.length];
+            data[idx++] = col[0];
+            data[idx++] = col[1];
+            data[idx++] = col[2];
+            data[idx++] = 100;
+          } else {
+            const col = colorMap[id];
+            data[idx++] = col[0];
+            data[idx++] = col[1];
+            data[idx++] = col[2];
+            data[idx++] = col[3];
+          }
         } else {
           data[idx++] = 0;
           data[idx++] = 0;
@@ -292,6 +317,13 @@
       infoKingdom.textContent = kingdom ? kingdom.name : '';
       const empire = kingdom ? empireMap[kingdom.empire_id] : null;
       infoEmpire.textContent = empire ? empire.name : '';
+      infoSanctuary.textContent = religionMap[info.sanctuary_religion_id]?.name || '';
+      infoPriory.textContent = religionMap[info.priory_religion_id]?.name || '';
+      infoChurch.textContent = religionMap[info.church_religion_id]?.name || '';
+      infoCathedral.textContent = religionMap[info.cathedral_religion_id]?.name || '';
+      infoPlayer.textContent = info.player ? 'Oui' : 'Non';
+      const canon = canonicalLandMap[info.id] || [];
+      infoCanonical.textContent = canon.map(rid => religionMap[rid]?.name || '').filter(Boolean).join(', ');
       infoPanel.style.display = 'block';
     }
     drawAll();
@@ -333,6 +365,8 @@
   }
 
   function applyFilter(type, randomize = false) {
+    currentFilter = type || '';
+    canonicalPatterns = {};
     if (!type) {
       initColorMap();
       updateLegend(null);
@@ -345,7 +379,23 @@
     Object.entries(baronyMeta).forEach(([id, info]) => {
       let groupId = null;
       let groupName = '';
-      if (type === 'religion') {
+      if (type === 'canonical') {
+        const rIds = canonicalLandMap[id] || [];
+        if (rIds.length === 0) {
+          colorMap[id] = [...terrainColor, 100];
+          return;
+        }
+        canonicalPatterns[id] = rIds.map(rid => {
+          if (!groupColors[rid]) {
+            const col = hexToRgb(religionMap[rid]?.color) || generateColor(String(rid)).slice(0,3);
+            groupColors[rid] = { color: col, name: religionMap[rid]?.name || 'N/A' };
+          }
+          return groupColors[rid].color;
+        });
+        const first = canonicalPatterns[id][0];
+        colorMap[id] = [first[0], first[1], first[2], 100];
+        return;
+      } else if (type === 'religion') {
         groupId = info.religion_pop_id;
         groupName = religionMap[groupId]?.name || '';
       } else if (type === 'culture') {
@@ -414,19 +464,28 @@
         const kingdom = duchy ? kingdomMap[duchy.kingdom_id] : null;
         groupId = kingdom ? kingdom.empire_id : null;
         groupName = empireMap[groupId]?.name || '';
+      } else if (type === 'sanctuary') {
+        groupId = info.sanctuary_religion_id;
+        groupName = religionMap[groupId]?.name || '';
+      } else if (type === 'priory') {
+        groupId = info.priory_religion_id;
+        groupName = religionMap[groupId]?.name || '';
+      } else if (type === 'church') {
+        groupId = info.church_religion_id;
+        groupName = religionMap[groupId]?.name || '';
+      } else if (type === 'cathedral') {
+        groupId = info.cathedral_religion_id;
+        groupName = religionMap[groupId]?.name || '';
       } else if (type === 'occupation') {
         if (!info.seigneur_id) {
           groupId = 'unoccupied';
           groupName = 'Non occupée';
+        } else if (info.player) {
+          groupId = 'player';
+          groupName = 'Joueur';
         } else {
-          const s = seigneurMap[info.seigneur_id];
-          if (s && s.user_id) {
-            groupId = 'player';
-            groupName = 'Joueur';
-          } else {
-            groupId = 'npc';
-            groupName = 'PNJ';
-          }
+          groupId = 'npc';
+          groupName = 'PNJ';
         }
       }
       if (groupId == null) {

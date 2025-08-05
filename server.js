@@ -97,15 +97,31 @@ CREATE TABLE IF NOT EXISTS baronies (
   county_id INTEGER,
   viscounty_id INTEGER,
   culture_id INTEGER,
+  sanctuary_religion_id INTEGER,
+  priory_religion_id INTEGER,
+  church_religion_id INTEGER,
+  cathedral_religion_id INTEGER,
+  player INTEGER DEFAULT 0,
   FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id) ON DELETE SET NULL,
   FOREIGN KEY(religion_pop_id) REFERENCES religions(id),
   FOREIGN KEY(county_id) REFERENCES counties(id),
   FOREIGN KEY(viscounty_id) REFERENCES viscounties(id),
-  FOREIGN KEY(culture_id) REFERENCES cultures(id)
+  FOREIGN KEY(culture_id) REFERENCES cultures(id),
+  FOREIGN KEY(sanctuary_religion_id) REFERENCES religions(id),
+  FOREIGN KEY(priory_religion_id) REFERENCES religions(id),
+  FOREIGN KEY(church_religion_id) REFERENCES religions(id),
+  FOREIGN KEY(cathedral_religion_id) REFERENCES religions(id)
 );
 CREATE TABLE IF NOT EXISTS barony_pixels (
   barony_id INTEGER PRIMARY KEY REFERENCES baronies(id),
   data BLOB
+);
+CREATE TABLE IF NOT EXISTS canonical_lands (
+  religion_id INTEGER,
+  barony_id INTEGER,
+  PRIMARY KEY(religion_id, barony_id),
+  FOREIGN KEY(religion_id) REFERENCES religions(id),
+  FOREIGN KEY(barony_id) REFERENCES baronies(id)
 );
 `;
 
@@ -135,8 +151,24 @@ db.exec(initSql, () => {
     }
   });
   db.all("PRAGMA table_info(baronies)", (err, rows) => {
-    if (!err && rows && !rows.some(r => r.name === 'viscounty_id')) {
+    if (err || !rows) return;
+    if (!rows.some(r => r.name === 'viscounty_id')) {
       db.run('ALTER TABLE baronies ADD COLUMN viscounty_id INTEGER');
+    }
+    if (!rows.some(r => r.name === 'sanctuary_religion_id')) {
+      db.run('ALTER TABLE baronies ADD COLUMN sanctuary_religion_id INTEGER');
+    }
+    if (!rows.some(r => r.name === 'priory_religion_id')) {
+      db.run('ALTER TABLE baronies ADD COLUMN priory_religion_id INTEGER');
+    }
+    if (!rows.some(r => r.name === 'church_religion_id')) {
+      db.run('ALTER TABLE baronies ADD COLUMN church_religion_id INTEGER');
+    }
+    if (!rows.some(r => r.name === 'cathedral_religion_id')) {
+      db.run('ALTER TABLE baronies ADD COLUMN cathedral_religion_id INTEGER');
+    }
+    if (!rows.some(r => r.name === 'player')) {
+      db.run('ALTER TABLE baronies ADD COLUMN player INTEGER DEFAULT 0');
     }
   });
   db.all("PRAGMA table_info(counties)", (err, rows) => {
@@ -379,13 +411,25 @@ app.get('/api/baronies', (req, res) => {
   }
 });
 app.post('/api/baronies', create('baronies',[
-  'id','name','seigneur_id','religion_pop_id','county_id','viscounty_id','culture_id'
+  'id','name','seigneur_id','religion_pop_id','county_id','viscounty_id','culture_id',
+  'sanctuary_religion_id','priory_religion_id','church_religion_id','cathedral_religion_id','player'
 ]));
 app.put('/api/baronies/:id', update('baronies',[
-  'name','seigneur_id','religion_pop_id','county_id','viscounty_id','culture_id'
+  'name','seigneur_id','religion_pop_id','county_id','viscounty_id','culture_id',
+  'sanctuary_religion_id','priory_religion_id','church_religion_id','cathedral_religion_id','player'
 ]));
 app.delete('/api/baronies/:id', (req,res)=>{
   db.run('DELETE FROM baronies WHERE id=?',[req.params.id], function(err){
+    if(err) return res.status(500).json({error: err.message});
+    res.json({deleted: this.changes});
+  });
+});
+
+app.get('/api/canonical_lands', list('canonical_lands'));
+app.post('/api/canonical_lands', create('canonical_lands',['religion_id','barony_id']));
+app.delete('/api/canonical_lands', (req, res) => {
+  const { religion_id, barony_id } = req.query;
+  db.run('DELETE FROM canonical_lands WHERE religion_id=? AND barony_id=?', [religion_id, barony_id], function(err){
     if(err) return res.status(500).json({error: err.message});
     res.json({deleted: this.changes});
   });
