@@ -41,6 +41,8 @@
   let archduchyMap = {};
   let empireMap = {};
   let seigneurToCounty = {}, seigneurToDuchy = {}, seigneurToKingdom = {};
+  let canonicalLandMap = {};
+  let canonicalPatterns = {};
   let currentFilter = '';
 
   // Carte de correspondance pixel : pixelMap[y][x] = id (ou 0 si aucun)
@@ -78,6 +80,7 @@
 
   function initColorMap() {
     colorMap = {};
+    canonicalPatterns = {};
     Object.keys(pixelData).forEach((id) => {
       if (!colorMap[id]) {
         colorMap[id] = generateColor(id);
@@ -124,6 +127,11 @@
   const editCulture = document.getElementById('editCulture');
   const editViscounty = document.getElementById('editViscounty');
   const editCounty = document.getElementById('editCounty');
+  const editSanctuary = document.getElementById('editSanctuary');
+  const editPriory = document.getElementById('editPriory');
+  const editChurch = document.getElementById('editChurch');
+  const editCathedral = document.getElementById('editCathedral');
+  const editPlayer = document.getElementById('editPlayer');
   const updateBtn = document.getElementById('updateBarony');
   const filterSelect = document.getElementById('colorFilter');
   const legendDiv = document.getElementById('legend');
@@ -154,13 +162,25 @@
     if (editReligionPop) {
       editReligionPop.innerHTML = blankOpt + religionOptions.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
     }
+    if (editSanctuary) {
+      editSanctuary.innerHTML = blankOpt + religionOptions.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
+    }
+    if (editPriory) {
+      editPriory.innerHTML = blankOpt + religionOptions.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
+    }
+    if (editChurch) {
+      editChurch.innerHTML = blankOpt + religionOptions.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
+    }
+    if (editCathedral) {
+      editCathedral.innerHTML = blankOpt + religionOptions.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
+    }
     if (editCulture) editCulture.innerHTML = cultureOptions.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
     if (editViscounty) editViscounty.innerHTML = blankOpt + viscountyOptions.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
     if (editCounty) editCounty.innerHTML = countyOptions.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
   }
 
   async function loadMetaData() {
-    const [baronies, seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires] = await Promise.all([
+    const [baronies, seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires, canonicalLands] = await Promise.all([
       fetch(API_BASE + '/api/baronies').then(r => r.json()),
       fetch(API_BASE + '/api/seigneurs').then(r => r.json()),
       fetch(API_BASE + '/api/religions').then(r => r.json()),
@@ -171,7 +191,8 @@
       fetch(API_BASE + '/api/viscounties').then(r => r.json()),
       fetch(API_BASE + '/api/marquisates').then(r => r.json()),
       fetch(API_BASE + '/api/archduchies').then(r => r.json()),
-      fetch(API_BASE + '/api/empires').then(r => r.json())
+      fetch(API_BASE + '/api/empires').then(r => r.json()),
+      fetch(API_BASE + '/api/canonical_lands').then(r => r.json())
     ]);
     baronyMeta = {};
     baronies.forEach(b => { baronyMeta[b.id] = b; });
@@ -198,6 +219,11 @@
     archduchies.forEach(a => { archduchyMap[a.id] = a; });
     empireMap = {};
     empires.forEach(e => { empireMap[e.id] = e; });
+    canonicalLandMap = {};
+    canonicalLands.forEach(cl => {
+      if (!canonicalLandMap[cl.barony_id]) canonicalLandMap[cl.barony_id] = [];
+      canonicalLandMap[cl.barony_id].push(cl.religion_id);
+    });
   }
   // Outils
   const brushToolBtn = document.getElementById('brushTool');
@@ -269,12 +295,21 @@
     for (let y = 0; y < originalHeight; y++) {
       for (let x = 0; x < originalWidth; x++) {
         const id = pixelMap[y][x];
-        if (id && colorMap[id]) {
-          const col = colorMap[id];
-          data[idx++] = col[0];
-          data[idx++] = col[1];
-          data[idx++] = col[2];
-          data[idx++] = col[3];
+        if (id && (colorMap[id] || (currentFilter === 'canonical' && canonicalPatterns[id]))) {
+          if (currentFilter === 'canonical' && canonicalPatterns[id]) {
+            const cols = canonicalPatterns[id];
+            const col = cols[(x + y) % cols.length];
+            data[idx++] = col[0];
+            data[idx++] = col[1];
+            data[idx++] = col[2];
+            data[idx++] = 100;
+          } else {
+            const col = colorMap[id];
+            data[idx++] = col[0];
+            data[idx++] = col[1];
+            data[idx++] = col[2];
+            data[idx++] = col[3];
+          }
         } else {
           data[idx++] = 0;
           data[idx++] = 0;
@@ -322,6 +357,7 @@
 
   function applyFilter(type, randomize = false) {
     currentFilter = type || '';
+    canonicalPatterns = {};
     if (!type) {
       initColorMap();
       updateLegend(null);
@@ -334,7 +370,23 @@
     Object.entries(baronyMeta).forEach(([id, info]) => {
       let groupId = null;
       let groupName = '';
-      if (type === 'religion') {
+      if (type === 'canonical') {
+        const rIds = canonicalLandMap[id] || [];
+        if (rIds.length === 0) {
+          colorMap[id] = [...terrainColor, 100];
+          return;
+        }
+        canonicalPatterns[id] = rIds.map(rid => {
+          if (!groupColors[rid]) {
+            const col = hexToRgb(religionMap[rid]?.color) || generateColor(String(rid)).slice(0,3);
+            groupColors[rid] = { color: col, name: religionMap[rid]?.name || 'N/A' };
+          }
+          return groupColors[rid].color;
+        });
+        const first = canonicalPatterns[id][0];
+        colorMap[id] = [first[0], first[1], first[2], 100];
+        return;
+      } else if (type === 'religion') {
         groupId = info.religion_pop_id;
         groupName = religionMap[groupId]?.name || '';
       } else if (type === 'culture') {
@@ -403,19 +455,28 @@
         const kingdom = duchy ? kingdomMap[duchy.kingdom_id] : null;
         groupId = kingdom ? kingdom.empire_id : null;
         groupName = empireMap[groupId]?.name || '';
+      } else if (type === 'sanctuary') {
+        groupId = info.sanctuary_religion_id;
+        groupName = religionMap[groupId]?.name || '';
+      } else if (type === 'priory') {
+        groupId = info.priory_religion_id;
+        groupName = religionMap[groupId]?.name || '';
+      } else if (type === 'church') {
+        groupId = info.church_religion_id;
+        groupName = religionMap[groupId]?.name || '';
+      } else if (type === 'cathedral') {
+        groupId = info.cathedral_religion_id;
+        groupName = religionMap[groupId]?.name || '';
       } else if (type === 'occupation') {
         if (!info.seigneur_id) {
           groupId = 'unoccupied';
           groupName = 'Non occupée';
+        } else if (info.player) {
+          groupId = 'player';
+          groupName = 'Joueur';
         } else {
-          const s = seigneurMap[info.seigneur_id];
-          if (s && s.user_id) {
-            groupId = 'player';
-            groupName = 'Joueur';
-          } else {
-            groupId = 'npc';
-            groupName = 'PNJ';
-          }
+          groupId = 'npc';
+          groupName = 'PNJ';
         }
       }
       if (groupId == null) {
@@ -489,6 +550,11 @@
       if (editCulture) editCulture.value = info.culture_id || '';
       if (editViscounty) editViscounty.value = info.viscounty_id || '';
       if (editCounty) editCounty.value = info.county_id || '';
+      if (editSanctuary) editSanctuary.value = info.sanctuary_religion_id || '';
+      if (editPriory) editPriory.value = info.priory_religion_id || '';
+      if (editChurch) editChurch.value = info.church_religion_id || '';
+      if (editCathedral) editCathedral.value = info.cathedral_religion_id || '';
+      if (editPlayer) editPlayer.checked = !!info.player;
     });
     drawAll();
   }
@@ -504,13 +570,32 @@
     const cultureId = editCulture ? parseInt(editCulture.value || '') || null : null;
     const viscountyId = editViscounty ? parseInt(editViscounty.value || '') || null : null;
     const countyId = editCounty ? parseInt(editCounty.value || '') || null : null;
+    const sanctuaryId = editSanctuary ? parseInt(editSanctuary.value || '') || null : null;
+    const prioryId = editPriory ? parseInt(editPriory.value || '') || null : null;
+    const churchId = editChurch ? parseInt(editChurch.value || '') || null : null;
+    const cathedralId = editCathedral ? parseInt(editCathedral.value || '') || null : null;
+    const playerFlag = editPlayer ? (editPlayer.checked ? 1 : 0) : 0;
     if (newId === '') return;
     if (newId === oldId) {
       // seulement le nom change
       const op = { type: 'rename', oldId: oldId, newId: oldId, oldName: baronyMeta[oldId].name || '', newName: newName, coords: [] };
       undoStack.push(op);
-      baronyMeta[oldId].name = newName;
-      saveBaronyToServer(oldId, { name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId });
+      if (baronyMeta[oldId]) {
+        Object.assign(baronyMeta[oldId], {
+          name: newName,
+          seigneur_id: seigneurId,
+          religion_pop_id: relPop,
+          county_id: countyId,
+          viscounty_id: viscountyId,
+          culture_id: cultureId,
+          sanctuary_religion_id: sanctuaryId,
+          priory_religion_id: prioryId,
+          church_religion_id: churchId,
+          cathedral_religion_id: cathedralId,
+          player: playerFlag
+        });
+      }
+      saveBaronyToServer(oldId, { name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId, sanctuary_religion_id: sanctuaryId, priory_religion_id: prioryId, church_religion_id: churchId, cathedral_religion_id: cathedralId, player: playerFlag });
       return;
     }
     // Si un identifiant existe déjà, échanger les baronnies
@@ -531,8 +616,8 @@
       pixelData[newId] = coordsOld;
       // Mettre à jour les noms : l'ancien id prend l'ancien nom de newId ; le nouvel id prend le nouveau nom saisi
       const tempName = baronyMeta[newId] ? baronyMeta[newId].name : '';
-      baronyMeta[oldId] = { id: oldId, name: tempName };
-      baronyMeta[newId] = { id: newId, name: newName };
+      baronyMeta[oldId] = { id: oldId, name: tempName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId, sanctuary_religion_id: sanctuaryId, priory_religion_id: prioryId, church_religion_id: churchId, cathedral_religion_id: cathedralId, player: playerFlag };
+      baronyMeta[newId] = { id: newId, name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId, sanctuary_religion_id: sanctuaryId, priory_religion_id: prioryId, church_religion_id: churchId, cathedral_religion_id: cathedralId, player: playerFlag };
       // Mettre à jour pixelMap
       coordsOld.forEach(([x, y]) => {
         pixelMap[y][x] = newId;
@@ -546,8 +631,8 @@
       colorMap[oldId] = generateColor(oldId);
       drawAll();
       selectBarony(newId);
-      saveBaronyToServer(newId, { name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId });
-      saveBaronyToServer(oldId, { name: tempName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId });
+      saveBaronyToServer(newId, { name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId, sanctuary_religion_id: sanctuaryId, priory_religion_id: prioryId, church_religion_id: churchId, cathedral_religion_id: cathedralId, player: playerFlag });
+      saveBaronyToServer(oldId, { name: tempName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId, sanctuary_religion_id: sanctuaryId, priory_religion_id: prioryId, church_religion_id: churchId, cathedral_religion_id: cathedralId, player: playerFlag });
       return;
     }
     const coords = pixelData[oldId] || [];
@@ -566,7 +651,7 @@
     colorMap[newId] = generateColor(newId);
     drawAll();
     selectBarony(newId);
-    saveBaronyToServer(newId, { name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId });
+    saveBaronyToServer(newId, { name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId, sanctuary_religion_id: sanctuaryId, priory_religion_id: prioryId, church_religion_id: churchId, cathedral_religion_id: cathedralId, player: playerFlag });
   }
 
   function saveBaronyToServer(id, data) {
@@ -1059,11 +1144,11 @@
       // Enregistrer création pour l’undo
       undoStack.push({ type: 'create', id: newId });
       pixelData[newId] = [];
-      baronyMeta[newId] = { id: newId, name: '' };
+      baronyMeta[newId] = { id: newId, name: '', seigneur_id: null, religion_pop_id: null, county_id: null, viscounty_id: null, culture_id: null, sanctuary_religion_id: null, priory_religion_id: null, church_religion_id: null, cathedral_religion_id: null, player: 0 };
       colorMap[newId] = generateColor(newId);
       currentSelectedId = newId;
       selectBarony(newId);
-      saveBaronyToServer(newId, { name: '', seigneur_id: null, religion_pop_id: null, county_id: null, viscounty_id: null, culture_id: null });
+      saveBaronyToServer(newId, { name: '', seigneur_id: null, religion_pop_id: null, county_id: null, viscounty_id: null, culture_id: null, sanctuary_religion_id: null, priory_religion_id: null, church_religion_id: null, cathedral_religion_id: null, player: 0 });
       setActiveTool('brush');
     });
   if (brushSizeInput)
