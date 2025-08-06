@@ -18,7 +18,7 @@
   let marquisateMap = {};
   let archduchyMap = {};
   let empireMap = {};
-  let seigneurToCounty = {}, seigneurToDuchy = {}, seigneurToKingdom = {};
+  let seigneurToViscounty = {}, seigneurToCounty = {}, seigneurToMarquisate = {}, seigneurToDuchy = {}, seigneurToArchduchy = {}, seigneurToKingdom = {}, seigneurToEmpire = {};
   let canonicalLandMap = {};
   let canonicalPatterns = {};
   let currentFilter = '';
@@ -64,13 +64,17 @@
     seigneurToKingdom = {};
     kingdoms.forEach(k => { kingdomMap[k.id] = k; if (k.seigneur_id) seigneurToKingdom[k.seigneur_id] = k.id; });
     viscountyMap = {};
-    viscounties.forEach(v => { viscountyMap[v.id] = v; });
+    seigneurToViscounty = {};
+    viscounties.forEach(v => { viscountyMap[v.id] = v; if (v.seigneur_id) seigneurToViscounty[v.seigneur_id] = v.id; });
     marquisateMap = {};
-    marquisates.forEach(m => { marquisateMap[m.id] = m; });
+    seigneurToMarquisate = {};
+    marquisates.forEach(m => { marquisateMap[m.id] = m; if (m.seigneur_id) seigneurToMarquisate[m.seigneur_id] = m.id; });
     archduchyMap = {};
-    archduchies.forEach(a => { archduchyMap[a.id] = a; });
+    seigneurToArchduchy = {};
+    archduchies.forEach(a => { archduchyMap[a.id] = a; if (a.seigneur_id) seigneurToArchduchy[a.seigneur_id] = a.id; });
     empireMap = {};
-    empires.forEach(e => { empireMap[e.id] = e; });
+    seigneurToEmpire = {};
+    empires.forEach(e => { empireMap[e.id] = e; if (e.seigneur_id) seigneurToEmpire[e.seigneur_id] = e.id; });
     canonicalLandMap = {};
     canonicalLands.forEach(cl => {
       if (!canonicalLandMap[cl.barony_id]) canonicalLandMap[cl.barony_id] = [];
@@ -404,6 +408,17 @@
       } else if (type === 'viscounty') {
         groupId = info.viscounty_id;
         groupName = viscountyMap[groupId]?.name || '';
+      } else if (type === 'viscounty_defacto') {
+        let sid = info.seigneur_id;
+        while (sid) {
+          const vId = seigneurToViscounty[sid];
+          if (vId) {
+            groupId = vId;
+            groupName = viscountyMap[vId]?.name || '';
+            break;
+          }
+          sid = seigneurMap[sid]?.overlord_id;
+        }
       } else if (type === 'county') {
         groupId = info.county_id;
         groupName = countyMap[groupId]?.name || '';
@@ -422,6 +437,17 @@
         const county = countyMap[info.county_id];
         groupId = county ? county.marquisate_id : null;
         groupName = marquisateMap[groupId]?.name || '';
+      } else if (type === 'marquisate_defacto') {
+        let sid = info.seigneur_id;
+        while (sid) {
+          const mId = seigneurToMarquisate[sid];
+          if (mId) {
+            groupId = mId;
+            groupName = marquisateMap[mId]?.name || '';
+            break;
+          }
+          sid = seigneurMap[sid]?.overlord_id;
+        }
       } else if (type === 'duchy') {
         const county = countyMap[info.county_id];
         groupId = county ? county.duchy_id : null;
@@ -442,6 +468,17 @@
         const duchy = county ? duchyMap[county.duchy_id] : null;
         groupId = duchy ? duchy.archduchy_id : null;
         groupName = archduchyMap[groupId]?.name || '';
+      } else if (type === 'archduchy_defacto') {
+        let sid = info.seigneur_id;
+        while (sid) {
+          const aId = seigneurToArchduchy[sid];
+          if (aId) {
+            groupId = aId;
+            groupName = archduchyMap[aId]?.name || '';
+            break;
+          }
+          sid = seigneurMap[sid]?.overlord_id;
+        }
       } else if (type === 'kingdom') {
         const county = countyMap[info.county_id];
         const duchy = county ? duchyMap[county.duchy_id] : null;
@@ -464,6 +501,17 @@
         const kingdom = duchy ? kingdomMap[duchy.kingdom_id] : null;
         groupId = kingdom ? kingdom.empire_id : null;
         groupName = empireMap[groupId]?.name || '';
+      } else if (type === 'empire_defacto') {
+        let sid = info.seigneur_id;
+        while (sid) {
+          const eId = seigneurToEmpire[sid];
+          if (eId) {
+            groupId = eId;
+            groupName = empireMap[eId]?.name || '';
+            break;
+          }
+          sid = seigneurMap[sid]?.overlord_id;
+        }
       } else if (type === 'sanctuary') {
         groupId = info.sanctuary_religion_id;
         groupName = religionMap[groupId]?.name || '';
