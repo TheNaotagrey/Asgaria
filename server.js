@@ -123,6 +123,55 @@ CREATE TABLE IF NOT EXISTS canonical_lands (
   FOREIGN KEY(religion_id) REFERENCES religions(id),
   FOREIGN KEY(barony_id) REFERENCES baronies(id)
 );
+CREATE TABLE IF NOT EXISTS inventaire (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  or_ INTEGER DEFAULT 0,
+  pierre INTEGER DEFAULT 0,
+  fer INTEGER DEFAULT 0,
+  lingot_or INTEGER DEFAULT 0,
+  antidote INTEGER DEFAULT 0,
+  armureries INTEGER DEFAULT 0,
+  rhum INTEGER DEFAULT 0,
+  grague INTEGER DEFAULT 0,
+  vivres INTEGER DEFAULT 0,
+  architectes INTEGER DEFAULT 0,
+  charpentiers INTEGER DEFAULT 0,
+  maitres_oeuvre INTEGER DEFAULT 0,
+  maitre_espions INTEGER DEFAULT 0,
+  points_magique INTEGER DEFAULT 0,
+  fourrure INTEGER DEFAULT 0,
+  ivoire INTEGER DEFAULT 0,
+  soie INTEGER DEFAULT 0,
+  huile INTEGER DEFAULT 0,
+  teinture INTEGER DEFAULT 0,
+  epices INTEGER DEFAULT 0,
+  sel INTEGER DEFAULT 0,
+  perle INTEGER DEFAULT 0,
+  encens INTEGER DEFAULT 0,
+  vin INTEGER DEFAULT 0,
+  pierre_precieuse INTEGER DEFAULT 0,
+  esclaves INTEGER DEFAULT 0,
+  prestige INTEGER DEFAULT 0,
+  renommee INTEGER DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS seigneuries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  baronnie_id INTEGER,
+  seigneur_id INTEGER,
+  population INTEGER,
+  inventaire_id INTEGER,
+  FOREIGN KEY(baronnie_id) REFERENCES baronies(id),
+  FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id),
+  FOREIGN KEY(inventaire_id) REFERENCES inventaire(id)
+);
+CREATE TABLE IF NOT EXISTS transactions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  seigneurie_id INTEGER,
+  resource TEXT,
+  amount INTEGER,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(seigneurie_id) REFERENCES seigneuries(id)
+);
 `;
 
 db.exec(initSql, () => {
@@ -398,6 +447,18 @@ app.put('/api/cultures/:id', update('cultures',['name','color']));
 app.get('/api/seigneurs', list('seigneurs'));
 app.post('/api/seigneurs', create('seigneurs',['name','religion_id','overlord_id','user_id']));
 app.put('/api/seigneurs/:id', update('seigneurs',['name','religion_id','overlord_id','user_id']));
+
+const inventaireFields = ['or_','pierre','fer','lingot_or','antidote','armureries','rhum','grague','vivres','architectes','charpentiers','maitres_oeuvre','maitre_espions','points_magique','fourrure','ivoire','soie','huile','teinture','epices','sel','perle','encens','vin','pierre_precieuse','esclaves','prestige','renommee'];
+app.get('/api/inventaire', list('inventaire'));
+app.post('/api/inventaire', create('inventaire', inventaireFields));
+app.put('/api/inventaire/:id', update('inventaire', inventaireFields));
+
+app.get('/api/seigneuries', list('seigneuries'));
+app.post('/api/seigneuries', create('seigneuries',['baronnie_id','seigneur_id','population','inventaire_id']));
+app.put('/api/seigneuries/:id', update('seigneuries',['baronnie_id','seigneur_id','population','inventaire_id']));
+
+app.get('/api/transactions', list('transactions'));
+app.post('/api/transactions', create('transactions',['seigneurie_id','resource','amount']));
 
 app.get('/api/baronies', (req, res) => {
   const id = req.query.id;
