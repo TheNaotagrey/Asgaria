@@ -332,3 +332,11 @@ main {
   display: none;
   z-index: 1000;
 }
+
+/* Indicateurs de production */
+.prod-positive {
+  color: #2e8b57;
+}
+.prod-negative {
+  color: #c0392b;
+}

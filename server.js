@@ -159,6 +159,7 @@ CREATE TABLE IF NOT EXISTS seigneuries (
   baronnie_id INTEGER,
   seigneur_id INTEGER,
   population INTEGER,
+  workers INTEGER DEFAULT 0,
   inventaire_id INTEGER,
   FOREIGN KEY(baronnie_id) REFERENCES baronies(id),
   FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id),
@@ -248,6 +249,11 @@ db.exec(initSql, () => {
       if (!rows.some(r => r.name === 'seigneur_id')) {
         db.run('ALTER TABLE kingdoms ADD COLUMN seigneur_id INTEGER REFERENCES seigneurs(id)');
       }
+    }
+  });
+  db.all("PRAGMA table_info(seigneuries)", (err, rows) => {
+    if (!err && rows && !rows.some(r => r.name === 'workers')) {
+      db.run('ALTER TABLE seigneuries ADD COLUMN workers INTEGER DEFAULT 0');
     }
   });
 });
@@ -454,8 +460,64 @@ app.post('/api/inventaire', create('inventaire', inventaireFields));
 app.put('/api/inventaire/:id', update('inventaire', inventaireFields));
 
 app.get('/api/seigneuries', list('seigneuries'));
-app.post('/api/seigneuries', create('seigneuries',['baronnie_id','seigneur_id','population','inventaire_id']));
-app.put('/api/seigneuries/:id', update('seigneuries',['baronnie_id','seigneur_id','population','inventaire_id']));
+app.post('/api/seigneuries', create('seigneuries',['baronnie_id','seigneur_id','population','workers','inventaire_id']));
+app.put('/api/seigneuries/:id', update('seigneuries',['baronnie_id','seigneur_id','population','workers','inventaire_id']));
+
+app.get('/api/my_seigneurie', (req, res) => {
+  if (!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
+  const userId = req.session.user.id;
+  db.serialize(() => {
+    db.get('SELECT * FROM seigneurs WHERE user_id=?', [userId], (err, seigneur) => {
+      if (err) return res.status(500).json({ error: err.message });
+      function ensureSeigneur(cb) {
+        if (seigneur) return cb(seigneur);
+        const name = `Seigneur ${req.session.user.first_name}`;
+        db.run('INSERT INTO seigneurs(name,user_id) VALUES (?,?)', [name, userId], function(err){
+          if (err) return res.status(500).json({ error: err.message });
+          cb({ id: this.lastID, name, user_id: userId });
+        });
+      }
+      ensureSeigneur(seig => {
+        db.get('SELECT * FROM seigneuries WHERE seigneur_id=?', [seig.id], (err, seigneurie) => {
+          if (err) return res.status(500).json({ error: err.message });
+          function ensureSeigneurie(cb) {
+            if (seigneurie) return cb(seigneurie);
+            db.run('INSERT INTO inventaire DEFAULT VALUES', function(err){
+              if (err) return res.status(500).json({ error: err.message });
+              const invId = this.lastID;
+              db.run('INSERT INTO seigneuries (baronnie_id,seigneur_id,population,workers,inventaire_id) VALUES (NULL,?,?,?,?)',
+                [seig.id, 0, 0, invId], function(err){
+                  if (err) return res.status(500).json({ error: err.message });
+                  cb({ id: this.lastID, baronnie_id: null, seigneur_id: seig.id, population: 0, workers: 0, inventaire_id: invId });
+                });
+            });
+          }
+          ensureSeigneurie(s => {
+            db.get('SELECT * FROM inventaire WHERE id=?', [s.inventaire_id], (err, inventaire) => {
+              if (err) return res.status(500).json({ error: err.message });
+              db.all('SELECT resource, SUM(amount) as total FROM transactions WHERE seigneurie_id=? GROUP BY resource', [s.id], (err, rows) => {
+                if (err) return res.status(500).json({ error: err.message });
+                const production = {};
+                rows.forEach(r => production[r.resource] = r.total);
+                function send(barony){
+                  res.json({ seigneurie: s, barony, inventaire, production });
+                }
+                if (s.baronnie_id) {
+                  db.get(`SELECT b.*, r.name as religion_name, c.name as culture_name FROM baronies b LEFT JOIN religions r ON b.religion_pop_id=r.id LEFT JOIN cultures c ON b.culture_id=c.id WHERE b.id=?`, [s.baronnie_id], (err, barony) => {
+                    if (err) return res.status(500).json({ error: err.message });
+                    send(barony);
+                  });
+                } else {
+                  send(null);
+                }
+              });
+            });
+          });
+        });
+      });
+    });
+  });
+});
 
 app.get('/api/transactions', list('transactions'));
 app.post('/api/transactions', create('transactions',['seigneurie_id','resource','amount']));

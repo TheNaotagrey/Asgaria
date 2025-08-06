@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Gestion de la seigneurie</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <h1>Gestion de la seigneurie</h1>
+    <div id="controls" class="controls-row">
+      <span id="authArea" class="auth-area"></span>
+    </div>
+  </header>
+  <main>
+    <div class="tab-container" style="overflow:auto;flex:1">
+      <div class="tab-buttons">
+        <button class="tab-btn active" data-tab="sommaire">Sommaire</button>
+        <button class="tab-btn" data-tab="biens">Vos Biens</button>
+      </div>
+      <div class="tab-panels">
+        <div id="tab-sommaire" class="tab-panel active">
+          <div id="summary"></div>
+        </div>
+        <div id="tab-biens" class="tab-panel">
+          <table id="inventoryTable" class="admin-table"></table>
+        </div>
+      </div>
+    </div>
+  </main>
+  <script src="auth.js"></script>
+  <script src="gestion.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const buttons = document.querySelectorAll('.tab-btn');
+      const panels = document.querySelectorAll('.tab-panel');
+      buttons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          buttons.forEach(b => b.classList.remove('active'));
+          panels.forEach(p => p.classList.remove('active'));
+          btn.classList.add('active');
+          document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+        });
+      });
+    });
+  </script>
+</body>
+</html>
