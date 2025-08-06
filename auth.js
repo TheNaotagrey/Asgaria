@@ -53,6 +53,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       adminBtn.onclick = () => location.href = 'admin.html';
       controls.appendChild(adminBtn);
     }
+    if (current !== 'gestion.html') {
+      const gestionBtn = document.createElement('button');
+      gestionBtn.className = 'control-btn';
+      gestionBtn.textContent = 'Gestion';
+      gestionBtn.onclick = () => location.href = 'gestion.html';
+      controls.appendChild(gestionBtn);
+    }
     if (current !== 'mapEditor.html') {
       const editorBtn = document.createElement('button');
       editorBtn.className = 'control-btn';
