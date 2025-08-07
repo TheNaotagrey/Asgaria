@@ -26,7 +26,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     summary.innerHTML = `
       <p><strong>Baronnie :</strong> ${barony.name || 'Aucune'}</p>
       <p><strong>Population :</strong> ${s.population}</p>
-      <p><strong>Travailleurs :</strong> ${s.workers}</p>
       <p><strong>Religion :</strong> ${barony.religion_name || 'Inconnue'}</p>
       <p><strong>Culture :</strong> ${barony.culture_name || 'Inconnue'}</p>
       <p><strong>IDH :</strong> À calculer</p>
