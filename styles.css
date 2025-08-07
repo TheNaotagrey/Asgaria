@@ -16,6 +16,11 @@ main {
   position: relative;
 }
 
+.gestion-main {
+  padding-left: 20px;
+  padding-right: 20px;
+}
+
 /* En-tête avec contrôles et outils */
 .app-header {
   background-color: #0b3d91;
