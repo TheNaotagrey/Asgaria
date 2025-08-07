@@ -1,5 +1,26 @@
 const API_BASE = location.origin === 'null' ? 'http://localhost:3000' : '';
 
+const basicResources = [
+  ['or_', 'Or'], ['pierre', 'Pierre'], ['fer', 'Fer'], ['lingot_or', "Lingots d'or"],
+  ['antidote', 'Antidotes'], ['armureries', 'Armureries'], ['rhum', 'Rhum'], ['grague', 'Grague'],
+  ['vivres', 'Vivres'], ['architectes', 'Architectes'], ['charpentiers', 'Charpentiers'],
+  ['maitres_oeuvre', "Maîtres d'œuvre"], ['maitre_espions', 'Maîtres espions'],
+  ['points_magique', 'Points magiques'],
+];
+
+const luxuryResources = [
+  ['fourrure', 'Fourrures'], ['ivoire', 'Ivoire'], ['soie', 'Soie'], ['huile', 'Huile'],
+  ['teinture', 'Teintures'], ['epices', 'Épices'], ['sel', 'Sel'], ['perle', 'Perles'],
+  ['encens', 'Encens'], ['vin', 'Vin'], ['pierre_precieuse', 'Pierres précieuses'],
+];
+
+const extraResources = [
+  ['esclaves', 'Esclaves'], ['prestige', 'Prestige'], ['renommee', 'Renommée'],
+];
+
+const inventaireFields = [...basicResources, ...luxuryResources, ...extraResources].map(([k]) => k);
+const inventaireLabels = Object.fromEntries([...basicResources, ...luxuryResources, ...extraResources]);
+
 async function fetchJSON(url, options){
   const resp = await fetch(API_BASE + url, options);
   return resp.json();
@@ -185,7 +206,7 @@ function renderTable(container, rows, opts){
 }
 
 async function loadAll(){
-  const [seigneurs, religions, cultures, kingdoms, counties, duchies, viscounties, marquisates, archduchies, empires, users] = await Promise.all([
+  const [seigneurs, religions, cultures, kingdoms, counties, duchies, viscounties, marquisates, archduchies, empires, users, seigneuries, inventaire, baronies] = await Promise.all([
     fetchJSON('/api/seigneurs'),
     fetchJSON('/api/religions'),
     fetchJSON('/api/cultures'),
@@ -197,6 +218,9 @@ async function loadAll(){
     fetchJSON('/api/archduchies'),
     fetchJSON('/api/empires'),
     fetchJSON('/api/users'),
+    fetchJSON('/api/seigneuries'),
+    fetchJSON('/api/inventaire'),
+    fetchJSON('/api/baronies'),
   ]);
 
   const seigneursSelect = seigneurs.slice().sort((a, b) => a.name.localeCompare(b.name));
@@ -214,6 +238,9 @@ async function loadAll(){
   const assignedUserIds = new Set(seigneurs.filter(s => s.user_id).map(s => s.user_id));
   const userSelectFn = (item) => usersSelect.filter(u => !assignedUserIds.has(u.id) || (item && u.id === item.user_id));
 
+  const baroniesSelect = baronies.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const inventaireSelect = inventaire.slice().sort((a,b)=>a.id - b.id).map(i => ({id: i.id, name: String(i.id)}));
+
   const seigneursById = seigneurs.slice().sort((a,b)=>a.id - b.id);
   const religionsById = religions.slice().sort((a,b)=>a.id - b.id);
   const culturesById = cultures.slice().sort((a,b)=>a.id - b.id);
@@ -224,6 +251,8 @@ async function loadAll(){
   const marquisatesById = marquisates.slice().sort((a,b)=>a.id - b.id);
   const archduchiesById = archduchies.slice().sort((a,b)=>a.id - b.id);
   const empiresById = empires.slice().sort((a,b)=>a.id - b.id);
+  const seigneuriesById = seigneuries.slice().sort((a,b)=>a.id - b.id);
+  const inventaireById = inventaire.slice().sort((a,b)=>a.id - b.id);
 
   renderTable(document.getElementById('tableReligions'), religionsById, {
     endpoint:'religions',
@@ -286,6 +315,19 @@ async function loadAll(){
     fields:['name','seigneur_id'],
     selects:{seigneur_id:seigneursSelect},
     labels:{name:'Nom', seigneur_id:'Détenteur du titre'}
+  });
+
+  renderTable(document.getElementById('tableSeigneuries'), seigneuriesById, {
+    endpoint:'seigneuries',
+    fields:['baronnie_id','seigneur_id','population','workers','inventaire_id'],
+    selects:{baronnie_id:baroniesSelect, seigneur_id:seigneursSelect, inventaire_id:inventaireSelect},
+    labels:{baronnie_id:'Baronnie', seigneur_id:'Seigneur', population:'Population', workers:'Travailleurs', inventaire_id:'Inventaire'}
+  });
+
+  renderTable(document.getElementById('tableInventaire'), inventaireById, {
+    endpoint:'inventaire',
+    fields:inventaireFields,
+    labels:inventaireLabels
   });
 
   renderTable(document.getElementById('tableSeigneurs'), seigneursById, {
