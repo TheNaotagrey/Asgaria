@@ -45,11 +45,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     const basicTable = document.getElementById('basicResourcesTable');
     const luxuryTable = document.getElementById('luxuryResourcesTable');
 
-    basicTable.innerHTML = buildTable(basicResources);
+    basicTable.innerHTML = buildTable(basicResources, true);
     luxuryTable.innerHTML = buildTable(luxuryResources);
 
-    function buildTable(list) {
-      let html = '<tr><th>Ressource</th><th>Quantité</th><th>Production</th></tr>';
+    function buildTable(list, showMax = false) {
+      let html = '<tr><th>Ressource</th><th>Quantité</th><th>Production</th>';
+      if (showMax) html += '<th>Maximum</th>';
+      html += '</tr>';
       for (const [key, label] of list) {
         const qty = inv[key] ?? 0;
         const prod = production[key];
@@ -59,7 +61,9 @@ document.addEventListener('DOMContentLoaded', async () => {
           const cls = prod > 0 ? 'prod-positive' : 'prod-negative';
           prodHtml = `<span class="${cls}">${sign}${prod}</span>`;
         }
-        html += `<tr><td>${label}</td><td>${qty}</td><td>${prodHtml}</td></tr>`;
+        html += `<tr><td>${label}</td><td>${qty}</td><td>${prodHtml}</td>`;
+        if (showMax) html += '<td></td>';
+        html += '</tr>';
       }
       return html;
     }
