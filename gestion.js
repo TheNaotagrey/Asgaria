@@ -1,7 +1,9 @@
 const basicResources = [
   ['or_', 'Or'], ['pierre', 'Pierre'], ['fer', 'Fer'], ['lingot_or', "Lingots d'or"],
   ['antidote', 'Antidotes'], ['armureries', 'Armureries'], ['rhum', 'Rhum'], ['grague', 'Grague'],
-  ['vivres', 'Vivres']
+  ['vivres', 'Vivres'], ['architectes', 'Architectes'], ['charpentiers', 'Charpentiers'],
+  ['maitres_oeuvre', "Maîtres d'œuvre"], ['maitre_espions', 'Maîtres espions'],
+  ['points_magique', 'Points magiques'],
 ];
 
 const luxuryResources = [
@@ -27,7 +29,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       <p><strong>Travailleurs :</strong> ${s.workers}</p>
       <p><strong>Religion :</strong> ${barony.religion_name || 'Inconnue'}</p>
       <p><strong>Culture :</strong> ${barony.culture_name || 'Inconnue'}</p>
-      <p><strong>Esclaves :</strong> ${inv.esclaves || 0}</p>
       <p><strong>IDH :</strong> À calculer</p>
       <div id="resourceTables" class="resource-tables">
         <div class="resource-table-container">
