@@ -158,6 +158,7 @@ function renderTable(container, rows, opts){
             payload[f] = el.value.trim();
           }
         });
+        if (opts.beforeSave) opts.beforeSave(payload, item);
         await fetchJSON(`/api/${opts.endpoint}/${item.id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
         showSaveIndicator(btn.parentElement);
         loadAll();
@@ -190,6 +191,7 @@ function renderTable(container, rows, opts){
           payload[f] = el.value.trim();
         }
       });
+      if (opts.beforeSave) opts.beforeSave(payload, null);
       await fetchJSON(`/api/${opts.endpoint}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
       showSaveIndicator(addBtn.parentElement);
       loadAll();
@@ -206,7 +208,7 @@ function renderTable(container, rows, opts){
 }
 
 async function loadAll(){
-  const [seigneurs, religions, cultures, kingdoms, counties, duchies, viscounties, marquisates, archduchies, empires, users, seigneuries, inventaire, baronies] = await Promise.all([
+  const [seigneurs, religions, cultures, kingdoms, counties, duchies, viscounties, marquisates, archduchies, empires, users, seigneuries, baronies] = await Promise.all([
     fetchJSON('/api/seigneurs'),
     fetchJSON('/api/religions'),
     fetchJSON('/api/cultures'),
@@ -219,7 +221,6 @@ async function loadAll(){
     fetchJSON('/api/empires'),
     fetchJSON('/api/users'),
     fetchJSON('/api/seigneuries'),
-    fetchJSON('/api/inventaire'),
     fetchJSON('/api/baronies'),
   ]);
 
@@ -239,7 +240,6 @@ async function loadAll(){
   const userSelectFn = (item) => usersSelect.filter(u => !assignedUserIds.has(u.id) || (item && u.id === item.user_id));
 
   const baroniesSelect = baronies.slice().sort((a,b)=>a.name.localeCompare(b.name));
-  const inventaireSelect = inventaire.slice().sort((a,b)=>a.id - b.id).map(i => ({id: i.id, name: String(i.id)}));
 
   const seigneursById = seigneurs.slice().sort((a,b)=>a.id - b.id);
   const religionsById = religions.slice().sort((a,b)=>a.id - b.id);
@@ -252,7 +252,6 @@ async function loadAll(){
   const archduchiesById = archduchies.slice().sort((a,b)=>a.id - b.id);
   const empiresById = empires.slice().sort((a,b)=>a.id - b.id);
   const seigneuriesById = seigneuries.slice().sort((a,b)=>a.id - b.id);
-  const inventaireById = inventaire.slice().sort((a,b)=>a.id - b.id);
 
   renderTable(document.getElementById('tableReligions'), religionsById, {
     endpoint:'religions',
@@ -319,15 +318,10 @@ async function loadAll(){
 
   renderTable(document.getElementById('tableSeigneuries'), seigneuriesById, {
     endpoint:'seigneuries',
-    fields:['baronnie_id','seigneur_id','population','workers','inventaire_id'],
-    selects:{baronnie_id:baroniesSelect, seigneur_id:seigneursSelect, inventaire_id:inventaireSelect},
-    labels:{baronnie_id:'Baronnie', seigneur_id:'Seigneur', population:'Population', workers:'Travailleurs', inventaire_id:'Inventaire'}
-  });
-
-  renderTable(document.getElementById('tableInventaire'), inventaireById, {
-    endpoint:'inventaire',
-    fields:inventaireFields,
-    labels:inventaireLabels
+    fields:['baronnie_id','seigneur_id','population',...inventaireFields],
+    selects:{baronnie_id:baroniesSelect, seigneur_id:seigneursSelect},
+    labels:{baronnie_id:'Baronnie', seigneur_id:'Seigneur', population:'Population',...inventaireLabels},
+    beforeSave:(payload,item)=>{ if(item && item.inventaire_id) payload.inventaire_id = item.inventaire_id; }
   });
 
   renderTable(document.getElementById('tableSeigneurs'), seigneursById, {

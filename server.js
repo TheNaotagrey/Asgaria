@@ -159,7 +159,6 @@ CREATE TABLE IF NOT EXISTS seigneuries (
   baronnie_id INTEGER,
   seigneur_id INTEGER,
   population INTEGER,
-  workers INTEGER DEFAULT 0,
   inventaire_id INTEGER,
   FOREIGN KEY(baronnie_id) REFERENCES baronies(id),
   FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id),
@@ -249,11 +248,6 @@ db.exec(initSql, () => {
       if (!rows.some(r => r.name === 'seigneur_id')) {
         db.run('ALTER TABLE kingdoms ADD COLUMN seigneur_id INTEGER REFERENCES seigneurs(id)');
       }
-    }
-  });
-  db.all("PRAGMA table_info(seigneuries)", (err, rows) => {
-    if (!err && rows && !rows.some(r => r.name === 'workers')) {
-      db.run('ALTER TABLE seigneuries ADD COLUMN workers INTEGER DEFAULT 0');
     }
   });
 });
@@ -459,9 +453,48 @@ app.get('/api/inventaire', list('inventaire'));
 app.post('/api/inventaire', create('inventaire', inventaireFields));
 app.put('/api/inventaire/:id', update('inventaire', inventaireFields));
 
-app.get('/api/seigneuries', list('seigneuries'));
-app.post('/api/seigneuries', create('seigneuries',['baronnie_id','seigneur_id','population','workers','inventaire_id']));
-app.put('/api/seigneuries/:id', update('seigneuries',['baronnie_id','seigneur_id','population','workers','inventaire_id']));
+app.get('/api/seigneuries', (req, res) => {
+  const invSelect = inventaireFields.map(f => `i.${f}`).join(',');
+  db.all(`SELECT s.id, s.baronnie_id, s.seigneur_id, s.population, s.inventaire_id, ${invSelect} FROM seigneuries s JOIN inventaire i ON s.inventaire_id=i.id`, [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
+});
+
+app.post('/api/seigneuries', (req, res) => {
+  const seigFields = ['baronnie_id','seigneur_id','population'];
+  const seigValues = seigFields.map(f => sanitize(req.body[f]));
+  const invValues = inventaireFields.map(f => sanitize(req.body[f]) || 0);
+  const invPlace = inventaireFields.map(() => '?').join(',');
+  db.run(`INSERT INTO inventaire (${inventaireFields.join(',')}) VALUES (${invPlace})`, invValues, function(err){
+    if (err) return res.status(500).json({ error: err.message });
+    const invId = this.lastID;
+    db.run('INSERT INTO seigneuries (baronnie_id,seigneur_id,population,inventaire_id) VALUES (?,?,?,?)',
+      [...seigValues, invId], function(err2){
+        if (err2) return res.status(500).json({ error: err2.message });
+        res.json({ id: this.lastID, inventaire_id: invId });
+      });
+  });
+});
+
+app.put('/api/seigneuries/:id', (req, res) => {
+  const id = req.params.id;
+  const seigFields = ['baronnie_id','seigneur_id','population'];
+  const seigSet = seigFields.map(f => `${f}=?`).join(',');
+  const seigValues = seigFields.map(f => sanitize(req.body[f]));
+  seigValues.push(id);
+  db.run(`UPDATE seigneuries SET ${seigSet} WHERE id=?`, seigValues, function(err){
+    if (err) return res.status(500).json({ error: err.message });
+    const invId = req.body.inventaire_id;
+    const invSet = inventaireFields.map(f => `${f}=?`).join(',');
+    const invValues = inventaireFields.map(f => sanitize(req.body[f]) || 0);
+    invValues.push(invId);
+    db.run(`UPDATE inventaire SET ${invSet} WHERE id=?`, invValues, function(err2){
+      if (err2) return res.status(500).json({ error: err2.message });
+      res.json({ changes: this.changes });
+    });
+  });
+});
 
 app.get('/api/my_seigneurie', (req, res) => {
   if (!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
@@ -485,10 +518,10 @@ app.get('/api/my_seigneurie', (req, res) => {
             db.run('INSERT INTO inventaire DEFAULT VALUES', function(err){
               if (err) return res.status(500).json({ error: err.message });
               const invId = this.lastID;
-              db.run('INSERT INTO seigneuries (baronnie_id,seigneur_id,population,workers,inventaire_id) VALUES (NULL,?,?,?,?)',
-                [seig.id, 0, 0, invId], function(err){
+              db.run('INSERT INTO seigneuries (baronnie_id,seigneur_id,population,inventaire_id) VALUES (NULL,?,?,?)',
+                [seig.id, 0, invId], function(err){
                   if (err) return res.status(500).json({ error: err.message });
-                  cb({ id: this.lastID, baronnie_id: null, seigneur_id: seig.id, population: 0, workers: 0, inventaire_id: invId });
+                  cb({ id: this.lastID, baronnie_id: null, seigneur_id: seig.id, population: 0, inventaire_id: invId });
                 });
             });
           }
