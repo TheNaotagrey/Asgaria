@@ -1,11 +1,13 @@
-const resources = [
+const basicResources = [
   ['or_', 'Or'], ['pierre', 'Pierre'], ['fer', 'Fer'], ['lingot_or', "Lingots d'or"],
   ['antidote', 'Antidotes'], ['armureries', 'Armureries'], ['rhum', 'Rhum'], ['grague', 'Grague'],
-  ['vivres', 'Vivres'], ['architectes', 'Architectes'], ['charpentiers', 'Charpentiers'], ['maitres_oeuvre', "Maîtres d'œuvre"],
-  ['maitre_espions', 'Maîtres espions'], ['points_magique', 'Points magiques'], ['fourrure', 'Fourrures'], ['ivoire', 'Ivoire'],
-  ['soie', 'Soie'], ['huile', 'Huile'], ['teinture', 'Teintures'], ['epices', 'Épices'],
-  ['sel', 'Sel'], ['perle', 'Perles'], ['encens', 'Encens'], ['vin', 'Vin'],
-  ['pierre_precieuse', 'Pierres précieuses'], ['esclaves', 'Esclaves'], ['prestige', 'Prestige'], ['renommee', 'Renommée']
+  ['vivres', 'Vivres']
+];
+
+const luxuryResources = [
+  ['fourrure', 'Fourrures'], ['ivoire', 'Ivoire'], ['soie', 'Soie'], ['huile', 'Huile'],
+  ['teinture', 'Teintures'], ['epices', 'Épices'], ['sel', 'Sel'], ['perle', 'Perles'],
+  ['encens', 'Encens'], ['vin', 'Vin'], ['pierre_precieuse', 'Pierres précieuses']
 ];
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -27,27 +29,38 @@ document.addEventListener('DOMContentLoaded', async () => {
       <p><strong>Culture :</strong> ${barony.culture_name || 'Inconnue'}</p>
       <p><strong>Esclaves :</strong> ${inv.esclaves || 0}</p>
       <p><strong>IDH :</strong> À calculer</p>
+      <div id="resourceTables" class="resource-tables">
+        <div class="resource-table-container">
+          <h2>Ressources de base</h2>
+          <table id="basicResourcesTable" class="admin-table"></table>
+        </div>
+        <div class="resource-table-container">
+          <h2>Ressources de Luxe</h2>
+          <table id="luxuryResourcesTable" class="admin-table"></table>
+        </div>
+      </div>
     `;
 
-    const table = document.getElementById('inventoryTable');
-    let html = '<tr><th>Ressource</th><th>Quantité</th><th>Production</th><th>Ressource</th><th>Quantité</th><th>Production</th></tr>';
-    for (let i = 0; i < resources.length; i += 2) {
-      html += '<tr>' + render(resources[i]) + render(resources[i + 1]) + '</tr>';
-    }
-    table.innerHTML = html;
+    const basicTable = document.getElementById('basicResourcesTable');
+    const luxuryTable = document.getElementById('luxuryResourcesTable');
 
-    function render(r) {
-      if (!r) return '<td></td><td></td><td></td>';
-      const [key, label] = r;
-      const qty = inv[key] ?? 0;
-      const prod = production[key];
-      let prodHtml = '';
-      if (prod) {
-        const sign = prod > 0 ? '+' : '';
-        const cls = prod > 0 ? 'prod-positive' : 'prod-negative';
-        prodHtml = `<span class="${cls}">${sign}${prod}</span>`;
+    basicTable.innerHTML = buildTable(basicResources);
+    luxuryTable.innerHTML = buildTable(luxuryResources);
+
+    function buildTable(list) {
+      let html = '<tr><th>Ressource</th><th>Quantité</th><th>Production</th></tr>';
+      for (const [key, label] of list) {
+        const qty = inv[key] ?? 0;
+        const prod = production[key];
+        let prodHtml = '';
+        if (prod) {
+          const sign = prod > 0 ? '+' : '';
+          const cls = prod > 0 ? 'prod-positive' : 'prod-negative';
+          prodHtml = `<span class="${cls}">${sign}${prod}</span>`;
+        }
+        html += `<tr><td>${label}</td><td>${qty}</td><td>${prodHtml}</td></tr>`;
       }
-      return `<td>${label}</td><td>${qty}</td><td>${prodHtml}</td>`;
+      return html;
     }
   } catch (e) {
     document.getElementById('summary').textContent = 'Erreur de chargement';

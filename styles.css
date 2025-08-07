@@ -340,3 +340,15 @@ main {
 .prod-negative {
   color: #c0392b;
 }
+
+/* Tables des ressources */
+.resource-tables {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.resource-table-container {
+  flex: 1;
+  min-width: 250px;
+}
