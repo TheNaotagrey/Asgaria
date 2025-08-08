@@ -710,6 +710,41 @@ app.post('/api/building', (req,res)=>{
   });
 });
 
+app.post('/api/fields/activate', (req,res)=>{
+  if(!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
+  const qty = parseInt(req.body.quantity,10);
+  if(isNaN(qty) || qty < 0) return res.status(400).json({ error: 'Quantité invalide' });
+  const userId = req.session.user.id;
+  db.get('SELECT seigneuries.id as id, seigneuries.population, seigneuries.inventaire_id FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?', [userId], (err, srow)=>{
+    if(err) return res.status(500).json({ error: err.message });
+    if(!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
+    db.get('SELECT built, active FROM fields WHERE seigneurie_id=?', [srow.id], (err2, frow)=>{
+      if(err2) return res.status(500).json({ error: err2.message });
+      const built = frow ? frow.built : 0;
+      if(qty > built) return res.status(400).json({ error: 'Quantité supérieure au construit' });
+      db.get('SELECT esclaves FROM inventaire WHERE id=?', [srow.inventaire_id], (err3, inv)=>{
+        if(err3) return res.status(500).json({ error: err3.message });
+        const slaves = inv ? (inv.esclaves || 0) : 0;
+        const totalPop = srow.population + slaves;
+        if(qty > totalPop) return res.status(400).json({ error: 'Travailleurs insuffisants' });
+        const done = ()=> res.json({ fields: { built, active: qty }, employment: { employed: qty, slaves } });
+        if(frow){
+          db.run('UPDATE fields SET active=? WHERE seigneurie_id=?', [qty, srow.id], function(err4){
+            if(err4) return res.status(500).json({ error: err4.message });
+            done();
+          });
+        } else {
+          if(qty > 0) return res.status(400).json({ error: 'Aucun champ construit' });
+          db.run('INSERT INTO fields (seigneurie_id,built,active) VALUES (?,?,?)',[srow.id,0,0], function(err4){
+            if(err4) return res.status(500).json({ error: err4.message });
+            done();
+          });
+        }
+      });
+    });
+  });
+});
+
 app.get('/api/canonical_lands', list('canonical_lands'));
 app.post('/api/canonical_lands', create('canonical_lands',['religion_id','barony_id']));
 app.delete('/api/canonical_lands', (req, res) => {

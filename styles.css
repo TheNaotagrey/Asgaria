@@ -271,6 +271,21 @@ main {
   background-color: #3d6db2;
 }
 
+.qty-control {
+  display: flex;
+  align-items: center;
+}
+.qty-control .qty-btn {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  margin: 0 2px;
+}
+.qty-control input {
+  width: 50px;
+  text-align: center;
+}
+
 /* Onglets de la page d'administration */
 .tab-buttons {
   display: flex;
