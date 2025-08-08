@@ -4,6 +4,7 @@ const zlib = require('zlib');
 const path = require('path');
 const session = require('express-session');
 const bcrypt = require('bcryptjs');
+const { inventaireFields, performTransaction } = require('./transactions');
 const app = express();
 const db = new sqlite3.Database('asgaria.db');
 
@@ -170,6 +171,37 @@ CREATE TABLE IF NOT EXISTS transactions (
   resource TEXT,
   amount INTEGER,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(seigneurie_id) REFERENCES seigneuries(id)
+);
+CREATE TABLE IF NOT EXISTS barony_properties (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  barony_id INTEGER UNIQUE,
+  water_access INTEGER DEFAULT 0,
+  sea_access INTEGER DEFAULT 0,
+  has_or INTEGER DEFAULT 0,
+  has_argent INTEGER DEFAULT 0,
+  has_fer INTEGER DEFAULT 0,
+  has_pierre INTEGER DEFAULT 0,
+  has_epices INTEGER DEFAULT 0,
+  has_perle INTEGER DEFAULT 0,
+  has_encens INTEGER DEFAULT 0,
+  has_huiles INTEGER DEFAULT 0,
+  has_pierre_precieuses INTEGER DEFAULT 0,
+  has_soie INTEGER DEFAULT 0,
+  has_sel INTEGER DEFAULT 0,
+  has_fourrure INTEGER DEFAULT 0,
+  has_teinture INTEGER DEFAULT 0,
+  has_ivoire INTEGER DEFAULT 0,
+  has_vin INTEGER DEFAULT 0,
+  field_limit INTEGER DEFAULT 0,
+  fishing_limit INTEGER DEFAULT 0,
+  high_sea_boat_limit INTEGER DEFAULT 0,
+  FOREIGN KEY(barony_id) REFERENCES baronies(id)
+);
+CREATE TABLE IF NOT EXISTS fields (
+  seigneurie_id INTEGER PRIMARY KEY,
+  built INTEGER DEFAULT 0,
+  active INTEGER DEFAULT 0,
   FOREIGN KEY(seigneurie_id) REFERENCES seigneuries(id)
 );
 `;
@@ -448,12 +480,12 @@ app.get('/api/seigneurs', list('seigneurs'));
 app.post('/api/seigneurs', create('seigneurs',['name','religion_id','overlord_id','user_id']));
 app.put('/api/seigneurs/:id', update('seigneurs',['name','religion_id','overlord_id','user_id']));
 
-const inventaireFields = ['or_','pierre','fer','lingot_or','antidote','armureries','rhum','grague','vivres','architectes','charpentiers','maitres_oeuvre','maitre_espions','points_magique','fourrure','ivoire','soie','huile','teinture','epices','sel','perle','encens','vin','pierre_precieuse','esclaves','prestige','renommee'];
 app.get('/api/inventaire', list('inventaire'));
 app.post('/api/inventaire', create('inventaire', inventaireFields));
 app.put('/api/inventaire/:id', update('inventaire', inventaireFields));
 
 app.get('/api/seigneuries', (req, res) => {
+  if (!req.session.user || !req.session.user.is_admin) return res.status(403).json({ error: 'Forbidden' });
   const invSelect = inventaireFields.map(f => `i.${f}`).join(',');
   db.all(`SELECT s.id, s.baronnie_id, s.seigneur_id, s.population, s.inventaire_id, ${invSelect} FROM seigneuries s JOIN inventaire i ON s.inventaire_id=i.id`, [], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
@@ -462,6 +494,7 @@ app.get('/api/seigneuries', (req, res) => {
 });
 
 app.post('/api/seigneuries', (req, res) => {
+  if (!req.session.user || !req.session.user.is_admin) return res.status(403).json({ error: 'Forbidden' });
   const seigFields = ['baronnie_id','seigneur_id','population'];
   const seigValues = seigFields.map(f => sanitize(req.body[f]));
   const invValues = inventaireFields.map(f => sanitize(req.body[f]) || 0);
@@ -478,6 +511,7 @@ app.post('/api/seigneuries', (req, res) => {
 });
 
 app.put('/api/seigneuries/:id', (req, res) => {
+  if (!req.session.user || !req.session.user.is_admin) return res.status(403).json({ error: 'Forbidden' });
   const id = req.params.id;
   const seigFields = ['baronnie_id','seigneur_id','population'];
   const seigSet = seigFields.map(f => `${f}=?`).join(',');
@@ -532,17 +566,24 @@ app.get('/api/my_seigneurie', (req, res) => {
                 if (err) return res.status(500).json({ error: err.message });
                 const production = {};
                 rows.forEach(r => production[r.resource] = r.total);
-                function send(barony){
-                  res.json({ seigneurie: s, barony, inventaire, production });
-                }
-                if (s.baronnie_id) {
-                  db.get(`SELECT b.*, r.name as religion_name, c.name as culture_name FROM baronies b LEFT JOIN religions r ON b.religion_pop_id=r.id LEFT JOIN cultures c ON b.culture_id=c.id WHERE b.id=?`, [s.baronnie_id], (err, barony) => {
-                    if (err) return res.status(500).json({ error: err.message });
-                    send(barony);
-                  });
-                } else {
-                  send(null);
-                }
+                db.get('SELECT * FROM fields WHERE seigneurie_id=?', [s.id], (err, fieldRow) => {
+                  if (err) return res.status(500).json({ error: err.message });
+                  const fields = fieldRow || { built: 0, active: 0 };
+                  function finalize(barony, baronyProps) {
+                    res.json({ seigneurie: s, barony, inventaire, production, fields, baronyProps });
+                  }
+                  if (s.baronnie_id) {
+                    db.get('SELECT * FROM barony_properties WHERE barony_id=?', [s.baronnie_id], (err, props) => {
+                      if (err) return res.status(500).json({ error: err.message });
+                      db.get(`SELECT b.*, r.name as religion_name, c.name as culture_name FROM baronies b LEFT JOIN religions r ON b.religion_pop_id=r.id LEFT JOIN cultures c ON b.culture_id=c.id WHERE b.id=?`, [s.baronnie_id], (err, barony) => {
+                        if (err) return res.status(500).json({ error: err.message });
+                        finalize(barony, props || {});
+                      });
+                    });
+                  } else {
+                    finalize(null, {});
+                  }
+                });
               });
             });
           });
@@ -552,8 +593,14 @@ app.get('/api/my_seigneurie', (req, res) => {
   });
 });
 
-app.get('/api/transactions', list('transactions'));
-app.post('/api/transactions', create('transactions',['seigneurie_id','resource','amount']));
+app.get('/api/transactions', (req,res)=>{
+  if(!req.session.user || !req.session.user.is_admin) return res.status(403).json({ error: 'Forbidden' });
+  list('transactions')(req,res);
+});
+app.post('/api/transactions', (req,res)=>{
+  if(!req.session.user || !req.session.user.is_admin) return res.status(403).json({ error: 'Forbidden' });
+  create('transactions',['seigneurie_id','resource','amount'])(req,res);
+});
 
 app.get('/api/baronies', (req, res) => {
   const id = req.query.id;
@@ -578,6 +625,63 @@ app.delete('/api/baronies/:id', (req,res)=>{
   db.run('DELETE FROM baronies WHERE id=?',[req.params.id], function(err){
     if(err) return res.status(500).json({error: err.message});
     res.json({deleted: this.changes});
+  });
+});
+
+const baronyPropFields = ['barony_id','water_access','sea_access','has_or','has_argent','has_fer','has_pierre','has_epices','has_perle','has_encens','has_huiles','has_pierre_precieuses','has_soie','has_sel','has_fourrure','has_teinture','has_ivoire','has_vin','field_limit','fishing_limit','high_sea_boat_limit'];
+app.get('/api/barony_properties', (req,res)=>{
+  if(!req.session.user || !req.session.user.is_admin) return res.status(403).json({ error: 'Forbidden' });
+  list('barony_properties')(req,res);
+});
+app.post('/api/barony_properties', (req,res)=>{
+  if(!req.session.user || !req.session.user.is_admin) return res.status(403).json({ error: 'Forbidden' });
+  create('barony_properties', baronyPropFields)(req,res);
+});
+app.put('/api/barony_properties/:id', (req,res)=>{
+  if(!req.session.user || !req.session.user.is_admin) return res.status(403).json({ error: 'Forbidden' });
+  update('barony_properties', baronyPropFields)(req,res);
+});
+
+app.post('/api/building', (req,res)=>{
+  if(!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
+  const { type, quantity } = req.body;
+  const qty = parseInt(quantity,10) || 0;
+  if(qty <= 0) return res.status(400).json({ error: 'Quantité invalide' });
+  const userId = req.session.user.id;
+  db.get('SELECT seigneuries.id as id, seigneuries.baronnie_id, seigneuries.inventaire_id FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?', [userId], (err, srow)=>{
+    if(err) return res.status(500).json({ error: err.message });
+    if(!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
+    if(type !== 'field') return res.status(400).json({ error: 'Type inconnu' });
+    if(!srow.baronnie_id) return res.status(400).json({ error: 'Aucune baronnie associée' });
+    db.get('SELECT field_limit FROM barony_properties WHERE barony_id=?', [srow.baronnie_id], (err, props)=>{
+      if(err) return res.status(500).json({ error: err.message });
+      const max = props ? props.field_limit : 0;
+      db.get('SELECT * FROM fields WHERE seigneurie_id=?', [srow.id], (err, frow)=>{
+        if(err) return res.status(500).json({ error: err.message });
+        const built = frow ? frow.built : 0;
+        const active = frow ? frow.active : 0;
+        if(built + qty > max) return res.status(400).json({ error: 'Limite atteinte' });
+        db.get('SELECT or_ FROM inventaire WHERE id=?', [srow.inventaire_id], (err, inv)=>{
+          if(err) return res.status(500).json({ error: err.message });
+          const cost = 3 * qty;
+          if(inv.or_ < cost) return res.status(400).json({ error: 'Ressources insuffisantes' });
+          performTransaction(db, srow.id, 'or_', -cost, err2 => {
+            if(err2) return res.status(500).json({ error: err2.message });
+            const newBuilt = built + qty;
+            const newActive = active + qty;
+            const sql = frow ? 'UPDATE fields SET built=?, active=? WHERE seigneurie_id=?' : 'INSERT INTO fields (built, active, seigneurie_id) VALUES (?,?,?)';
+            const params = frow ? [newBuilt, newActive, srow.id] : [newBuilt, newActive, srow.id];
+            db.run(sql, params, function(err3){
+              if(err3) return res.status(500).json({ error: err3.message });
+              db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err4, inventaire)=>{
+                if(err4) return res.status(500).json({ error: err4.message });
+                res.json({ fields: { built: newBuilt, active: newActive }, inventaire });
+              });
+            });
+          });
+        });
+      });
+    });
   });
 });
 

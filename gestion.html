@@ -13,9 +13,36 @@
     </div>
   </header>
   <main class="gestion-main">
-    <div id="summary"></div>
+    <div class="tab-container" style="overflow:auto;flex:1">
+      <div class="tab-buttons">
+        <button class="tab-btn active" data-tab="ressources">Ressources</button>
+        <button class="tab-btn" data-tab="infra">Infrastructure Civile</button>
+      </div>
+      <div class="tab-panels">
+        <div id="tab-ressources" class="tab-panel active">
+          <div id="summary"></div>
+        </div>
+        <div id="tab-infra" class="tab-panel">
+          <div id="infrastructure"></div>
+        </div>
+      </div>
+    </div>
   </main>
   <script src="auth.js"></script>
   <script src="gestion.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const buttons = document.querySelectorAll('.tab-btn');
+      const panels = document.querySelectorAll('.tab-panel');
+      buttons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          buttons.forEach(b => b.classList.remove('active'));
+          panels.forEach(p => p.classList.remove('active'));
+          btn.classList.add('active');
+          document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+        });
+      });
+    });
+  </script>
 </body>
 </html>

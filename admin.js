@@ -21,6 +21,34 @@ const extraResources = [
 const inventaireFields = [...basicResources, ...luxuryResources, ...extraResources].map(([k]) => k);
 const inventaireLabels = Object.fromEntries([...basicResources, ...luxuryResources, ...extraResources]);
 
+const yesNoSelect = [{id:1,name:'Oui'},{id:0,name:'Non'}];
+const baronyPropBoolFields = ['water_access','sea_access','has_or','has_argent','has_fer','has_pierre','has_epices','has_perle','has_encens','has_huiles','has_pierre_precieuses','has_soie','has_sel','has_fourrure','has_teinture','has_ivoire','has_vin'];
+const baronyPropIntFields = ['field_limit','fishing_limit','high_sea_boat_limit'];
+const baronyPropFields = ['barony_id', ...baronyPropBoolFields, ...baronyPropIntFields];
+const baronyPropLabels = {
+  barony_id:'Baronnie',
+  water_access:"Accès à l'eau",
+  sea_access:'Accès à la mer',
+  has_or:'Or',
+  has_argent:'Argent',
+  has_fer:'Fer',
+  has_pierre:'Pierre',
+  has_epices:'Épices',
+  has_perle:'Perle',
+  has_encens:'Encens',
+  has_huiles:'Huiles',
+  has_pierre_precieuses:'Pierres Précieuses',
+  has_soie:'Soie',
+  has_sel:'Sel',
+  has_fourrure:'Fourrure',
+  has_teinture:'Teinture',
+  has_ivoire:'Ivoire',
+  has_vin:'Vin',
+  field_limit:'Limite de champs',
+  fishing_limit:'Limite de Pêche',
+  high_sea_boat_limit:'Limite de Bateau en haute mer'
+};
+
 async function fetchJSON(url, options){
   const resp = await fetch(API_BASE + url, options);
   return resp.json();
@@ -208,7 +236,7 @@ function renderTable(container, rows, opts){
 }
 
 async function loadAll(){
-  const [seigneurs, religions, cultures, kingdoms, counties, duchies, viscounties, marquisates, archduchies, empires, users, seigneuries, baronies] = await Promise.all([
+  const [seigneurs, religions, cultures, kingdoms, counties, duchies, viscounties, marquisates, archduchies, empires, users, seigneuries, baronies, baronyProps] = await Promise.all([
     fetchJSON('/api/seigneurs'),
     fetchJSON('/api/religions'),
     fetchJSON('/api/cultures'),
@@ -222,6 +250,7 @@ async function loadAll(){
     fetchJSON('/api/users'),
     fetchJSON('/api/seigneuries'),
     fetchJSON('/api/baronies'),
+    fetchJSON('/api/barony_properties'),
   ]);
 
   const seigneursSelect = seigneurs.slice().sort((a, b) => a.name.localeCompare(b.name));
@@ -329,6 +358,16 @@ async function loadAll(){
     fields:['name','user_id','religion_id','overlord_id'],
     selects:{user_id:userSelectFn, religion_id:religionsSelect, overlord_id:seigneursSelect},
     labels:{name:'Nom', user_id:'Utilisateur', religion_id:'Religion', overlord_id:'Suzerain'}
+  });
+
+  const baronyPropsById = baronyProps.slice().sort((a,b)=>a.id - b.id);
+  const boolSelects = {};
+  baronyPropBoolFields.forEach(f => { boolSelects[f] = yesNoSelect; });
+  renderTable(document.getElementById('tableBaronyProps'), baronyPropsById, {
+    endpoint:'barony_properties',
+    fields:baronyPropFields,
+    selects:{barony_id:baroniesSelect, ...boolSelects},
+    labels:baronyPropLabels
   });
 }
 
