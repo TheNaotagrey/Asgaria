@@ -163,6 +163,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         alert('Mise à jour impossible');
         location.reload();
       }
+    }
 
     const propsDiv = document.getElementById('baronyProps');
     if (propsDiv) {
