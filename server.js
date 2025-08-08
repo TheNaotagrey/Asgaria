@@ -578,28 +578,29 @@ app.get('/api/my_seigneurie', (req, res) => {
           ensureSeigneurie(s => {
             db.get('SELECT * FROM inventaire WHERE id=?', [s.inventaire_id], (err, inventaire) => {
               if (err) return res.status(500).json({ error: err.message });
-              db.all('SELECT resource, SUM(amount) as total FROM transactions WHERE seigneurie_id=? GROUP BY resource', [s.id], (err, rows) => {
+              db.get('SELECT * FROM fields WHERE seigneurie_id=?', [s.id], (err, fieldRow) => {
                 if (err) return res.status(500).json({ error: err.message });
-                const production = {};
-                rows.forEach(r => production[r.resource] = r.total);
-                db.get('SELECT * FROM fields WHERE seigneurie_id=?', [s.id], (err, fieldRow) => {
-                  if (err) return res.status(500).json({ error: err.message });
-                  const fields = fieldRow || { built: 0, active: 0 };
-                  function finalize(barony, baronyProps) {
-                    res.json({ seigneurie: s, barony, inventaire, production, fields, baronyProps });
-                  }
-                  if (s.baronnie_id) {
-                    db.get('SELECT * FROM barony_properties WHERE barony_id=?', [s.baronnie_id], (err, props) => {
+                const fields = fieldRow || { built: 0, active: 0 };
+                const slaves = inventaire.esclaves || 0;
+                const employed = fields.active; // one worker per active field for now
+                const production = {
+                  vivres: fields.active * 75 - (s.population * 15 + slaves * 5)
+                };
+                const employment = { employed, slaves };
+                function finalize(barony, baronyProps) {
+                  res.json({ seigneurie: s, barony, inventaire, production, fields, baronyProps, employment });
+                }
+                if (s.baronnie_id) {
+                  db.get('SELECT * FROM barony_properties WHERE barony_id=?', [s.baronnie_id], (err, props) => {
+                    if (err) return res.status(500).json({ error: err.message });
+                    db.get(`SELECT b.*, r.name as religion_name, c.name as culture_name FROM baronies b LEFT JOIN religions r ON b.religion_pop_id=r.id LEFT JOIN cultures c ON b.culture_id=c.id WHERE b.id=?`, [s.baronnie_id], (err, barony) => {
                       if (err) return res.status(500).json({ error: err.message });
-                      db.get(`SELECT b.*, r.name as religion_name, c.name as culture_name FROM baronies b LEFT JOIN religions r ON b.religion_pop_id=r.id LEFT JOIN cultures c ON b.culture_id=c.id WHERE b.id=?`, [s.baronnie_id], (err, barony) => {
-                        if (err) return res.status(500).json({ error: err.message });
-                        finalize(barony, props || {});
-                      });
+                      finalize(barony, props || {});
                     });
-                  } else {
-                    finalize(null, {});
-                  }
-                });
+                  });
+                } else {
+                  finalize(null, {});
+                }
               });
             });
           });

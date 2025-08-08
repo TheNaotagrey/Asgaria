@@ -23,11 +23,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     const production = data.production || {};
     const fields = data.fields || { built:0, active:0 };
     const baronyProps = data.baronyProps || {};
+    const employment = data.employment || { employed:0, slaves:0 };
 
     const summary = document.getElementById('summary');
     summary.innerHTML = `
       <p><strong>Baronnie :</strong> ${barony.name || 'Aucune'}</p>
-      <p><strong>Population :</strong> ${s.population}</p>
+      <div id="populationSummary"></div>
       <p><strong>Religion :</strong> ${barony.religion_name || 'Inconnue'}</p>
       <p><strong>Culture :</strong> ${barony.culture_name || 'Inconnue'}</p>
       <p><strong>IDH :</strong> À calculer</p>
@@ -41,6 +42,17 @@ document.addEventListener('DOMContentLoaded', async () => {
           <table id="luxuryResourcesTable" class="admin-table"></table>
         </div>
       </div>
+    `;
+
+    const popSummary = document.getElementById('populationSummary');
+    popSummary.innerHTML = `
+      <h2>Population</h2>
+      <table class="admin-table">
+        <tr><th>Type</th><th>Nombre</th></tr>
+        <tr><td>Population totale</td><td>${s.population}</td></tr>
+        <tr><td>Population employée</td><td>${employment.employed}</td></tr>
+        <tr><td>Esclaves</td><td>${employment.slaves}</td></tr>
+      </table>
     `;
 
     const basicTable = document.getElementById('basicResourcesTable');
