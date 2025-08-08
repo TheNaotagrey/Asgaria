@@ -49,6 +49,16 @@ const baronyPropLabels = {
   high_sea_boat_limit:'Limite de Bateau en haute mer'
 };
 
+const buildingPropFields = ['type','costs','max','workers_per_building','restrictions','description'];
+const buildingPropLabels = {
+  type:'Type',
+  costs:'Coûts',
+  max:'Maximum',
+  workers_per_building:'Travailleurs/bâtiment',
+  restrictions:'Restrictions',
+  description:'Description'
+};
+
 async function fetchJSON(url, options){
   const resp = await fetch(API_BASE + url, options);
   return resp.json();
@@ -236,7 +246,7 @@ function renderTable(container, rows, opts){
 }
 
 async function loadAll(){
-  const [seigneurs, religions, cultures, kingdoms, counties, duchies, viscounties, marquisates, archduchies, empires, users, seigneuries, baronies, baronyProps] = await Promise.all([
+  const [seigneurs, religions, cultures, kingdoms, counties, duchies, viscounties, marquisates, archduchies, empires, users, seigneuries, baronies, baronyProps, buildingProps] = await Promise.all([
     fetchJSON('/api/seigneurs'),
     fetchJSON('/api/religions'),
     fetchJSON('/api/cultures'),
@@ -251,6 +261,7 @@ async function loadAll(){
     fetchJSON('/api/seigneuries'),
     fetchJSON('/api/baronies'),
     fetchJSON('/api/barony_properties'),
+    fetchJSON('/api/building_properties'),
   ]);
 
   const seigneursSelect = seigneurs.slice().sort((a, b) => a.name.localeCompare(b.name));
@@ -368,6 +379,13 @@ async function loadAll(){
     fields:baronyPropFields,
     selects:{barony_id:baroniesSelect, ...boolSelects},
     labels:baronyPropLabels
+  });
+
+  const buildingPropsById = buildingProps.slice().sort((a,b)=>a.id - b.id);
+  renderTable(document.getElementById('tableBuildingProps'), buildingPropsById, {
+    endpoint:'building_properties',
+    fields:buildingPropFields,
+    labels:buildingPropLabels
   });
 }
 
