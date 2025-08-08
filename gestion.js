@@ -92,6 +92,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const modifier = 1;
     const totalProd = fields.active * indivProd * modifier;
     const canBuild = inv.or_ >= costField && fields.built < maxFields;
+    const maxActive = Math.min(fields.built, s.population + employment.slaves);
     infra.innerHTML = `
       <h2>Production</h2>
       <table class="admin-table">
@@ -103,8 +104,14 @@ document.addEventListener('DOMContentLoaded', async () => {
           <td>${maxFields}</td>
           <td>${indivProd}</td>
           <td>${modifier}</td>
-          <td>${fields.active}</td>
-          <td>${totalProd}</td>
+          <td>
+            <div class="qty-control">
+              <button id="decreaseField" class="qty-btn">-</button>
+              <input type="number" id="fieldsActiveInput" min="0" max="${maxActive}" value="${fields.active}" />
+              <button id="increaseField" class="qty-btn">+</button>
+            </div>
+          </td>
+          <td id="fieldTotalProd">${totalProd}</td>
           <td>Aucune</td>
           <td>3 Or</td>
           <td><button id="buildField" ${canBuild ? '' : 'disabled'}>Construire</button></td>
@@ -122,6 +129,40 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       });
     }
+    const activeInput = document.getElementById('fieldsActiveInput');
+    const incBtn = document.getElementById('increaseField');
+    const decBtn = document.getElementById('decreaseField');
+    function adjust(delta){
+      let v = parseInt(activeInput.value,10) + delta;
+      const max = parseInt(activeInput.max,10);
+      if(v < 0) v = 0;
+      if(v > max) v = max;
+      setActive(v);
+    }
+    if(incBtn) incBtn.addEventListener('click', ()=>adjust(1));
+    if(decBtn) decBtn.addEventListener('click', ()=>adjust(-1));
+    if(activeInput) activeInput.addEventListener('change', ()=>{
+      let v = parseInt(activeInput.value,10) || 0;
+      const max = parseInt(activeInput.max,10);
+      if(v < 0) v = 0;
+      if(v > max) v = max;
+      setActive(v);
+    });
+
+    async function setActive(value){
+      activeInput.value = value;
+      const resp = await fetch('/api/fields/activate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({quantity:value})});
+      if(resp.ok){
+        const data = await resp.json();
+        const prod = value * indivProd * modifier;
+        const prodCell = document.getElementById('fieldTotalProd');
+        if(prodCell) prodCell.textContent = prod;
+        const employedCell = document.querySelector('#populationSummary table tr:nth-child(3) td:nth-child(2)');
+        if(employedCell) employedCell.textContent = data.employment.employed;
+      } else {
+        alert('Mise à jour impossible');
+        location.reload();
+      }
 
     const propsDiv = document.getElementById('baronyProps');
     if (propsDiv) {
