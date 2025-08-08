@@ -159,6 +159,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         if(prodCell) prodCell.textContent = prod;
         const employedCell = document.querySelector('#populationSummary table tr:nth-child(3) td:nth-child(2)');
         if(employedCell) employedCell.textContent = data.employment.employed;
+        // Met à jour la production dans le tableau récapitulatif des ressources
+        production.vivres = prod;
+        if(basicTable) basicTable.innerHTML = buildTable(basicResources, true);
       } else {
         alert('Mise à jour impossible');
         location.reload();
