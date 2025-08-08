@@ -642,6 +642,28 @@ app.put('/api/barony_properties/:id', (req,res)=>{
   update('barony_properties', baronyPropFields)(req,res);
 });
 
+function canConstruct(db, srow, type, qty, cb){
+  if(type !== 'field') return cb(new Error('Type inconnu'));
+  if(!srow.baronnie_id) return cb(new Error('Aucune baronnie associée'));
+  db.get('SELECT field_limit FROM barony_properties WHERE barony_id=?', [srow.baronnie_id], (err, props)=>{
+    if(err) return cb(err);
+    const max = props ? props.field_limit : 0;
+    db.get('SELECT * FROM fields WHERE seigneurie_id=?', [srow.id], (err, frow)=>{
+      if(err) return cb(err);
+      const hasRow = !!frow;
+      const built = hasRow ? frow.built : 0;
+      const active = hasRow ? frow.active : 0;
+      if(built + qty > max) return cb(new Error('Limite atteinte'));
+      db.get('SELECT or_ FROM inventaire WHERE id=?', [srow.inventaire_id], (err, inv)=>{
+        if(err) return cb(err);
+        const cost = 3 * qty;
+        if(inv.or_ < cost) return cb(new Error('Ressources insuffisantes'));
+        cb(null, { cost, built, active, hasRow });
+      });
+    });
+  });
+}
+
 app.post('/api/building', (req,res)=>{
   if(!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
   const { type, quantity } = req.body;
@@ -651,33 +673,19 @@ app.post('/api/building', (req,res)=>{
   db.get('SELECT seigneuries.id as id, seigneuries.baronnie_id, seigneuries.inventaire_id FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?', [userId], (err, srow)=>{
     if(err) return res.status(500).json({ error: err.message });
     if(!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
-    if(type !== 'field') return res.status(400).json({ error: 'Type inconnu' });
-    if(!srow.baronnie_id) return res.status(400).json({ error: 'Aucune baronnie associée' });
-    db.get('SELECT field_limit FROM barony_properties WHERE barony_id=?', [srow.baronnie_id], (err, props)=>{
-      if(err) return res.status(500).json({ error: err.message });
-      const max = props ? props.field_limit : 0;
-      db.get('SELECT * FROM fields WHERE seigneurie_id=?', [srow.id], (err, frow)=>{
-        if(err) return res.status(500).json({ error: err.message });
-        const built = frow ? frow.built : 0;
-        const active = frow ? frow.active : 0;
-        if(built + qty > max) return res.status(400).json({ error: 'Limite atteinte' });
-        db.get('SELECT or_ FROM inventaire WHERE id=?', [srow.inventaire_id], (err, inv)=>{
-          if(err) return res.status(500).json({ error: err.message });
-          const cost = 3 * qty;
-          if(inv.or_ < cost) return res.status(400).json({ error: 'Ressources insuffisantes' });
-          performTransaction(db, srow.id, 'or_', -cost, err2 => {
-            if(err2) return res.status(500).json({ error: err2.message });
-            const newBuilt = built + qty;
-            const newActive = active + qty;
-            const sql = frow ? 'UPDATE fields SET built=?, active=? WHERE seigneurie_id=?' : 'INSERT INTO fields (built, active, seigneurie_id) VALUES (?,?,?)';
-            const params = frow ? [newBuilt, newActive, srow.id] : [newBuilt, newActive, srow.id];
-            db.run(sql, params, function(err3){
-              if(err3) return res.status(500).json({ error: err3.message });
-              db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err4, inventaire)=>{
-                if(err4) return res.status(500).json({ error: err4.message });
-                res.json({ fields: { built: newBuilt, active: newActive }, inventaire });
-              });
-            });
+    canConstruct(db, srow, type, qty, (err2, info)=>{
+      if(err2) return res.status(400).json({ error: err2.message });
+      performTransaction(db, srow.id, 'or_', -info.cost, err3 => {
+        if(err3) return res.status(500).json({ error: err3.message });
+        const newBuilt = info.built + qty;
+        const newActive = info.active + qty;
+        const sql = info.hasRow ? 'UPDATE fields SET built=?, active=? WHERE seigneurie_id=?' : 'INSERT INTO fields (built, active, seigneurie_id) VALUES (?,?,?)';
+        const params = info.hasRow ? [newBuilt, newActive, srow.id] : [newBuilt, newActive, srow.id];
+        db.run(sql, params, function(err4){
+          if(err4) return res.status(500).json({ error: err4.message });
+          db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err5, inventaire)=>{
+            if(err5) return res.status(500).json({ error: err5.message });
+            res.json({ fields: { built: newBuilt, active: newActive }, inventaire });
           });
         });
       });
