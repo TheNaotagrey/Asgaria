@@ -201,6 +201,9 @@ CREATE TABLE IF NOT EXISTS barony_properties (
 CREATE TABLE IF NOT EXISTS building_properties (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   type TEXT UNIQUE,
+  label TEXT,
+  produces TEXT,
+  production INTEGER,
   costs TEXT,
   max INTEGER,
   workers_per_building INTEGER DEFAULT 1,
@@ -672,7 +675,7 @@ app.put('/api/barony_properties/:id', (req,res)=>{
   update('barony_properties', baronyPropFields)(req,res);
 });
 
-const buildingPropFields = ['type','costs','max','workers_per_building','restrictions','description'];
+const buildingPropFields = ['type','label','produces','production','costs','max','workers_per_building','restrictions','description'];
 app.get('/api/building_properties', (req,res)=>{
   if(!req.session.user || !req.session.user.is_admin) return res.status(403).json({ error: 'Forbidden' });
   list('building_properties')(req,res);
