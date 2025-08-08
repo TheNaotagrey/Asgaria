@@ -198,6 +198,15 @@ CREATE TABLE IF NOT EXISTS barony_properties (
   high_sea_boat_limit INTEGER DEFAULT 0,
   FOREIGN KEY(barony_id) REFERENCES baronies(id)
 );
+CREATE TABLE IF NOT EXISTS building_properties (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  type TEXT UNIQUE,
+  costs TEXT,
+  max INTEGER,
+  workers_per_building INTEGER DEFAULT 1,
+  restrictions TEXT,
+  description TEXT
+);
 CREATE TABLE IF NOT EXISTS fields (
   seigneurie_id INTEGER PRIMARY KEY,
   built INTEGER DEFAULT 0,
@@ -581,26 +590,30 @@ app.get('/api/my_seigneurie', (req, res) => {
               db.get('SELECT * FROM fields WHERE seigneurie_id=?', [s.id], (err, fieldRow) => {
                 if (err) return res.status(500).json({ error: err.message });
                 const fields = fieldRow || { built: 0, active: 0 };
-                const slaves = inventaire.esclaves || 0;
-                const employed = fields.active; // one worker per active field for now
-                const production = {
-                  vivres: fields.active * 75 - (s.population * 15 + slaves * 5)
-                };
-                const employment = { employed, slaves };
-                function finalize(barony, baronyProps) {
-                  res.json({ seigneurie: s, barony, inventaire, production, fields, baronyProps, employment });
-                }
-                if (s.baronnie_id) {
-                  db.get('SELECT * FROM barony_properties WHERE barony_id=?', [s.baronnie_id], (err, props) => {
-                    if (err) return res.status(500).json({ error: err.message });
-                    db.get(`SELECT b.*, r.name as religion_name, c.name as culture_name FROM baronies b LEFT JOIN religions r ON b.religion_pop_id=r.id LEFT JOIN cultures c ON b.culture_id=c.id WHERE b.id=?`, [s.baronnie_id], (err, barony) => {
-                      if (err) return res.status(500).json({ error: err.message });
-                      finalize(barony, props || {});
+                db.get('SELECT workers_per_building FROM building_properties WHERE type=?', ['field'], (err2, bprop) => {
+                  if (err2) return res.status(500).json({ error: err2.message });
+                  const baseWorkers = bprop ? (bprop.workers_per_building || 0) : 1;
+                  const slaves = inventaire.esclaves || 0;
+                  const employed = fields.active * baseWorkers;
+                  const production = {
+                    vivres: fields.active * 75 - (s.population * 15 + slaves * 5)
+                  };
+                  const employment = { employed, slaves };
+                  function finalize(barony, baronyProps) {
+                    res.json({ seigneurie: s, barony, inventaire, production, fields, baronyProps, employment });
+                  }
+                  if (s.baronnie_id) {
+                    db.get('SELECT * FROM barony_properties WHERE barony_id=?', [s.baronnie_id], (err3, props) => {
+                      if (err3) return res.status(500).json({ error: err3.message });
+                      db.get(`SELECT b.*, r.name as religion_name, c.name as culture_name FROM baronies b LEFT JOIN religions r ON b.religion_pop_id=r.id LEFT JOIN cultures c ON b.culture_id=c.id WHERE b.id=?`, [s.baronnie_id], (err4, barony) => {
+                        if (err4) return res.status(500).json({ error: err4.message });
+                        finalize(barony, props || {});
+                      });
                     });
-                  });
-                } else {
-                  finalize(null, {});
-                }
+                  } else {
+                    finalize(null, {});
+                  }
+                });
               });
             });
           });
@@ -659,25 +672,54 @@ app.put('/api/barony_properties/:id', (req,res)=>{
   update('barony_properties', baronyPropFields)(req,res);
 });
 
+const buildingPropFields = ['type','costs','max','workers_per_building','restrictions','description'];
+app.get('/api/building_properties', (req,res)=>{
+  if(!req.session.user || !req.session.user.is_admin) return res.status(403).json({ error: 'Forbidden' });
+  list('building_properties')(req,res);
+});
+app.post('/api/building_properties', (req,res)=>{
+  if(!req.session.user || !req.session.user.is_admin) return res.status(403).json({ error: 'Forbidden' });
+  create('building_properties', buildingPropFields)(req,res);
+});
+app.put('/api/building_properties/:id', (req,res)=>{
+  if(!req.session.user || !req.session.user.is_admin) return res.status(403).json({ error: 'Forbidden' });
+  update('building_properties', buildingPropFields)(req,res);
+});
+
 function canConstruct(db, srow, type, qty, cb){
-  if(type !== 'field') return cb(new Error('Type inconnu'));
-  if(!srow.baronnie_id) return cb(new Error('Aucune baronnie associée'));
-  db.get('SELECT field_limit FROM barony_properties WHERE barony_id=?', [srow.baronnie_id], (err, props)=>{
-    if(err) return cb(err);
-    const max = props ? props.field_limit : 0;
-    db.get('SELECT * FROM fields WHERE seigneurie_id=?', [srow.id], (err, frow)=>{
-      if(err) return cb(err);
-      const hasRow = !!frow;
-      const built = hasRow ? frow.built : 0;
-      const active = hasRow ? frow.active : 0;
-      if(built + qty > max) return cb(new Error('Limite atteinte'));
-      db.get('SELECT or_ FROM inventaire WHERE id=?', [srow.inventaire_id], (err, inv)=>{
-        if(err) return cb(err);
-        const cost = 3 * qty;
-        if(inv.or_ < cost) return cb(new Error('Ressources insuffisantes'));
-        cb(null, { cost, built, active, hasRow });
-      });
+  db.get('SELECT * FROM building_properties WHERE type=?', [type], (err, bprops) => {
+    if (err) return cb(err);
+    if (!bprops) return cb(new Error('Type inconnu'));
+    if (!srow.baronnie_id) return cb(new Error('Aucune baronnie associée'));
+    const absMax = bprops.max != null ? bprops.max : Infinity;
+    const costObj = bprops.costs ? JSON.parse(bprops.costs) : {};
+    const costs = {};
+    Object.entries(costObj).forEach(([res, val]) => {
+      costs[res] = (parseInt(val, 10) || 0) * qty;
     });
+    if (type === 'field') {
+      db.get('SELECT field_limit FROM barony_properties WHERE barony_id=?', [srow.baronnie_id], (err2, props) => {
+        if (err2) return cb(err2);
+        const barMax = props ? props.field_limit : Infinity;
+        const max = Math.min(absMax, barMax);
+        db.get('SELECT * FROM fields WHERE seigneurie_id=?', [srow.id], (err3, frow) => {
+          if (err3) return cb(err3);
+          const hasRow = !!frow;
+          const built = hasRow ? frow.built : 0;
+          const active = hasRow ? frow.active : 0;
+          if (built + qty > max) return cb(new Error('Limite atteinte'));
+          db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err4, inv) => {
+            if (err4) return cb(err4);
+            for (const [res, val] of Object.entries(costs)) {
+              if ((inv[res] || 0) < val) return cb(new Error('Ressources insuffisantes'));
+            }
+            cb(null, { costs, built, active, hasRow });
+          });
+        });
+      });
+    } else {
+      cb(new Error('Type inconnu'));
+    }
   });
 }
 
@@ -692,8 +734,18 @@ app.post('/api/building', (req,res)=>{
     if(!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
     canConstruct(db, srow, type, qty, (err2, info)=>{
       if(err2) return res.status(400).json({ error: err2.message });
-      performTransaction(db, srow.id, 'or_', -info.cost, err3 => {
-        if(err3) return res.status(500).json({ error: err3.message });
+      const entries = Object.entries(info.costs);
+      let idx = 0;
+      function deduct(){
+        if(idx >= entries.length) return afterDeduct();
+        const [resName, amount] = entries[idx++];
+        if(amount === 0) return deduct();
+        performTransaction(db, srow.id, resName, -amount, err3 => {
+          if(err3) return res.status(500).json({ error: err3.message });
+          deduct();
+        });
+      }
+      function afterDeduct(){
         const newBuilt = info.built + qty;
         const newActive = info.active + qty;
         const sql = info.hasRow ? 'UPDATE fields SET built=?, active=? WHERE seigneurie_id=?' : 'INSERT INTO fields (built, active, seigneurie_id) VALUES (?,?,?)';
@@ -705,7 +757,8 @@ app.post('/api/building', (req,res)=>{
             res.json({ fields: { built: newBuilt, active: newActive }, inventaire });
           });
         });
-      });
+      }
+      deduct();
     });
   });
 });
