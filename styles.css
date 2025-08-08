@@ -286,6 +286,22 @@ main {
   text-align: center;
 }
 
+.cost-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+.cost-row select {
+  flex: 1;
+}
+.cost-row input {
+  width: 60px;
+}
+.cost-row button {
+  padding: 0 6px;
+}
+
 /* Onglets de la page d'administration */
 .tab-buttons {
   display: flex;

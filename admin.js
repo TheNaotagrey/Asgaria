@@ -138,6 +138,64 @@ function renderTable(container, rows, opts){
   };
 
   const makeInput = (val, field, item)=>{
+    if(field === 'costs'){
+      const container = document.createElement('div');
+      const list = document.createElement('div');
+      container.appendChild(list);
+      const addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.textContent = '+';
+      container.appendChild(addBtn);
+      function addRow(res = '', qty = ''){
+        const row = document.createElement('div');
+        row.className = 'cost-row';
+        const sel = document.createElement('select');
+        const blank = document.createElement('option');
+        blank.value = '';
+        sel.appendChild(blank);
+        Object.entries(inventaireLabels).forEach(([k,l])=>{
+          const op = document.createElement('option');
+          op.value = k;
+          op.textContent = l;
+          if(k === res) op.selected = true;
+          sel.appendChild(op);
+        });
+        const qtyInput = document.createElement('input');
+        qtyInput.type = 'number';
+        qtyInput.min = '0';
+        qtyInput.value = qty;
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.textContent = '-';
+        removeBtn.addEventListener('click', ()=> row.remove());
+        row.appendChild(sel);
+        row.appendChild(qtyInput);
+        row.appendChild(removeBtn);
+        list.appendChild(row);
+      }
+      addBtn.addEventListener('click', ()=> addRow());
+      try {
+        const obj = JSON.parse(val || '{}');
+        const entries = Object.entries(obj);
+        if(entries.length){
+          entries.forEach(([r,q])=> addRow(r,q));
+        } else {
+          addRow();
+        }
+      } catch(e){
+        addRow();
+      }
+      container.getValue = ()=>{
+        const res = {};
+        list.querySelectorAll('.cost-row').forEach(rw=>{
+          const k = rw.querySelector('select').value;
+          const q = parseInt(rw.querySelector('input').value,10);
+          if(k && q) res[k] = q;
+        });
+        return JSON.stringify(res);
+      };
+      return container;
+    }
     if(opts.selects && opts.selects[field]){
       const select = document.createElement('select');
       let optList = opts.selects[field];
@@ -190,7 +248,9 @@ function renderTable(container, rows, opts){
         const payload = {};
         opts.fields.forEach((f,i)=>{
           const el = tr.children[i+1].firstChild;
-          if(opts.selects && opts.selects[f]){
+          if(el.getValue){
+            payload[f] = el.getValue();
+          } else if(opts.selects && opts.selects[f]){
             payload[f] = el.value ? parseInt(el.value,10) : null;
           } else {
             payload[f] = el.value.trim();
@@ -223,7 +283,9 @@ function renderTable(container, rows, opts){
       const payload = {};
       opts.fields.forEach(f=>{
         const el = addInputs[f];
-        if(opts.selects && opts.selects[f]){
+        if(el.getValue){
+          payload[f] = el.getValue();
+        } else if(opts.selects && opts.selects[f]){
           payload[f] = el.value ? parseInt(el.value,10) : null;
         } else {
           payload[f] = el.value.trim();
