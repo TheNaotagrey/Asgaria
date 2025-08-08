@@ -282,6 +282,22 @@ db.exec(initSql, () => {
       }
     }
   });
+  // Ensure every barony has a properties row with default values
+  db.all('SELECT id FROM baronies', (err, rows) => {
+    if (err || !rows) return;
+    rows.forEach(b => {
+      db.run('INSERT OR IGNORE INTO barony_properties (barony_id) VALUES (?)', [b.id]);
+    });
+    const cols = [
+      'water_access','sea_access','has_or','has_argent','has_fer','has_pierre',
+      'has_epices','has_perle','has_encens','has_huiles','has_pierre_precieuses',
+      'has_soie','has_sel','has_fourrure','has_teinture','has_ivoire','has_vin',
+      'field_limit','fishing_limit','high_sea_boat_limit'
+    ];
+    cols.forEach(col => {
+      db.run(`UPDATE barony_properties SET ${col}=0 WHERE ${col} IS NULL`);
+    });
+  });
 });
 
 // accept large pixel blobs
