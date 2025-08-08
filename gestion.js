@@ -12,6 +12,30 @@ const luxuryResources = [
   ['encens', 'Encens'], ['vin', 'Vin'], ['pierre_precieuse', 'Pierres précieuses']
 ];
 
+const baronyPropBoolFields = ['water_access','sea_access','has_or','has_argent','has_fer','has_pierre','has_epices','has_perle','has_encens','has_huiles','has_pierre_precieuses','has_soie','has_sel','has_fourrure','has_teinture','has_ivoire','has_vin'];
+const baronyPropLabels = {
+  water_access:"Accès à l'eau",
+  sea_access:'Accès à la mer',
+  has_or:'Or',
+  has_argent:'Argent',
+  has_fer:'Fer',
+  has_pierre:'Pierre',
+  has_epices:'Épices',
+  has_perle:'Perle',
+  has_encens:'Encens',
+  has_huiles:'Huiles',
+  has_pierre_precieuses:'Pierres Précieuses',
+  has_soie:'Soie',
+  has_sel:'Sel',
+  has_fourrure:'Fourrure',
+  has_teinture:'Teinture',
+  has_ivoire:'Ivoire',
+  has_vin:'Vin',
+  field_limit:'Limite de champs',
+  fishing_limit:'Limite de Pêche',
+  high_sea_boat_limit:'Limite de Bateau en haute mer'
+};
+
 document.addEventListener('DOMContentLoaded', async () => {
   try {
     const res = await fetch('/api/my_seigneurie');
@@ -105,7 +129,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       });
     }
-
     const activeInput = document.getElementById('fieldsActiveInput');
     const incBtn = document.getElementById('increaseField');
     const decBtn = document.getElementById('decreaseField');
@@ -140,6 +163,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         alert('Mise à jour impossible');
         location.reload();
       }
+
+    const propsDiv = document.getElementById('baronyProps');
+    if (propsDiv) {
+      propsDiv.innerHTML = buildPropsTable(baronyProps);
     }
 
     function buildTable(list, showMax = false) {
@@ -159,6 +186,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (showMax) html += '<td></td>';
         html += '</tr>';
       }
+      return html;
+    }
+
+    function buildPropsTable(props) {
+      let html = '<table class="admin-table"><tr><th>Propriété</th><th>Valeur</th></tr>';
+      for (const [key, label] of Object.entries(baronyPropLabels)) {
+        let val = props[key];
+        if (baronyPropBoolFields.includes(key)) {
+          val = val ? 'Oui' : 'Non';
+        } else if (val === undefined || val === null) {
+          val = '';
+        }
+        html += `<tr><td>${label}</td><td>${val}</td></tr>`;
+      }
+      html += '</table>';
       return html;
     }
   } catch (e) {
