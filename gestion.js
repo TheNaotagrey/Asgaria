@@ -12,6 +12,8 @@ const luxuryResources = [
   ['encens', 'Encens'], ['vin', 'Vin'], ['pierre_precieuse', 'Pierres précieuses']
 ];
 
+const resourceLabels = Object.fromEntries([...basicResources, ...luxuryResources]);
+
 const baronyPropBoolFields = ['water_access','sea_access','has_or','has_argent','has_fer','has_pierre','has_epices','has_perle','has_encens','has_huiles','has_pierre_precieuses','has_soie','has_sel','has_fourrure','has_teinture','has_ivoire','has_vin'];
 const baronyPropLabels = {
   water_access:"Accès à l'eau",
@@ -99,16 +101,44 @@ async function loadAndRender() {
     const infra = document.getElementById('infrastructure');
     if (infra) {
       let html = '<h2>Infrastructure</h2><table class="admin-table" id="buildingsTable">';
-      html += '<tr><th>Nom</th><th>Production</th><th>Construits</th><th>Actifs</th><th>Activer</th><th>Construire</th></tr>';
+      html += '<tr><th>Nom</th><th>Production</th><th>Coût</th><th>Construits</th><th>Max</th><th>Actifs</th><th>Activer</th><th>Construire</th></tr>';
       for (const bp of buildingProps) {
         const prod = bp.production ? `${bp.production} ${bp.produces || ''}` : '';
         const info = buildings[bp.id] || { built: 0, active: 0 };
         const built = info.built || 0;
         const active = info.active || 0;
-        html += `<tr data-id="${bp.id}"><td>${bp.label || bp.type}</td><td>${prod}</td><td>${built}</td>`;
+
+        let maxVal = '';
+        if (bp.max !== undefined && bp.max !== null) {
+          if (typeof bp.max === 'number') {
+            maxVal = bp.max;
+          } else if (baronyProps[bp.max] !== undefined) {
+            maxVal = baronyProps[bp.max];
+          }
+        }
+
+        let costHtml = '';
+        let hasResources = true;
+        try {
+          const costs = bp.costs ? JSON.parse(bp.costs) : {};
+          const parts = [];
+          for (const [k, q] of Object.entries(costs)) {
+            const label = resourceLabels[k] || k;
+            parts.push(`${label}: ${q}`);
+            if ((inv[k] || 0) < q) hasResources = false;
+          }
+          costHtml = parts.join('<br>');
+        } catch (e) {
+          costHtml = '';
+        }
+        if (costHtml && !hasResources) {
+          costHtml = `<span style="color:red">${costHtml}</span>`;
+        }
+
+        html += `<tr data-id="${bp.id}"><td>${bp.label || bp.type}</td><td>${prod}</td><td>${costHtml}</td><td>${built}</td><td>${maxVal}</td>`;
         html += `<td>${active}</td>`;
         html += `<td><input type="number" min="0" max="${built}" value="${active}" class="activate-input" style="width:4em" data-id="${bp.id}"><button class="activate-btn" data-id="${bp.id}">OK</button></td>`;
-        html += `<td><input type="number" min="1" value="1" class="build-input" style="width:4em" data-id="${bp.id}"><button class="build-btn" data-id="${bp.id}">Construire</button></td></tr>`;
+        html += `<td><button class="build-btn" data-id="${bp.id}">Construire</button></td></tr>`;
       }
       html += '</table>';
       infra.innerHTML = html;
@@ -130,12 +160,10 @@ async function handleBuildingTableClick(e) {
   const table = document.getElementById('buildingsTable');
   if (e.target.classList.contains('build-btn')) {
     const id = e.target.dataset.id;
-    const input = table.querySelector(`input.build-input[data-id="${id}"]`);
-    const quantity = parseInt(input.value, 10) || 0;
     const resp = await fetch('/api/building', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, quantity })
+      body: JSON.stringify({ id, quantity: 1 })
     });
     if (resp.ok) {
       await loadAndRender();
