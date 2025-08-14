@@ -738,7 +738,7 @@ app.put('/api/barony_properties/:id', requireAdmin, (req,res)=>{
 });
 
 const buildingPropFields = ['type','label','produces','production','costs','max','workers_per_building','restrictions','description'];
-app.get('/api/building_properties', requireAdmin, (req,res)=>{
+app.get('/api/building_properties', (req,res)=>{
   list('building_properties')(req,res);
 });
 app.post('/api/building_properties', requireAdmin, (req,res)=>{
