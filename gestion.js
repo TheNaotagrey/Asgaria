@@ -93,18 +93,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       let html = '<h2>Production</h2><table class="admin-table" id="buildingsTable"><tr><th>Nom</th><th>Production</th><th></th></tr>';
       for (const bp of buildingProps) {
         const prod = bp.production ? `${bp.production} ${bp.produces || ''}` : '';
-        html += `<tr><td>${bp.label || bp.type}</td><td>${prod}</td><td><button data-type="${bp.type}">Construire</button></td></tr>`;
+        html += `<tr><td>${bp.label || bp.type}</td><td>${prod}</td><td><button data-id="${bp.id}">Construire</button></td></tr>`;
       }
       html += '</table>';
       infra.innerHTML = html;
       const table = document.getElementById('buildingsTable');
       table.addEventListener('click', async e => {
         if (e.target.tagName === 'BUTTON') {
-          const type = e.target.dataset.type;
+          const id = e.target.dataset.id;
           const resp = await fetch('/api/building', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ type, quantity: 1 })
+            body: JSON.stringify({ id, quantity: 1 })
           });
           if (resp.ok) {
             location.reload();
