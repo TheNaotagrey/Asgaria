@@ -17,6 +17,13 @@ Ce dépôt contient un éditeur de carte et une interface d'administration pour 
    npm install
    ```
 
+## Configuration
+Définir la variable d'environnement `SESSION_SECRET` avec une valeur aléatoire pour signer les cookies de session.
+Par exemple :
+```bash
+export SESSION_SECRET="votre-valeur-secrète"
+```
+
 ## Lancement du serveur
 Le fichier `server.js` lance un petit serveur Express et crée automatiquement une base SQLite `asgaria.db`.
 

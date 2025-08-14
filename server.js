@@ -322,9 +322,14 @@ db.exec(initSql, () => {
 // accept large pixel blobs
 app.use(express.json({ limit: '50mb' }));
 app.use(session({
-  secret: 'asgaria-secret',
+  secret: process.env.SESSION_SECRET,
   resave: false,
-  saveUninitialized: false
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict'
+  }
 }));
 app.use((req,res,next)=>{
   const adminPages = ['/admin.html','/mapEditor.html'];
