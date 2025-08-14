@@ -60,6 +60,11 @@ const buildingPropLabels = {
   restrictions:'Restrictions',
   description:'Description'
 };
+const resourceSelect = Object.entries(inventaireLabels).map(([id, name]) => ({ id, name }));
+const maxOptions = [
+  ...Array.from({length:10}, (_,i)=>({ id:String(i+1), name:String(i+1) })),
+  ...baronyPropFields.filter(f=>f!=='barony_id').map(f=>({ id:f, name:baronyPropLabels[f] || f }))
+];
 
 async function fetchJSON(url, options){
   const resp = await fetch(API_BASE + url, options);
@@ -253,7 +258,7 @@ function renderTable(container, rows, opts){
           if(el.getValue){
             payload[f] = el.getValue();
           } else if(opts.selects && opts.selects[f]){
-            payload[f] = el.value ? parseInt(el.value,10) : null;
+            payload[f] = el.value ? (isNaN(el.value) ? el.value : parseInt(el.value,10)) : null;
           } else {
             payload[f] = el.value.trim();
           }
@@ -288,7 +293,7 @@ function renderTable(container, rows, opts){
         if(el.getValue){
           payload[f] = el.getValue();
         } else if(opts.selects && opts.selects[f]){
-          payload[f] = el.value ? parseInt(el.value,10) : null;
+          payload[f] = el.value ? (isNaN(el.value) ? el.value : parseInt(el.value,10)) : null;
         } else {
           payload[f] = el.value.trim();
         }
@@ -449,7 +454,8 @@ async function loadAll(){
   renderTable(document.getElementById('tableBuildingProps'), buildingPropsById, {
     endpoint:'building_properties',
     fields:buildingPropFields,
-    labels:buildingPropLabels
+    labels:buildingPropLabels,
+    selects:{produces: resourceSelect, max: maxOptions}
   });
 }
 
