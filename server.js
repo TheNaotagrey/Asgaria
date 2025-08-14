@@ -305,8 +305,12 @@ db.exec(initSql, () => {
     }
   });
   db.all("PRAGMA table_info(building_properties)", (err, rows) => {
-    if (!err && rows && !rows.some(r => r.name === 'label')) {
+    if (err || !rows) return;
+    if (!rows.some(r => r.name === 'label')) {
       db.run('ALTER TABLE building_properties ADD COLUMN label TEXT');
+    }
+    if (!rows.some(r => r.name === 'produces')) {
+      db.run('ALTER TABLE building_properties ADD COLUMN produces TEXT');
     }
   });
   // Ensure every barony has a properties row with default values
