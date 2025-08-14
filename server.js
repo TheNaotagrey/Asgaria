@@ -5,7 +5,7 @@ const path = require('path');
 const session = require('express-session');
 const bcrypt = require('bcryptjs');
 const { inventaireFields, performTransaction } = require('./transactions');
-const { handleError } = require("./logger");
+const { logger, handleError } = require('./logger');
 const app = express();
 const db = new sqlite3.Database('asgaria.db');
 
@@ -857,4 +857,4 @@ app.put('/api/barony_pixels', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+app.listen(PORT, () => logger.info(`Server running on http://localhost:${PORT}`));
