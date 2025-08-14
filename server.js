@@ -8,6 +8,13 @@ const { inventaireFields, performTransaction } = require('./transactions');
 const app = express();
 const db = new sqlite3.Database('asgaria.db');
 
+const VALID_TABLES = new Set([
+  'users','religions','cultures','seigneurs','empires','kingdoms','archduchies',
+  'duchies','marquisates','counties','viscounties','baronies','barony_pixels',
+  'canonical_lands','inventaire','seigneuries','transactions','barony_properties',
+  'building_properties'
+]);
+
 // create tables if they do not exist
 const initSql = `
 CREATE TABLE IF NOT EXISTS users (
@@ -333,6 +340,9 @@ app.use(express.static(path.join(__dirname)));
 
 function list(table) {
   return (req, res) => {
+    if (!VALID_TABLES.has(table)) {
+      return res.status(400).json({ error: 'Invalid table' });
+    }
     db.all(`SELECT * FROM ${table}`, [], (err, rows) => {
       if (err) return res.status(500).json({error: err.message});
       res.json(rows);
@@ -346,6 +356,9 @@ function sanitize(val){
 
 function create(table, fields) {
   return (req, res) => {
+    if (!VALID_TABLES.has(table)) {
+      return res.status(400).json({ error: 'Invalid table' });
+    }
     const values = fields.map(f => sanitize(req.body[f]));
     const placeholders = fields.map(() => '?').join(',');
     db.run(`INSERT INTO ${table} (${fields.join(',')}) VALUES (${placeholders})`, values, function(err){
@@ -357,6 +370,9 @@ function create(table, fields) {
 
 function update(table, fields) {
   return (req, res) => {
+    if (!VALID_TABLES.has(table)) {
+      return res.status(400).json({ error: 'Invalid table' });
+    }
     const id = req.params.id;
     const set = fields.map(f => `${f}=?`).join(',');
     const values = fields.map(f => sanitize(req.body[f]));
