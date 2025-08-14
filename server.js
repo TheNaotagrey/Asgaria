@@ -7,6 +7,7 @@ const bcrypt = require('bcryptjs');
 const { inventaireFields, performTransaction } = require('./transactions');
 const logger = require('./logger');
 const handleError = require('./handleError');
+const { consumeResources } = require('./services/buildingService');
 const app = express();
 const db = new sqlite3.Database('asgaria.db');
 
@@ -748,35 +749,42 @@ function canConstruct(db, srow, type, qty, cb){
     if (err) return cb(err);
     if (!bprops) return cb(new Error('Type inconnu'));
     if (!srow.baronnie_id) return cb(new Error('Aucune baronnie associée'));
+    if (!/^[a-z_]+$/.test(bprops.type)) return cb(new Error('Type invalide'));
     const absMax = bprops.max != null ? bprops.max : Infinity;
     const costObj = bprops.costs ? JSON.parse(bprops.costs) : {};
+    const restrictions = bprops.restrictions ? JSON.parse(bprops.restrictions) : {};
     const costs = {};
     Object.entries(costObj).forEach(([res, val]) => {
       costs[res] = (parseInt(val, 10) || 0) * qty;
     });
-    if (type === 'field') {
-      db.get('SELECT field_limit FROM barony_properties WHERE barony_id=?', [srow.baronnie_id], (err2, props) => {
-        if (err2) return cb(err2);
-        const barMax = props ? props.field_limit : Infinity;
-        const max = Math.min(absMax, barMax);
-        db.get('SELECT * FROM fields WHERE seigneurie_id=?', [srow.id], (err3, frow) => {
-          if (err3) return cb(err3);
-          const hasRow = !!frow;
-          const built = hasRow ? frow.built : 0;
-          const active = hasRow ? frow.active : 0;
-          if (built + qty > max) return cb(new Error('Limite atteinte'));
-          db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err4, inv) => {
-            if (err4) return cb(err4);
-            for (const [res, val] of Object.entries(costs)) {
-              if ((inv[res] || 0) < val) return cb(new Error('Ressources insuffisantes'));
-            }
-            cb(null, { costs, built, active, hasRow });
-          });
+    db.get('SELECT * FROM barony_properties WHERE barony_id=?', [srow.baronnie_id], (err2, props) => {
+      if (err2) return cb(err2);
+      const barProps = props || {};
+      let max = absMax;
+      if (restrictions.limit_prop && barProps[restrictions.limit_prop] != null) {
+        max = Math.min(max, barProps[restrictions.limit_prop]);
+      }
+      if (restrictions.requires) {
+        for (const [prop, val] of Object.entries(restrictions.requires)) {
+          if ((barProps[prop] || 0) < val) return cb(new Error('Restriction non satisfaite'));
+        }
+      }
+      const table = `${bprops.type}s`;
+      db.get(`SELECT * FROM ${table} WHERE seigneurie_id=?`, [srow.id], (err3, brow) => {
+        if (err3) return cb(err3);
+        const hasRow = !!brow;
+        const built = hasRow ? brow.built : 0;
+        const active = hasRow ? brow.active : 0;
+        if (built + qty > max) return cb(new Error('Limite atteinte'));
+        db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err4, inv) => {
+          if (err4) return cb(err4);
+          for (const [res, val] of Object.entries(costs)) {
+            if ((inv[res] || 0) < val) return cb(new Error('Ressources insuffisantes'));
+          }
+          cb(null, { costs, built, active, hasRow, table });
         });
       });
-    } else {
-      cb(new Error('Type inconnu'));
-    }
+    });
   });
 }
 
@@ -791,31 +799,21 @@ app.post('/api/building', (req,res)=>{
     if(!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
     canConstruct(db, srow, type, qty, (err2, info)=>{
       if(err2) return res.status(400).json({ error: err2.message });
-      const entries = Object.entries(info.costs);
-      let idx = 0;
-      function deduct(){
-        if(idx >= entries.length) return afterDeduct();
-        const [resName, amount] = entries[idx++];
-        if(amount === 0) return deduct();
-        performTransaction(db, srow.id, resName, -amount, err3 => {
-          if(err3) return handleError(res, err3);
-          deduct();
-        });
-      }
-      function afterDeduct(){
+      consumeResources(db, srow.id, info.costs, err3 => {
+        if(err3) return handleError(res, err3);
         const newBuilt = info.built + qty;
         const newActive = info.active + qty;
-        const sql = info.hasRow ? 'UPDATE fields SET built=?, active=? WHERE seigneurie_id=?' : 'INSERT INTO fields (built, active, seigneurie_id) VALUES (?,?,?)';
+        const sql = info.hasRow ? `UPDATE ${info.table} SET built=?, active=? WHERE seigneurie_id=?` : `INSERT INTO ${info.table} (built, active, seigneurie_id) VALUES (?,?,?)`;
         const params = info.hasRow ? [newBuilt, newActive, srow.id] : [newBuilt, newActive, srow.id];
         db.run(sql, params, function(err4){
           if(err4) return handleError(res, err4);
           db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err5, inventaire)=>{
             if(err5) return handleError(res, err5);
-            res.json({ fields: { built: newBuilt, active: newActive }, inventaire });
+            const key = info.table;
+            res.json({ [key]: { built: newBuilt, active: newActive }, inventaire });
           });
         });
-      }
-      deduct();
+      });
     });
   });
 });
