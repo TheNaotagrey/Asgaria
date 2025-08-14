@@ -36,5 +36,10 @@ Ne les ouvrez pas directement avec `file://`, car les requêtes vers l'API serai
 
 La base de données `asgaria.db` est créée dans le répertoire racine et stocke toutes les informations (baronnies, seigneurs, etc.).
 
+## API
+Toutes les requêtes `PUT` vers l'API nécessitent qu'un utilisateur administrateur soit authentifié via la session.
+- Si aucun utilisateur n'est connecté, le serveur répond avec `401 Unauthorized`.
+- Si l'utilisateur connecté n'est pas administrateur, le serveur répond avec `403 Forbidden`.
+
 ## Tests
 Aucun test automatisé n'est défini. La commande `npm test` renverra donc une erreur.
