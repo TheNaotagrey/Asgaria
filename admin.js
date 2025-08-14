@@ -49,9 +49,8 @@ const baronyPropLabels = {
   high_sea_boat_limit:'Limite de Bateau en haute mer'
 };
 
-const buildingPropFields = ['type','label','produces','production','costs','max','workers_per_building','restrictions','description'];
+const buildingPropFields = ['label','produces','production','costs','max','workers_per_building','restrictions','description'];
 const buildingPropLabels = {
-  type:'Type',
   label:'Nom',
   produces:'Ressource produite',
   production:'Production',
