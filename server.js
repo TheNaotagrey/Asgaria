@@ -658,26 +658,36 @@ app.get('/api/my_seigneurie', (req, res) => {
             db.get('SELECT * FROM inventaire WHERE id=?', [s.inventaire_id], (err, inventaire) => {
               if (err) return handleError(res, err);
               const buildings = s.buildings ? JSON.parse(s.buildings) : {};
-              db.get('SELECT id, workers_per_building FROM building_properties WHERE type=?', ['field'], (err2, bprop) => {
+              db.all('SELECT id, type, label, produces, production, workers_per_building FROM building_properties', [], (err2, bprops) => {
                 if (err2) return handleError(res, err2);
-                const fieldId = bprop ? bprop.id : null;
-                const fields = fieldId && buildings[fieldId] ? buildings[fieldId] : { built: 0, active: 0 };
-                const baseWorkers = bprop ? (bprop.workers_per_building || 0) : 1;
+                const props = bprops || [];
+                let fields = { built: 0, active: 0 };
+                const production = {};
+                const productionDetails = {};
+                let employed = 0;
+                for (const bp of props) {
+                  const info = buildings[bp.id] || { built: 0, active: 0 };
+                  const active = info.active || 0;
+                  employed += active * (bp.workers_per_building || 0);
+                  if (bp.type === 'field') {
+                    fields = info;
+                  }
+                  if (active > 0 && bp.produces && bp.production) {
+                    const amount = active * bp.production;
+                    production[bp.produces] = (production[bp.produces] || 0) + amount;
+                    if (!productionDetails[bp.produces]) productionDetails[bp.produces] = [];
+                    productionDetails[bp.produces].push({ label: bp.label || bp.type, amount });
+                  }
+                }
                 const slaves = inventaire.esclaves || 0;
-                const employed = fields.active * baseWorkers;
-                const foodProd = fields.active * 75;
                 const populationCons = s.population * 15;
                 const slaveCons = slaves * 5;
-                const production = {
-                  vivres: foodProd - (populationCons + slaveCons)
-                };
-                const productionDetails = {
-                  vivres: [
-                    { label: 'Champs', amount: foodProd },
-                    { label: 'Population', amount: -populationCons },
-                    { label: 'Esclaves', amount: -slaveCons }
-                  ]
-                };
+                if (populationCons || slaveCons) {
+                  production.vivres = (production.vivres || 0) - (populationCons + slaveCons);
+                  if (!productionDetails.vivres) productionDetails.vivres = [];
+                  if (populationCons) productionDetails.vivres.push({ label: 'Population', amount: -populationCons });
+                  if (slaveCons) productionDetails.vivres.push({ label: 'Esclaves', amount: -slaveCons });
+                }
                 const employment = { employed, slaves };
                 function finalize(barony, baronyProps) {
                   res.json({ seigneurie: s, barony, inventaire, production, productionDetails, fields, baronyProps, employment, buildings });
