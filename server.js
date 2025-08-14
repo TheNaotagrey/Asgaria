@@ -5,8 +5,20 @@ const path = require('path');
 const session = require('express-session');
 const bcrypt = require('bcryptjs');
 const { inventaireFields, performTransaction } = require('./transactions');
+const { promisify } = require('util');
 const app = express();
 const db = new sqlite3.Database('asgaria.db');
+
+const dbGet = promisify(db.get.bind(db));
+const dbRun = promisify((sql, params, cb) => {
+  if (typeof params === 'function' || params === undefined) {
+    cb = params || cb;
+    params = [];
+  }
+  db.run(sql, params, function (err) {
+    cb(err, { lastID: this.lastID, changes: this.changes });
+  });
+});
 
 // create tables if they do not exist
 const initSql = `
@@ -558,72 +570,44 @@ app.put('/api/seigneuries/:id', (req, res) => {
   });
 });
 
-app.get('/api/my_seigneurie', (req, res) => {
+app.get('/api/my_seigneurie', async (req, res) => {
   if (!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
   const userId = req.session.user.id;
-  db.serialize(() => {
-    db.get('SELECT * FROM seigneurs WHERE user_id=?', [userId], (err, seigneur) => {
-      if (err) return res.status(500).json({ error: err.message });
-      function ensureSeigneur(cb) {
-        if (seigneur) return cb(seigneur);
-        const name = `Seigneur ${req.session.user.first_name}`;
-        db.run('INSERT INTO seigneurs(name,user_id) VALUES (?,?)', [name, userId], function(err){
-          if (err) return res.status(500).json({ error: err.message });
-          cb({ id: this.lastID, name, user_id: userId });
-        });
-      }
-      ensureSeigneur(seig => {
-        db.get('SELECT * FROM seigneuries WHERE seigneur_id=?', [seig.id], (err, seigneurie) => {
-          if (err) return res.status(500).json({ error: err.message });
-          function ensureSeigneurie(cb) {
-            if (seigneurie) return cb(seigneurie);
-            db.run('INSERT INTO inventaire DEFAULT VALUES', function(err){
-              if (err) return res.status(500).json({ error: err.message });
-              const invId = this.lastID;
-              db.run('INSERT INTO seigneuries (baronnie_id,seigneur_id,population,inventaire_id) VALUES (NULL,?,?,?)',
-                [seig.id, 0, invId], function(err){
-                  if (err) return res.status(500).json({ error: err.message });
-                  cb({ id: this.lastID, baronnie_id: null, seigneur_id: seig.id, population: 0, inventaire_id: invId });
-                });
-            });
-          }
-          ensureSeigneurie(s => {
-            db.get('SELECT * FROM inventaire WHERE id=?', [s.inventaire_id], (err, inventaire) => {
-              if (err) return res.status(500).json({ error: err.message });
-              db.get('SELECT * FROM fields WHERE seigneurie_id=?', [s.id], (err, fieldRow) => {
-                if (err) return res.status(500).json({ error: err.message });
-                const fields = fieldRow || { built: 0, active: 0 };
-                db.get('SELECT workers_per_building FROM building_properties WHERE type=?', ['field'], (err2, bprop) => {
-                  if (err2) return res.status(500).json({ error: err2.message });
-                  const baseWorkers = bprop ? (bprop.workers_per_building || 0) : 1;
-                  const slaves = inventaire.esclaves || 0;
-                  const employed = fields.active * baseWorkers;
-                  const production = {
-                    vivres: fields.active * 75 - (s.population * 15 + slaves * 5)
-                  };
-                  const employment = { employed, slaves };
-                  function finalize(barony, baronyProps) {
-                    res.json({ seigneurie: s, barony, inventaire, production, fields, baronyProps, employment });
-                  }
-                  if (s.baronnie_id) {
-                    db.get('SELECT * FROM barony_properties WHERE barony_id=?', [s.baronnie_id], (err3, props) => {
-                      if (err3) return res.status(500).json({ error: err3.message });
-                      db.get(`SELECT b.*, r.name as religion_name, c.name as culture_name FROM baronies b LEFT JOIN religions r ON b.religion_pop_id=r.id LEFT JOIN cultures c ON b.culture_id=c.id WHERE b.id=?`, [s.baronnie_id], (err4, barony) => {
-                        if (err4) return res.status(500).json({ error: err4.message });
-                        finalize(barony, props || {});
-                      });
-                    });
-                  } else {
-                    finalize(null, {});
-                  }
-                });
-              });
-            });
-          });
-        });
-      });
-    });
-  });
+  try {
+    let seigneur = await dbGet('SELECT * FROM seigneurs WHERE user_id=?', [userId]);
+    if (!seigneur) {
+      const name = `Seigneur ${req.session.user.first_name}`;
+      const result = await dbRun('INSERT INTO seigneurs(name,user_id) VALUES (?,?)', [name, userId]);
+      seigneur = { id: result.lastID, name, user_id: userId };
+    }
+
+    let seigneurie = await dbGet('SELECT * FROM seigneuries WHERE seigneur_id=?', [seigneur.id]);
+    if (!seigneurie) {
+      const invRes = await dbRun('INSERT INTO inventaire DEFAULT VALUES');
+      const invId = invRes.lastID;
+      const seigRes = await dbRun('INSERT INTO seigneuries (baronnie_id,seigneur_id,population,inventaire_id) VALUES (NULL,?,?,?)', [seigneur.id, 0, invId]);
+      seigneurie = { id: seigRes.lastID, baronnie_id: null, seigneur_id: seigneur.id, population: 0, inventaire_id: invId };
+    }
+
+    const inventaire = await dbGet('SELECT * FROM inventaire WHERE id=?', [seigneurie.inventaire_id]);
+    const fieldRow = await dbGet('SELECT * FROM fields WHERE seigneurie_id=?', [seigneurie.id]);
+    const fields = fieldRow || { built: 0, active: 0 };
+    const bprop = await dbGet('SELECT workers_per_building FROM building_properties WHERE type=?', ['field']);
+    const baseWorkers = bprop ? (bprop.workers_per_building || 0) : 1;
+    const slaves = inventaire.esclaves || 0;
+    const employed = fields.active * baseWorkers;
+    const production = { vivres: fields.active * 75 - (seigneurie.population * 15 + slaves * 5) };
+    const employment = { employed, slaves };
+    let barony = null;
+    let baronyProps = {};
+    if (seigneurie.baronnie_id) {
+      baronyProps = (await dbGet('SELECT * FROM barony_properties WHERE barony_id=?', [seigneurie.baronnie_id])) || {};
+      barony = await dbGet(`SELECT b.*, r.name as religion_name, c.name as culture_name FROM baronies b LEFT JOIN religions r ON b.religion_pop_id=r.id LEFT JOIN cultures c ON b.culture_id=c.id WHERE b.id=?`, [seigneurie.baronnie_id]);
+    }
+    res.json({ seigneurie, barony, inventaire, production, fields, baronyProps, employment });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get('/api/transactions', (req,res)=>{
