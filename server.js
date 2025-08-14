@@ -218,7 +218,8 @@ CREATE TABLE IF NOT EXISTS building_properties (
   costs TEXT,
   max TEXT,
   workers_per_building INTEGER DEFAULT 1,
-  restrictions TEXT,
+  absolute_restrictions TEXT,
+  infra_restrictions TEXT,
   description TEXT
 );
 `;
@@ -311,6 +312,12 @@ db.exec(initSql, () => {
     }
     if (!rows.some(r => r.name === 'produces')) {
       db.run('ALTER TABLE building_properties ADD COLUMN produces TEXT');
+    }
+    if (!rows.some(r => r.name === 'absolute_restrictions')) {
+      db.run('ALTER TABLE building_properties ADD COLUMN absolute_restrictions TEXT');
+    }
+    if (!rows.some(r => r.name === 'infra_restrictions')) {
+      db.run('ALTER TABLE building_properties ADD COLUMN infra_restrictions TEXT');
     }
   });
   // Ensure every barony has a properties row with default values
@@ -765,7 +772,7 @@ app.put('/api/barony_properties/:id', requireAdmin, (req,res)=>{
   update('barony_properties', baronyPropFields)(req,res);
 });
 
-const buildingPropFields = ['label','produces','production','costs','max','workers_per_building','restrictions','description'];
+const buildingPropFields = ['label','produces','production','costs','max','workers_per_building','absolute_restrictions','infra_restrictions','description'];
 app.get('/api/building_properties', (req,res)=>{
   list('building_properties')(req,res);
 });
@@ -789,9 +796,9 @@ function canConstruct(db, srow, id, qty, cb){
     if (err) return cb(err);
     if (!bprops) return cb(new Error('Type inconnu'));
     if (!srow.baronnie_id) return cb(new Error('Aucune baronnie associée'));
-    const absMax = bprops.max != null ? bprops.max : Infinity;
     const costObj = safeParse(bprops.costs, {});
-    const restrictions = safeParse(bprops.restrictions, {});
+    const absReq = safeParse(bprops.absolute_restrictions, []);
+    const infraReq = safeParse(bprops.infra_restrictions, {});
     const costs = {};
     Object.entries(costObj).forEach(([res, val]) => {
       costs[res] = (parseInt(val, 10) || 0) * qty;
@@ -799,29 +806,28 @@ function canConstruct(db, srow, id, qty, cb){
     db.get('SELECT * FROM barony_properties WHERE barony_id=?', [srow.baronnie_id], (err2, props) => {
       if (err2) return cb(err2);
       const barProps = props || {};
-      let max = absMax;
-      if (restrictions.limit_prop && barProps[restrictions.limit_prop] != null) {
-        max = Math.min(max, barProps[restrictions.limit_prop]);
+      let max = Infinity;
+      if (bprops.max != null) {
+        const parsed = parseInt(bprops.max, 10);
+        if (!isNaN(parsed)) {
+          max = parsed;
+        } else if (barProps[bprops.max] != null) {
+          max = barProps[bprops.max];
+        }
       }
-      const requires = restrictions.requires || {};
-      if (requires.props) {
-        for (const [prop, val] of Object.entries(requires.props)) {
-          const propVal = barProps[prop] || 0;
-          if (typeof val === 'boolean') {
-            if (!!propVal !== val) return cb(new Error('Restriction non satisfaite'));
-          } else {
-            if (propVal < val) return cb(new Error('Restriction non satisfaite'));
-          }
+      if (Array.isArray(absReq)) {
+        for (const prop of absReq) {
+          if (!barProps[prop]) return cb(new Error('Restriction non satisfaite'));
         }
       }
       const buildings = safeParse(srow.buildings, {});
-      if (requires.buildings) {
-        for (const [bid, count] of Object.entries(requires.buildings)) {
+      if (infraReq.buildings) {
+        for (const [bid, count] of Object.entries(infraReq.buildings)) {
           const builtCount = buildings[bid] ? (buildings[bid].built || 0) : 0;
           if (builtCount < count) return cb(new Error('Restriction non satisfaite'));
         }
       }
-      if (requires.population && (srow.population || 0) < requires.population) {
+      if (infraReq.population && (srow.population || 0) < infraReq.population) {
         return cb(new Error('Restriction non satisfaite'));
       }
       const binfo = buildings[id] || { built: 0, active: 0 };
