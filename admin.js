@@ -49,7 +49,7 @@ const baronyPropLabels = {
   high_sea_boat_limit:'Limite de Bateau en haute mer'
 };
 
-const buildingPropFields = ['label','produces','production','costs','max','workers_per_building','restrictions','description'];
+const buildingPropFields = ['label','produces','production','costs','max','workers_per_building','absolute_restrictions','infra_restrictions','description'];
 const buildingPropLabels = {
   label:'Nom',
   produces:'Ressource produite',
@@ -57,7 +57,8 @@ const buildingPropLabels = {
   costs:'Coûts',
   max:'Maximum',
   workers_per_building:'Travailleurs/bâtiment',
-  restrictions:'Restrictions',
+  absolute_restrictions:'Restrictions absolues',
+  infra_restrictions:'Restrictions infrastructure',
   description:'Description'
 };
 const resourceSelect = Object.entries(inventaireLabels).map(([id, name]) => ({ id, name }));
@@ -204,7 +205,57 @@ function renderTable(container, rows, opts){
       };
       return container;
     }
-    if(field === 'restrictions'){
+    if(field === 'absolute_restrictions'){
+      const container = document.createElement('div');
+      const list = document.createElement('div');
+      container.appendChild(list);
+      const addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.textContent = '+';
+      container.appendChild(addBtn);
+      function addRow(prop = ''){
+        const row = document.createElement('div');
+        row.className = 'restriction-row';
+        const sel = document.createElement('select');
+        const blank = document.createElement('option');
+        blank.value = '';
+        sel.appendChild(blank);
+        baronyPropBoolFields.forEach(f=>{
+          const op = document.createElement('option');
+          op.value = f;
+          op.textContent = baronyPropLabels[f] || f;
+          if(f === prop) op.selected = true;
+          sel.appendChild(op);
+        });
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.textContent = '-';
+        removeBtn.addEventListener('click', ()=> row.remove());
+        row.appendChild(sel);
+        row.appendChild(removeBtn);
+        list.appendChild(row);
+      }
+      addBtn.addEventListener('click', ()=> addRow());
+      try{
+        const arr = JSON.parse(val || '[]');
+        if(Array.isArray(arr) && arr.length){
+          arr.forEach(p=> addRow(p));
+        } else {
+          addRow();
+        }
+      } catch(e){
+        addRow();
+      }
+      container.getValue = ()=>{
+        const res = [];
+        list.querySelectorAll('select').forEach(sel=>{
+          if(sel.value) res.push(sel.value);
+        });
+        return JSON.stringify(res);
+      };
+      return container;
+    }
+    if(field === 'infra_restrictions'){
       const container = document.createElement('div');
       const list = document.createElement('div');
       container.appendChild(list);
@@ -216,11 +267,10 @@ function renderTable(container, rows, opts){
         const row = document.createElement('div');
         row.className = 'restriction-row';
         const typeSel = document.createElement('select');
-        const typeBlank = document.createElement('option');
-        typeBlank.value = '';
-        typeSel.appendChild(typeBlank);
+        const blank = document.createElement('option');
+        blank.value = '';
+        typeSel.appendChild(blank);
         const typeOptions = [
-          {id:'prop', name:'Propriété'},
           {id:'building', name:'Bâtiment'},
           {id:'population', name:'Population'}
         ];
@@ -244,29 +294,7 @@ function renderTable(container, rows, opts){
         function updateFields(){
           keySpan.innerHTML = '';
           valSpan.innerHTML = '';
-          if(typeSel.value === 'prop'){
-            const sel = document.createElement('select');
-            const blank = document.createElement('option');
-            blank.value = '';
-            sel.appendChild(blank);
-            baronyPropBoolFields.forEach(f=>{
-              const op = document.createElement('option');
-              op.value = f;
-              op.textContent = baronyPropLabels[f] || f;
-              if(f === data.prop) op.selected = true;
-              sel.appendChild(op);
-            });
-            keySpan.appendChild(sel);
-            const yn = document.createElement('select');
-            yesNoSelect.forEach(o=>{
-              const op = document.createElement('option');
-              op.value = o.id;
-              op.textContent = o.name;
-              if(String(o.id) === String(data.value ? 1 : 0)) op.selected = true;
-              yn.appendChild(op);
-            });
-            valSpan.appendChild(yn);
-          } else if(typeSel.value === 'building'){
+          if(typeSel.value === 'building'){
             const sel = document.createElement('select');
             const blank = document.createElement('option');
             blank.value = '';
@@ -297,19 +325,15 @@ function renderTable(container, rows, opts){
         list.appendChild(row);
       }
       addBtn.addEventListener('click', ()=> addRow());
-      try {
+      try{
         const obj = JSON.parse(val || '{}');
-        const req = obj.requires || {};
-        if(req.props){
-          Object.entries(req.props).forEach(([p,v])=> addRow('prop',{prop:p,value:v}));
+        if(obj.buildings){
+          Object.entries(obj.buildings).forEach(([b,v])=> addRow('building',{building:b,value:v}));
         }
-        if(req.buildings){
-          Object.entries(req.buildings).forEach(([b,v])=> addRow('building',{building:b,value:v}));
+        if(obj.population){
+          addRow('population',{value:obj.population});
         }
-        if(req.population){
-          addRow('population',{value:req.population});
-        }
-        if(!req.props && !req.buildings && !req.population){
+        if(!obj.buildings && !obj.population){
           addRow();
         }
       } catch(e){
@@ -317,17 +341,11 @@ function renderTable(container, rows, opts){
       }
       container.getValue = ()=>{
         const res = {};
-        const props = {};
         const buildings = {};
         let population;
         list.querySelectorAll('.restriction-row').forEach(rw=>{
           const type = rw.querySelector('select').value;
-          if(type === 'prop'){
-            const [propSel, valSel] = rw.querySelectorAll('span select');
-            const prop = propSel.value;
-            const val = valSel.value;
-            if(prop) props[prop] = val === '1';
-          } else if(type === 'building'){
+          if(type === 'building'){
             const sel = rw.querySelector('span select');
             const inp = rw.querySelector('span input');
             const b = sel.value;
@@ -339,11 +357,8 @@ function renderTable(container, rows, opts){
             if(q) population = q;
           }
         });
-        const requires = {};
-        if(Object.keys(props).length) requires.props = props;
-        if(Object.keys(buildings).length) requires.buildings = buildings;
-        if(population != null) requires.population = population;
-        if(Object.keys(requires).length) res.requires = requires;
+        if(Object.keys(buildings).length) res.buildings = buildings;
+        if(population != null) res.population = population;
         return JSON.stringify(res);
       };
       return container;

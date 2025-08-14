@@ -52,7 +52,7 @@ async function loadAndRender() {
     ]);
     if (!res.ok) throw new Error('Erreur');
     const data = await res.json();
-    const buildingProps = bRes.ok ? await bRes.json() : [];
+    const allBuildingProps = bRes.ok ? await bRes.json() : [];
     const s = data.seigneurie;
     const inv = data.inventaire || {};
     const barony = data.barony || {};
@@ -61,6 +61,15 @@ async function loadAndRender() {
     const baronyProps = data.baronyProps || {};
     const employment = data.employment || { employed:0, slaves:0 };
     const buildings = data.buildings || {};
+    const buildingProps = allBuildingProps.filter(bp => {
+      try {
+        const arr = bp.absolute_restrictions ? JSON.parse(bp.absolute_restrictions) : [];
+        return arr.every(p => baronyProps[p]);
+      } catch {
+        return true;
+      }
+    });
+    const bpMap = Object.fromEntries(allBuildingProps.map(b => [String(b.id), b]));
 
     const summary = document.getElementById('summary');
     summary.innerHTML = `
@@ -103,15 +112,17 @@ async function loadAndRender() {
       let html = '<h2>Infrastructure</h2><table class="admin-table" id="buildingsTable">';
       html += '<tr><th>Nom</th><th>Production</th><th>Coût</th><th>Construits</th><th>Max</th><th>Actifs</th><th>Activer</th><th>Construire</th></tr>';
       for (const bp of buildingProps) {
-        const prod = bp.production ? `${bp.production} ${bp.produces || ''}` : '';
+        const prodLabel = resourceLabels[bp.produces] || bp.produces || '';
+        const prod = bp.production ? `${bp.production} ${prodLabel}` : '';
         const info = buildings[bp.id] || { built: 0, active: 0 };
         const built = info.built || 0;
         const active = info.active || 0;
 
         let maxVal = '';
         if (bp.max !== undefined && bp.max !== null) {
-          if (typeof bp.max === 'number') {
-            maxVal = bp.max;
+          const parsed = parseInt(bp.max, 10);
+          if (!isNaN(parsed)) {
+            maxVal = parsed;
           } else if (baronyProps[bp.max] !== undefined) {
             maxVal = baronyProps[bp.max];
           }
@@ -150,6 +161,31 @@ async function loadAndRender() {
     const propsDiv = document.getElementById('baronyProps');
     if (propsDiv) {
       propsDiv.innerHTML = buildPropsTable(baronyProps);
+    }
+    const restrDiv = document.getElementById('restrictions');
+    if (restrDiv) {
+      let html = '<h2>Restrictions</h2><table class="admin-table"><tr><th>Bâtiment</th><th>Restrictions</th></tr>';
+      for (const bp of buildingProps) {
+        try {
+          const infra = bp.infra_restrictions ? JSON.parse(bp.infra_restrictions) : {};
+          const parts = [];
+          if (infra.buildings) {
+            for (const [bid, qty] of Object.entries(infra.buildings)) {
+              const ref = bpMap[String(bid)];
+              const name = ref ? (ref.label || ref.type) : bid;
+              parts.push(`${name}: ${qty}`);
+            }
+          }
+          if (infra.population) {
+            parts.push(`Population: ${infra.population}`);
+          }
+          if (parts.length) {
+            html += `<tr><td>${bp.label || bp.type}</td><td>${parts.join('<br>')}</td></tr>`;
+          }
+        } catch(e){ /* ignore */ }
+      }
+      html += '</table>';
+      restrDiv.innerHTML = html;
     }
   } catch (e) {
     document.getElementById('summary').textContent = 'Erreur de chargement';
