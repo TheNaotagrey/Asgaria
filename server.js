@@ -405,55 +405,77 @@ function update(table, fields) {
 }
 
 // Authentication endpoints
-app.post('/api/register', (req, res) => {
-  const { email, password, first_name, last_name } = req.body;
-  if (!email || !password || !first_name || !last_name) {
-    return res.status(400).json({ error: 'Missing fields' });
+app.post('/api/register', async (req, res) => {
+  try {
+    const { email, password, first_name, last_name } = req.body;
+    if (!email || !password || !first_name || !last_name) {
+      return res.status(400).json({ error: 'Missing fields' });
+    }
+    const hash = await bcrypt.hash(password, 10);
+    db.run(
+      'INSERT INTO users(email,password,first_name,last_name) VALUES (?,?,?,?)',
+      [email, hash, first_name, last_name],
+      function (err) {
+        if (err) return res.status(500).json({ error: err.message });
+        req.session.user = {
+          id: this.lastID,
+          email,
+          first_name,
+          last_name,
+          is_admin: 0
+        };
+        res.json({ ok: true });
+      }
+    );
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
-  const hash = bcrypt.hashSync(password, 10);
-  db.run(
-    'INSERT INTO users(email,password,first_name,last_name) VALUES (?,?,?,?)',
-    [email, hash, first_name, last_name],
-    function (err) {
+});
+
+app.post('/api/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    db.get('SELECT * FROM users WHERE email=?', [email], async (err, user) => {
+      if (err || !user) return res.status(400).json({ error: 'Invalid credentials' });
+      try {
+        const match = await bcrypt.compare(password, user.password);
+        if (!match) {
+          return res.status(400).json({ error: 'Invalid credentials' });
+        }
+        req.session.user = {
+          id: user.id,
+          email: user.email,
+          first_name: user.first_name,
+          last_name: user.last_name,
+          is_admin: !!user.is_admin
+        };
+        res.json({ ok: true });
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/logout', async (req, res) => {
+  try {
+    req.session.destroy(err => {
       if (err) return res.status(500).json({ error: err.message });
-      req.session.user = {
-        id: this.lastID,
-        email,
-        first_name,
-        last_name,
-        is_admin: 0
-      };
       res.json({ ok: true });
-    }
-  );
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
-app.post('/api/login', (req, res) => {
-  const { email, password } = req.body;
-  db.get('SELECT * FROM users WHERE email=?', [email], (err, user) => {
-    if (err || !user) return res.status(400).json({ error: 'Invalid credentials' });
-    if (!bcrypt.compareSync(password, user.password)) {
-      return res.status(400).json({ error: 'Invalid credentials' });
-    }
-    req.session.user = {
-      id: user.id,
-      email: user.email,
-      first_name: user.first_name,
-      last_name: user.last_name,
-      is_admin: !!user.is_admin
-    };
-    res.json({ ok: true });
-  });
-});
-
-app.post('/api/logout', (req, res) => {
-  req.session.destroy(() => {
-    res.json({ ok: true });
-  });
-});
-
-app.get('/api/me', (req, res) => {
-  res.json(req.session.user || null);
+app.get('/api/me', async (req, res) => {
+  try {
+    res.json(req.session.user || null);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.get('/api/users', (req, res) => {
