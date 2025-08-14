@@ -344,6 +344,13 @@ function sanitize(val){
   return val === '' ? null : val;
 }
 
+function requireAdmin(req, res, next) {
+  if (!req.session.user || !req.session.user.is_admin) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  next();
+}
+
 function create(table, fields) {
   return (req, res) => {
     const values = fields.map(f => sanitize(req.body[f]));
@@ -512,8 +519,7 @@ app.get('/api/inventaire', list('inventaire'));
 app.post('/api/inventaire', create('inventaire', inventaireFields));
 app.put('/api/inventaire/:id', update('inventaire', inventaireFields));
 
-app.get('/api/seigneuries', (req, res) => {
-  if (!req.session.user || !req.session.user.is_admin) return res.status(403).json({ error: 'Forbidden' });
+app.get('/api/seigneuries', requireAdmin, (req, res) => {
   const invSelect = inventaireFields.map(f => `i.${f}`).join(',');
   db.all(`SELECT s.id, s.baronnie_id, s.seigneur_id, s.population, s.inventaire_id, ${invSelect} FROM seigneuries s JOIN inventaire i ON s.inventaire_id=i.id`, [], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
@@ -521,8 +527,7 @@ app.get('/api/seigneuries', (req, res) => {
   });
 });
 
-app.post('/api/seigneuries', (req, res) => {
-  if (!req.session.user || !req.session.user.is_admin) return res.status(403).json({ error: 'Forbidden' });
+app.post('/api/seigneuries', requireAdmin, (req, res) => {
   const seigFields = ['baronnie_id','seigneur_id','population'];
   const seigValues = seigFields.map(f => sanitize(req.body[f]));
   const invValues = inventaireFields.map(f => sanitize(req.body[f]) || 0);
@@ -538,8 +543,7 @@ app.post('/api/seigneuries', (req, res) => {
   });
 });
 
-app.put('/api/seigneuries/:id', (req, res) => {
-  if (!req.session.user || !req.session.user.is_admin) return res.status(403).json({ error: 'Forbidden' });
+app.put('/api/seigneuries/:id', requireAdmin, (req, res) => {
   const id = req.params.id;
   const seigFields = ['baronnie_id','seigneur_id','population'];
   const seigSet = seigFields.map(f => `${f}=?`).join(',');
@@ -626,12 +630,10 @@ app.get('/api/my_seigneurie', (req, res) => {
   });
 });
 
-app.get('/api/transactions', (req,res)=>{
-  if(!req.session.user || !req.session.user.is_admin) return res.status(403).json({ error: 'Forbidden' });
+app.get('/api/transactions', requireAdmin, (req,res)=>{
   list('transactions')(req,res);
 });
-app.post('/api/transactions', (req,res)=>{
-  if(!req.session.user || !req.session.user.is_admin) return res.status(403).json({ error: 'Forbidden' });
+app.post('/api/transactions', requireAdmin, (req,res)=>{
   create('transactions',['seigneurie_id','resource','amount'])(req,res);
 });
 
@@ -662,30 +664,24 @@ app.delete('/api/baronies/:id', (req,res)=>{
 });
 
 const baronyPropFields = ['barony_id','water_access','sea_access','has_or','has_argent','has_fer','has_pierre','has_epices','has_perle','has_encens','has_huiles','has_pierre_precieuses','has_soie','has_sel','has_fourrure','has_teinture','has_ivoire','has_vin','field_limit','fishing_limit','high_sea_boat_limit'];
-app.get('/api/barony_properties', (req,res)=>{
-  if(!req.session.user || !req.session.user.is_admin) return res.status(403).json({ error: 'Forbidden' });
+app.get('/api/barony_properties', requireAdmin, (req,res)=>{
   list('barony_properties')(req,res);
 });
-app.post('/api/barony_properties', (req,res)=>{
-  if(!req.session.user || !req.session.user.is_admin) return res.status(403).json({ error: 'Forbidden' });
+app.post('/api/barony_properties', requireAdmin, (req,res)=>{
   create('barony_properties', baronyPropFields)(req,res);
 });
-app.put('/api/barony_properties/:id', (req,res)=>{
-  if(!req.session.user || !req.session.user.is_admin) return res.status(403).json({ error: 'Forbidden' });
+app.put('/api/barony_properties/:id', requireAdmin, (req,res)=>{
   update('barony_properties', baronyPropFields)(req,res);
 });
 
 const buildingPropFields = ['type','label','produces','production','costs','max','workers_per_building','restrictions','description'];
-app.get('/api/building_properties', (req,res)=>{
-  if(!req.session.user || !req.session.user.is_admin) return res.status(403).json({ error: 'Forbidden' });
+app.get('/api/building_properties', requireAdmin, (req,res)=>{
   list('building_properties')(req,res);
 });
-app.post('/api/building_properties', (req,res)=>{
-  if(!req.session.user || !req.session.user.is_admin) return res.status(403).json({ error: 'Forbidden' });
+app.post('/api/building_properties', requireAdmin, (req,res)=>{
   create('building_properties', buildingPropFields)(req,res);
 });
-app.put('/api/building_properties/:id', (req,res)=>{
-  if(!req.session.user || !req.session.user.is_admin) return res.status(403).json({ error: 'Forbidden' });
+app.put('/api/building_properties/:id', requireAdmin, (req,res)=>{
   update('building_properties', buildingPropFields)(req,res);
 });
 
