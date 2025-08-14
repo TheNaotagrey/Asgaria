@@ -331,6 +331,19 @@ app.use((req,res,next)=>{
 });
 app.use(express.static(path.join(__dirname)));
 
+// require authentication for all PUT requests
+app.use((req, res, next) => {
+  if (req.method === 'PUT') {
+    if (!req.session.user) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    if (!req.session.user.is_admin) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+  }
+  next();
+});
+
 function list(table) {
   return (req, res) => {
     db.all(`SELECT * FROM ${table}`, [], (err, rows) => {
