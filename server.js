@@ -216,7 +216,7 @@ CREATE TABLE IF NOT EXISTS building_properties (
   produces TEXT,
   production INTEGER,
   costs TEXT,
-  max INTEGER,
+  max TEXT,
   workers_per_building INTEGER DEFAULT 1,
   restrictions TEXT,
   description TEXT
@@ -302,6 +302,11 @@ db.exec(initSql, () => {
       if (!rows.some(r => r.name === 'seigneur_id')) {
         db.run('ALTER TABLE kingdoms ADD COLUMN seigneur_id INTEGER REFERENCES seigneurs(id)');
       }
+    }
+  });
+  db.all("PRAGMA table_info(building_properties)", (err, rows) => {
+    if (!err && rows && !rows.some(r => r.name === 'label')) {
+      db.run('ALTER TABLE building_properties ADD COLUMN label TEXT');
     }
   });
   // Ensure every barony has a properties row with default values
