@@ -51,6 +51,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const production = data.production || {};
     const baronyProps = data.baronyProps || {};
     const employment = data.employment || { employed:0, slaves:0 };
+    const buildings = data.buildings || {};
 
     const summary = document.getElementById('summary');
     summary.innerHTML = `
@@ -90,26 +91,50 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const infra = document.getElementById('infrastructure');
     if (infra) {
-      let html = '<h2>Production</h2><table class="admin-table" id="buildingsTable"><tr><th>Nom</th><th>Production</th><th></th></tr>';
+      let html = '<h2>Infrastructure</h2><table class="admin-table" id="buildingsTable">';
+      html += '<tr><th>Nom</th><th>Production</th><th>Construits</th><th>Actifs</th><th>Activer</th><th>Construire</th></tr>';
       for (const bp of buildingProps) {
         const prod = bp.production ? `${bp.production} ${bp.produces || ''}` : '';
-        html += `<tr><td>${bp.label || bp.type}</td><td>${prod}</td><td><button data-id="${bp.id}">Construire</button></td></tr>`;
+        const info = buildings[bp.id] || { built: 0, active: 0 };
+        const built = info.built || 0;
+        const active = info.active || 0;
+        html += `<tr data-id="${bp.id}"><td>${bp.label || bp.type}</td><td>${prod}</td><td>${built}</td>`;
+        html += `<td>${active}</td>`;
+        html += `<td><input type="number" min="0" max="${built}" value="${active}" class="activate-input" style="width:4em" data-id="${bp.id}"><button class="activate-btn" data-id="${bp.id}">OK</button></td>`;
+        html += `<td><input type="number" min="1" value="1" class="build-input" style="width:4em" data-id="${bp.id}"><button class="build-btn" data-id="${bp.id}">Construire</button></td></tr>`;
       }
       html += '</table>';
       infra.innerHTML = html;
+
       const table = document.getElementById('buildingsTable');
       table.addEventListener('click', async e => {
-        if (e.target.tagName === 'BUTTON') {
+        if (e.target.classList.contains('build-btn')) {
           const id = e.target.dataset.id;
+          const input = table.querySelector(`input.build-input[data-id="${id}"]`);
+          const quantity = parseInt(input.value, 10) || 0;
           const resp = await fetch('/api/building', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id, quantity: 1 })
+            body: JSON.stringify({ id, quantity })
           });
           if (resp.ok) {
             location.reload();
           } else {
             alert('Construction impossible');
+          }
+        } else if (e.target.classList.contains('activate-btn')) {
+          const id = e.target.dataset.id;
+          const input = table.querySelector(`input.activate-input[data-id="${id}"]`);
+          const quantity = parseInt(input.value, 10);
+          const resp = await fetch('/api/building/activate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, quantity })
+          });
+          if (resp.ok) {
+            location.reload();
+          } else {
+            alert("Activation impossible");
           }
         }
       });
