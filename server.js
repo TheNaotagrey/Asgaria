@@ -665,12 +665,22 @@ app.get('/api/my_seigneurie', (req, res) => {
                 const baseWorkers = bprop ? (bprop.workers_per_building || 0) : 1;
                 const slaves = inventaire.esclaves || 0;
                 const employed = fields.active * baseWorkers;
+                const foodProd = fields.active * 75;
+                const populationCons = s.population * 15;
+                const slaveCons = slaves * 5;
                 const production = {
-                  vivres: fields.active * 75 - (s.population * 15 + slaves * 5)
+                  vivres: foodProd - (populationCons + slaveCons)
+                };
+                const productionDetails = {
+                  vivres: [
+                    { label: 'Champs', amount: foodProd },
+                    { label: 'Population', amount: -populationCons },
+                    { label: 'Esclaves', amount: -slaveCons }
+                  ]
                 };
                 const employment = { employed, slaves };
                 function finalize(barony, baronyProps) {
-                  res.json({ seigneurie: s, barony, inventaire, production, fields, baronyProps, employment, buildings });
+                  res.json({ seigneurie: s, barony, inventaire, production, productionDetails, fields, baronyProps, employment, buildings });
                 }
                 if (s.baronnie_id) {
                   db.get('SELECT * FROM barony_properties WHERE barony_id=?', [s.baronnie_id], (err3, props) => {
