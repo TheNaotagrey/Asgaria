@@ -747,14 +747,22 @@ app.put('/api/building_properties/:id', requireAdmin, (req,res)=>{
   update('building_properties', buildingPropFields)(req,res);
 });
 
+function safeParse(json, fallback){
+  try {
+    return json ? JSON.parse(json) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function canConstruct(db, srow, id, qty, cb){
   db.get('SELECT * FROM building_properties WHERE id=?', [id], (err, bprops) => {
     if (err) return cb(err);
     if (!bprops) return cb(new Error('Type inconnu'));
     if (!srow.baronnie_id) return cb(new Error('Aucune baronnie associée'));
     const absMax = bprops.max != null ? bprops.max : Infinity;
-    const costObj = bprops.costs ? JSON.parse(bprops.costs) : {};
-    const restrictions = bprops.restrictions ? JSON.parse(bprops.restrictions) : {};
+    const costObj = safeParse(bprops.costs, {});
+    const restrictions = safeParse(bprops.restrictions, {});
     const costs = {};
     Object.entries(costObj).forEach(([res, val]) => {
       costs[res] = (parseInt(val, 10) || 0) * qty;
@@ -771,7 +779,7 @@ function canConstruct(db, srow, id, qty, cb){
           if ((barProps[prop] || 0) < val) return cb(new Error('Restriction non satisfaite'));
         }
       }
-      const buildings = srow.buildings ? JSON.parse(srow.buildings) : {};
+      const buildings = safeParse(srow.buildings, {});
       const binfo = buildings[id] || { built: 0, active: 0 };
       const built = binfo.built;
       const active = binfo.active;
@@ -826,7 +834,7 @@ app.post('/api/building/activate', (req,res)=>{
   db.get('SELECT seigneuries.id as id, seigneuries.population, seigneuries.inventaire_id, seigneuries.buildings FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?', [userId], (err, srow)=>{
     if(err) return handleError(res, err);
     if(!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
-    const buildings = srow.buildings ? JSON.parse(srow.buildings) : {};
+    const buildings = safeParse(srow.buildings, {});
     db.get('SELECT id, workers_per_building FROM building_properties WHERE id=?', [id], (err2, bprop)=>{
       if(err2) return handleError(res, err2);
       if(!bprop) return res.status(400).json({ error: 'Bâtiment introuvable' });
