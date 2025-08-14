@@ -324,8 +324,12 @@ db.exec(initSql, () => {
 
 // accept large pixel blobs
 app.use(express.json({ limit: '50mb' }));
+const sessionSecret = process.env.SESSION_SECRET;
+if (!sessionSecret) {
+  logger.warn('SESSION_SECRET environment variable not set; using fallback secret');
+}
 app.use(session({
-  secret: process.env.SESSION_SECRET,
+  secret: sessionSecret || 'dev-secret',
   resave: false,
   saveUninitialized: false,
   cookie: {
