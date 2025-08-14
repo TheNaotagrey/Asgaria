@@ -61,9 +61,10 @@ const buildingPropLabels = {
   description:'Description'
 };
 const resourceSelect = Object.entries(inventaireLabels).map(([id, name]) => ({ id, name }));
+let buildingPropsSelect = [];
 const maxOptions = [
   ...Array.from({length:10}, (_,i)=>({ id:String(i+1), name:String(i+1) })),
-  ...baronyPropFields.filter(f=>f!=='barony_id').map(f=>({ id:f, name:baronyPropLabels[f] || f }))
+  ...baronyPropIntFields.map(f=>({ id:f, name:baronyPropLabels[f] || f }))
 ];
 
 async function fetchJSON(url, options){
@@ -199,6 +200,150 @@ function renderTable(container, rows, opts){
           const q = parseInt(rw.querySelector('input').value,10);
           if(k && q) res[k] = q;
         });
+        return JSON.stringify(res);
+      };
+      return container;
+    }
+    if(field === 'restrictions'){
+      const container = document.createElement('div');
+      const list = document.createElement('div');
+      container.appendChild(list);
+      const addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.textContent = '+';
+      container.appendChild(addBtn);
+      function addRow(type = '', data = {}){
+        const row = document.createElement('div');
+        row.className = 'restriction-row';
+        const typeSel = document.createElement('select');
+        const typeBlank = document.createElement('option');
+        typeBlank.value = '';
+        typeSel.appendChild(typeBlank);
+        const typeOptions = [
+          {id:'prop', name:'Propriété'},
+          {id:'building', name:'Bâtiment'},
+          {id:'population', name:'Population'}
+        ];
+        typeOptions.forEach(o=>{
+          const op = document.createElement('option');
+          op.value = o.id;
+          op.textContent = o.name;
+          if(o.id === type) op.selected = true;
+          typeSel.appendChild(op);
+        });
+        const keySpan = document.createElement('span');
+        const valSpan = document.createElement('span');
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.textContent = '-';
+        removeBtn.addEventListener('click', ()=> row.remove());
+        row.appendChild(typeSel);
+        row.appendChild(keySpan);
+        row.appendChild(valSpan);
+        row.appendChild(removeBtn);
+        function updateFields(){
+          keySpan.innerHTML = '';
+          valSpan.innerHTML = '';
+          if(typeSel.value === 'prop'){
+            const sel = document.createElement('select');
+            const blank = document.createElement('option');
+            blank.value = '';
+            sel.appendChild(blank);
+            baronyPropBoolFields.forEach(f=>{
+              const op = document.createElement('option');
+              op.value = f;
+              op.textContent = baronyPropLabels[f] || f;
+              if(f === data.prop) op.selected = true;
+              sel.appendChild(op);
+            });
+            keySpan.appendChild(sel);
+            const yn = document.createElement('select');
+            yesNoSelect.forEach(o=>{
+              const op = document.createElement('option');
+              op.value = o.id;
+              op.textContent = o.name;
+              if(String(o.id) === String(data.value ? 1 : 0)) op.selected = true;
+              yn.appendChild(op);
+            });
+            valSpan.appendChild(yn);
+          } else if(typeSel.value === 'building'){
+            const sel = document.createElement('select');
+            const blank = document.createElement('option');
+            blank.value = '';
+            sel.appendChild(blank);
+            buildingPropsSelect.forEach(o=>{
+              const op = document.createElement('option');
+              op.value = o.id;
+              op.textContent = o.name;
+              if(String(o.id) === String(data.building)) op.selected = true;
+              sel.appendChild(op);
+            });
+            keySpan.appendChild(sel);
+            const qty = document.createElement('input');
+            qty.type = 'number';
+            qty.min = '0';
+            qty.value = data.value || '';
+            valSpan.appendChild(qty);
+          } else if(typeSel.value === 'population'){
+            const qty = document.createElement('input');
+            qty.type = 'number';
+            qty.min = '0';
+            qty.value = data.value || '';
+            valSpan.appendChild(qty);
+          }
+        }
+        typeSel.addEventListener('change', updateFields);
+        updateFields();
+        list.appendChild(row);
+      }
+      addBtn.addEventListener('click', ()=> addRow());
+      try {
+        const obj = JSON.parse(val || '{}');
+        const req = obj.requires || {};
+        if(req.props){
+          Object.entries(req.props).forEach(([p,v])=> addRow('prop',{prop:p,value:v}));
+        }
+        if(req.buildings){
+          Object.entries(req.buildings).forEach(([b,v])=> addRow('building',{building:b,value:v}));
+        }
+        if(req.population){
+          addRow('population',{value:req.population});
+        }
+        if(!req.props && !req.buildings && !req.population){
+          addRow();
+        }
+      } catch(e){
+        addRow();
+      }
+      container.getValue = ()=>{
+        const res = {};
+        const props = {};
+        const buildings = {};
+        let population;
+        list.querySelectorAll('.restriction-row').forEach(rw=>{
+          const type = rw.querySelector('select').value;
+          if(type === 'prop'){
+            const [propSel, valSel] = rw.querySelectorAll('span select');
+            const prop = propSel.value;
+            const val = valSel.value;
+            if(prop) props[prop] = val === '1';
+          } else if(type === 'building'){
+            const sel = rw.querySelector('span select');
+            const inp = rw.querySelector('span input');
+            const b = sel.value;
+            const q = parseInt(inp.value,10);
+            if(b && q) buildings[b] = q;
+          } else if(type === 'population'){
+            const inp = rw.querySelector('span input');
+            const q = parseInt(inp.value,10);
+            if(q) population = q;
+          }
+        });
+        const requires = {};
+        if(Object.keys(props).length) requires.props = props;
+        if(Object.keys(buildings).length) requires.buildings = buildings;
+        if(population != null) requires.population = population;
+        if(Object.keys(requires).length) res.requires = requires;
         return JSON.stringify(res);
       };
       return container;
@@ -450,6 +595,7 @@ async function loadAll(){
     labels:baronyPropLabels
   });
 
+  buildingPropsSelect = buildingProps.map(b => ({ id: b.id, name: b.label || b.type }));
   const buildingPropsById = buildingProps.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableBuildingProps'), buildingPropsById, {
     endpoint:'building_properties',

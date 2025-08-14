@@ -803,12 +803,27 @@ function canConstruct(db, srow, id, qty, cb){
       if (restrictions.limit_prop && barProps[restrictions.limit_prop] != null) {
         max = Math.min(max, barProps[restrictions.limit_prop]);
       }
-      if (restrictions.requires) {
-        for (const [prop, val] of Object.entries(restrictions.requires)) {
-          if ((barProps[prop] || 0) < val) return cb(new Error('Restriction non satisfaite'));
+      const requires = restrictions.requires || {};
+      if (requires.props) {
+        for (const [prop, val] of Object.entries(requires.props)) {
+          const propVal = barProps[prop] || 0;
+          if (typeof val === 'boolean') {
+            if (!!propVal !== val) return cb(new Error('Restriction non satisfaite'));
+          } else {
+            if (propVal < val) return cb(new Error('Restriction non satisfaite'));
+          }
         }
       }
       const buildings = safeParse(srow.buildings, {});
+      if (requires.buildings) {
+        for (const [bid, count] of Object.entries(requires.buildings)) {
+          const builtCount = buildings[bid] ? (buildings[bid].built || 0) : 0;
+          if (builtCount < count) return cb(new Error('Restriction non satisfaite'));
+        }
+      }
+      if (requires.population && (srow.population || 0) < requires.population) {
+        return cb(new Error('Restriction non satisfaite'));
+      }
       const binfo = buildings[id] || { built: 0, active: 0 };
       const built = binfo.built;
       const active = binfo.active;
@@ -831,7 +846,7 @@ app.post('/api/building', (req,res)=>{
   const qty = parseInt(quantity,10) || 0;
   if(!bId || qty <= 0) return res.status(400).json({ error: 'Quantité invalide' });
   const userId = req.session.user.id;
-  db.get('SELECT seigneuries.id as id, seigneuries.baronnie_id, seigneuries.inventaire_id, seigneuries.buildings FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?', [userId], (err, srow)=>{
+  db.get('SELECT seigneuries.id as id, seigneuries.baronnie_id, seigneuries.population, seigneuries.inventaire_id, seigneuries.buildings FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?', [userId], (err, srow)=>{
     if(err) return handleError(res, err);
     if(!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
     canConstruct(db, srow, bId, qty, (err2, info)=>{
