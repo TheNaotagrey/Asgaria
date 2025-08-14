@@ -36,7 +36,13 @@ const baronyPropLabels = {
   high_sea_boat_limit:'Limite de Bateau en haute mer'
 };
 
-document.addEventListener('DOMContentLoaded', async () => {
+document.addEventListener('DOMContentLoaded', init);
+
+async function init() {
+  await loadAndRender();
+}
+
+async function loadAndRender() {
   try {
     const [res, bRes] = await Promise.all([
       fetch('/api/my_seigneurie'),
@@ -49,6 +55,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const inv = data.inventaire || {};
     const barony = data.barony || {};
     const production = data.production || {};
+    const productionDetails = data.productionDetails || {};
     const baronyProps = data.baronyProps || {};
     const employment = data.employment || { employed:0, slaves:0 };
     const buildings = data.buildings || {};
@@ -86,8 +93,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const basicTable = document.getElementById('basicResourcesTable');
     const luxuryTable = document.getElementById('luxuryResourcesTable');
 
-    basicTable.innerHTML = buildTable(basicResources, true);
-    luxuryTable.innerHTML = buildTable(luxuryResources);
+    basicTable.innerHTML = buildTable(basicResources, true, inv, production, productionDetails);
+    luxuryTable.innerHTML = buildTable(luxuryResources, false, inv, production, productionDetails);
 
     const infra = document.getElementById('infrastructure');
     if (infra) {
@@ -107,79 +114,94 @@ document.addEventListener('DOMContentLoaded', async () => {
       infra.innerHTML = html;
 
       const table = document.getElementById('buildingsTable');
-      table.addEventListener('click', async e => {
-        if (e.target.classList.contains('build-btn')) {
-          const id = e.target.dataset.id;
-          const input = table.querySelector(`input.build-input[data-id="${id}"]`);
-          const quantity = parseInt(input.value, 10) || 0;
-          const resp = await fetch('/api/building', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id, quantity })
-          });
-          if (resp.ok) {
-            location.reload();
-          } else {
-            alert('Construction impossible');
-          }
-        } else if (e.target.classList.contains('activate-btn')) {
-          const id = e.target.dataset.id;
-          const input = table.querySelector(`input.activate-input[data-id="${id}"]`);
-          const quantity = parseInt(input.value, 10);
-          const resp = await fetch('/api/building/activate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id, quantity })
-          });
-          if (resp.ok) {
-            location.reload();
-          } else {
-            alert("Activation impossible");
-          }
-        }
-      });
+      table.addEventListener('click', handleBuildingTableClick);
     }
 
     const propsDiv = document.getElementById('baronyProps');
     if (propsDiv) {
       propsDiv.innerHTML = buildPropsTable(baronyProps);
     }
-
-    function buildTable(list, showMax = false) {
-      let html = '<tr><th>Ressource</th><th>Quantité</th><th>Production</th>';
-      if (showMax) html += '<th>Maximum</th>';
-      html += '</tr>';
-      for (const [key, label] of list) {
-        const qty = inv[key] ?? 0;
-        const prod = production[key];
-        let prodHtml = '';
-        if (prod) {
-          const sign = prod > 0 ? '+' : '';
-          const cls = prod > 0 ? 'prod-positive' : 'prod-negative';
-          prodHtml = `<span class="${cls}">${sign}${prod}</span>`;
-        }
-        html += `<tr><td>${label}</td><td>${qty}</td><td>${prodHtml}</td>`;
-        if (showMax) html += '<td></td>';
-        html += '</tr>';
-      }
-      return html;
-    }
-
-    function buildPropsTable(props) {
-      let html = '<table class="admin-table"><tr><th>Propriété</th><th>Valeur</th></tr>';
-      for (const [key, label] of Object.entries(baronyPropLabels)) {
-        let val = props[key];
-        if (baronyPropBoolFields.includes(key)) {
-          val = val ? 'Oui' : 'Non';
-        } else if (val === undefined || val === null) {
-          val = '';
-        }
-        html += `<tr><td>${label}</td><td>${val}</td></tr>`;
-      }
-      html += '</table>';
-      return html;
-    }
   } catch (e) {
     document.getElementById('summary').textContent = 'Erreur de chargement';
   }
-});
+}
+
+async function handleBuildingTableClick(e) {
+  const table = document.getElementById('buildingsTable');
+  if (e.target.classList.contains('build-btn')) {
+    const id = e.target.dataset.id;
+    const input = table.querySelector(`input.build-input[data-id="${id}"]`);
+    const quantity = parseInt(input.value, 10) || 0;
+    const resp = await fetch('/api/building', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, quantity })
+    });
+    if (resp.ok) {
+      await loadAndRender();
+    } else {
+      alert('Construction impossible');
+    }
+  } else if (e.target.classList.contains('activate-btn')) {
+    const id = e.target.dataset.id;
+    const input = table.querySelector(`input.activate-input[data-id="${id}"]`);
+    const quantity = parseInt(input.value, 10);
+    const resp = await fetch('/api/building/activate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, quantity })
+    });
+    if (resp.ok) {
+      await loadAndRender();
+    } else {
+      alert('Activation impossible');
+    }
+  }
+}
+
+function buildTable(list, showMax = false, inv = {}, production = {}, productionDetails = {}) {
+  let html = '<tr><th>Ressource</th><th>Quantité</th><th>Production</th>';
+  if (showMax) html += '<th>Maximum</th>';
+  html += '</tr>';
+  for (const [key, label] of list) {
+    const qty = inv[key] ?? 0;
+    const details = productionDetails[key] || [];
+    let prodHtml = '';
+    if (details.length) {
+      const total = details.reduce((sum, s) => sum + s.amount, 0);
+      prodHtml = '<details><summary>' + spanAmount(total) + '</summary><ul>';
+      for (const src of details) {
+        prodHtml += `<li>${src.label}: ${spanAmount(src.amount)}</li>`;
+      }
+      prodHtml += '</ul></details>';
+    } else if (production[key]) {
+      prodHtml = spanAmount(production[key]);
+    }
+    html += `<tr><td>${label}</td><td>${qty}</td><td>${prodHtml}</td>`;
+    if (showMax) html += '<td></td>';
+    html += '</tr>';
+  }
+  return html;
+}
+
+function spanAmount(val) {
+  const sign = val > 0 ? '+' : '';
+  const cls = val > 0 ? 'prod-positive' : 'prod-negative';
+  return `<span class="${cls}">${sign}${val}</span>`;
+}
+
+function buildPropsTable(props) {
+  let html = '<table class="admin-table"><tr><th>Propriété</th><th>Valeur</th></tr>';
+  for (const [key, label] of Object.entries(baronyPropLabels)) {
+    let val = props[key];
+    if (baronyPropBoolFields.includes(key)) {
+      val = val ? 'Oui' : 'Non';
+    } else if (val === undefined || val === null) {
+      val = '';
+    }
+    html += `<tr><td>${label}</td><td>${val}</td></tr>`;
+  }
+  html += '</table>';
+  return html;
+}
+
