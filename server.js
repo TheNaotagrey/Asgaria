@@ -5,6 +5,7 @@ const path = require('path');
 const session = require('express-session');
 const bcrypt = require('bcryptjs');
 const { inventaireFields, performTransaction } = require('./transactions');
+const { handleError } = require("./logger");
 const app = express();
 const db = new sqlite3.Database('asgaria.db');
 
@@ -334,7 +335,7 @@ app.use(express.static(path.join(__dirname)));
 function list(table) {
   return (req, res) => {
     db.all(`SELECT * FROM ${table}`, [], (err, rows) => {
-      if (err) return res.status(500).json({error: err.message});
+      if (err) return handleError(res, err);
       res.json(rows);
     });
   };
@@ -349,7 +350,7 @@ function create(table, fields) {
     const values = fields.map(f => sanitize(req.body[f]));
     const placeholders = fields.map(() => '?').join(',');
     db.run(`INSERT INTO ${table} (${fields.join(',')}) VALUES (${placeholders})`, values, function(err){
-      if (err) return res.status(500).json({error: err.message});
+      if (err) return handleError(res, err);
       res.json({id: this.lastID});
     });
   };
@@ -362,7 +363,7 @@ function update(table, fields) {
     const values = fields.map(f => sanitize(req.body[f]));
     values.push(id);
     db.run(`UPDATE ${table} SET ${set} WHERE id=?`, values, function(err){
-      if (err) return res.status(500).json({error: err.message});
+      if (err) return handleError(res, err);
       res.json({changes: this.changes});
     });
   };
@@ -379,7 +380,7 @@ app.post('/api/register', (req, res) => {
     'INSERT INTO users(email,password,first_name,last_name) VALUES (?,?,?,?)',
     [email, hash, first_name, last_name],
     function (err) {
-      if (err) return res.status(500).json({ error: err.message });
+      if (err) return handleError(res, err);
       req.session.user = {
         id: this.lastID,
         email,
@@ -422,7 +423,7 @@ app.get('/api/me', (req, res) => {
 
 app.get('/api/users', (req, res) => {
   db.all('SELECT id, email, first_name, last_name FROM users', [], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) return handleError(res, err);
     res.json(rows);
   });
 });
@@ -447,7 +448,7 @@ app.post('/api/profile', (req, res) => {
     if (fields.length === 0) return res.json({ ok: true });
     values.push(req.session.user.id);
     db.run(`UPDATE users SET ${fields.join(',')} WHERE id=?`, values, function (err) {
-      if (err) return res.status(500).json({ error: err.message });
+      if (err) return handleError(res, err);
       res.json({ ok: true });
     });
   };
@@ -455,7 +456,7 @@ app.post('/api/profile', (req, res) => {
   if (password) {
     if (!current_password) return res.status(400).json({ error: 'Missing current password' });
     db.get('SELECT password FROM users WHERE id=?', [req.session.user.id], (err, row) => {
-      if (err) return res.status(500).json({ error: err.message });
+      if (err) return handleError(res, err);
       if (!row || !bcrypt.compareSync(current_password, row.password)) {
         return res.status(400).json({ error: 'Incorrect current password' });
       }
@@ -516,7 +517,7 @@ app.get('/api/seigneuries', (req, res) => {
   if (!req.session.user || !req.session.user.is_admin) return res.status(403).json({ error: 'Forbidden' });
   const invSelect = inventaireFields.map(f => `i.${f}`).join(',');
   db.all(`SELECT s.id, s.baronnie_id, s.seigneur_id, s.population, s.inventaire_id, ${invSelect} FROM seigneuries s JOIN inventaire i ON s.inventaire_id=i.id`, [], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) return handleError(res, err);
     res.json(rows);
   });
 });
@@ -528,11 +529,11 @@ app.post('/api/seigneuries', (req, res) => {
   const invValues = inventaireFields.map(f => sanitize(req.body[f]) || 0);
   const invPlace = inventaireFields.map(() => '?').join(',');
   db.run(`INSERT INTO inventaire (${inventaireFields.join(',')}) VALUES (${invPlace})`, invValues, function(err){
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) return handleError(res, err);
     const invId = this.lastID;
     db.run('INSERT INTO seigneuries (baronnie_id,seigneur_id,population,inventaire_id) VALUES (?,?,?,?)',
       [...seigValues, invId], function(err2){
-        if (err2) return res.status(500).json({ error: err2.message });
+        if (err2) return handleError(res, err2);
         res.json({ id: this.lastID, inventaire_id: invId });
       });
   });
@@ -546,13 +547,13 @@ app.put('/api/seigneuries/:id', (req, res) => {
   const seigValues = seigFields.map(f => sanitize(req.body[f]));
   seigValues.push(id);
   db.run(`UPDATE seigneuries SET ${seigSet} WHERE id=?`, seigValues, function(err){
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) return handleError(res, err);
     const invId = req.body.inventaire_id;
     const invSet = inventaireFields.map(f => `${f}=?`).join(',');
     const invValues = inventaireFields.map(f => sanitize(req.body[f]) || 0);
     invValues.push(invId);
     db.run(`UPDATE inventaire SET ${invSet} WHERE id=?`, invValues, function(err2){
-      if (err2) return res.status(500).json({ error: err2.message });
+      if (err2) return handleError(res, err2);
       res.json({ changes: this.changes });
     });
   });
@@ -563,38 +564,38 @@ app.get('/api/my_seigneurie', (req, res) => {
   const userId = req.session.user.id;
   db.serialize(() => {
     db.get('SELECT * FROM seigneurs WHERE user_id=?', [userId], (err, seigneur) => {
-      if (err) return res.status(500).json({ error: err.message });
+      if (err) return handleError(res, err);
       function ensureSeigneur(cb) {
         if (seigneur) return cb(seigneur);
         const name = `Seigneur ${req.session.user.first_name}`;
         db.run('INSERT INTO seigneurs(name,user_id) VALUES (?,?)', [name, userId], function(err){
-          if (err) return res.status(500).json({ error: err.message });
+          if (err) return handleError(res, err);
           cb({ id: this.lastID, name, user_id: userId });
         });
       }
       ensureSeigneur(seig => {
         db.get('SELECT * FROM seigneuries WHERE seigneur_id=?', [seig.id], (err, seigneurie) => {
-          if (err) return res.status(500).json({ error: err.message });
+          if (err) return handleError(res, err);
           function ensureSeigneurie(cb) {
             if (seigneurie) return cb(seigneurie);
             db.run('INSERT INTO inventaire DEFAULT VALUES', function(err){
-              if (err) return res.status(500).json({ error: err.message });
+              if (err) return handleError(res, err);
               const invId = this.lastID;
               db.run('INSERT INTO seigneuries (baronnie_id,seigneur_id,population,inventaire_id) VALUES (NULL,?,?,?)',
                 [seig.id, 0, invId], function(err){
-                  if (err) return res.status(500).json({ error: err.message });
+                  if (err) return handleError(res, err);
                   cb({ id: this.lastID, baronnie_id: null, seigneur_id: seig.id, population: 0, inventaire_id: invId });
                 });
             });
           }
           ensureSeigneurie(s => {
             db.get('SELECT * FROM inventaire WHERE id=?', [s.inventaire_id], (err, inventaire) => {
-              if (err) return res.status(500).json({ error: err.message });
+              if (err) return handleError(res, err);
               db.get('SELECT * FROM fields WHERE seigneurie_id=?', [s.id], (err, fieldRow) => {
-                if (err) return res.status(500).json({ error: err.message });
+                if (err) return handleError(res, err);
                 const fields = fieldRow || { built: 0, active: 0 };
                 db.get('SELECT workers_per_building FROM building_properties WHERE type=?', ['field'], (err2, bprop) => {
-                  if (err2) return res.status(500).json({ error: err2.message });
+                  if (err2) return handleError(res, err2);
                   const baseWorkers = bprop ? (bprop.workers_per_building || 0) : 1;
                   const slaves = inventaire.esclaves || 0;
                   const employed = fields.active * baseWorkers;
@@ -607,9 +608,9 @@ app.get('/api/my_seigneurie', (req, res) => {
                   }
                   if (s.baronnie_id) {
                     db.get('SELECT * FROM barony_properties WHERE barony_id=?', [s.baronnie_id], (err3, props) => {
-                      if (err3) return res.status(500).json({ error: err3.message });
+                      if (err3) return handleError(res, err3);
                       db.get(`SELECT b.*, r.name as religion_name, c.name as culture_name FROM baronies b LEFT JOIN religions r ON b.religion_pop_id=r.id LEFT JOIN cultures c ON b.culture_id=c.id WHERE b.id=?`, [s.baronnie_id], (err4, barony) => {
-                        if (err4) return res.status(500).json({ error: err4.message });
+                        if (err4) return handleError(res, err4);
                         finalize(barony, props || {});
                       });
                     });
@@ -639,7 +640,7 @@ app.get('/api/baronies', (req, res) => {
   const id = req.query.id;
   if (id) {
     db.all('SELECT * FROM baronies WHERE id=?', [id], (err, rows) => {
-      if (err) return res.status(500).json({error: err.message});
+      if (err) return handleError(res, err);
       res.json(rows);
     });
   } else {
@@ -656,7 +657,7 @@ app.put('/api/baronies/:id', update('baronies',[
 ]));
 app.delete('/api/baronies/:id', (req,res)=>{
   db.run('DELETE FROM baronies WHERE id=?',[req.params.id], function(err){
-    if(err) return res.status(500).json({error: err.message});
+    if(err) return handleError(res, err);
     res.json({deleted: this.changes});
   });
 });
@@ -733,7 +734,7 @@ app.post('/api/building', (req,res)=>{
   if(qty <= 0) return res.status(400).json({ error: 'Quantité invalide' });
   const userId = req.session.user.id;
   db.get('SELECT seigneuries.id as id, seigneuries.baronnie_id, seigneuries.inventaire_id FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?', [userId], (err, srow)=>{
-    if(err) return res.status(500).json({ error: err.message });
+    if(err) return handleError(res, err);
     if(!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
     canConstruct(db, srow, type, qty, (err2, info)=>{
       if(err2) return res.status(400).json({ error: err2.message });
@@ -744,7 +745,7 @@ app.post('/api/building', (req,res)=>{
         const [resName, amount] = entries[idx++];
         if(amount === 0) return deduct();
         performTransaction(db, srow.id, resName, -amount, err3 => {
-          if(err3) return res.status(500).json({ error: err3.message });
+          if(err3) return handleError(res, err3);
           deduct();
         });
       }
@@ -754,9 +755,9 @@ app.post('/api/building', (req,res)=>{
         const sql = info.hasRow ? 'UPDATE fields SET built=?, active=? WHERE seigneurie_id=?' : 'INSERT INTO fields (built, active, seigneurie_id) VALUES (?,?,?)';
         const params = info.hasRow ? [newBuilt, newActive, srow.id] : [newBuilt, newActive, srow.id];
         db.run(sql, params, function(err4){
-          if(err4) return res.status(500).json({ error: err4.message });
+          if(err4) return handleError(res, err4);
           db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err5, inventaire)=>{
-            if(err5) return res.status(500).json({ error: err5.message });
+            if(err5) return handleError(res, err5);
             res.json({ fields: { built: newBuilt, active: newActive }, inventaire });
           });
         });
@@ -772,27 +773,27 @@ app.post('/api/fields/activate', (req,res)=>{
   if(isNaN(qty) || qty < 0) return res.status(400).json({ error: 'Quantité invalide' });
   const userId = req.session.user.id;
   db.get('SELECT seigneuries.id as id, seigneuries.population, seigneuries.inventaire_id FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?', [userId], (err, srow)=>{
-    if(err) return res.status(500).json({ error: err.message });
+    if(err) return handleError(res, err);
     if(!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
     db.get('SELECT built, active FROM fields WHERE seigneurie_id=?', [srow.id], (err2, frow)=>{
-      if(err2) return res.status(500).json({ error: err2.message });
+      if(err2) return handleError(res, err2);
       const built = frow ? frow.built : 0;
       if(qty > built) return res.status(400).json({ error: 'Quantité supérieure au construit' });
       db.get('SELECT esclaves FROM inventaire WHERE id=?', [srow.inventaire_id], (err3, inv)=>{
-        if(err3) return res.status(500).json({ error: err3.message });
+        if(err3) return handleError(res, err3);
         const slaves = inv ? (inv.esclaves || 0) : 0;
         const totalPop = srow.population + slaves;
         if(qty > totalPop) return res.status(400).json({ error: 'Travailleurs insuffisants' });
         const done = ()=> res.json({ fields: { built, active: qty }, employment: { employed: qty, slaves } });
         if(frow){
           db.run('UPDATE fields SET active=? WHERE seigneurie_id=?', [qty, srow.id], function(err4){
-            if(err4) return res.status(500).json({ error: err4.message });
+            if(err4) return handleError(res, err4);
             done();
           });
         } else {
           if(qty > 0) return res.status(400).json({ error: 'Aucun champ construit' });
           db.run('INSERT INTO fields (seigneurie_id,built,active) VALUES (?,?,?)',[srow.id,0,0], function(err4){
-            if(err4) return res.status(500).json({ error: err4.message });
+            if(err4) return handleError(res, err4);
             done();
           });
         }
@@ -806,7 +807,7 @@ app.post('/api/canonical_lands', create('canonical_lands',['religion_id','barony
 app.delete('/api/canonical_lands', (req, res) => {
   const { religion_id, barony_id } = req.query;
   db.run('DELETE FROM canonical_lands WHERE religion_id=? AND barony_id=?', [religion_id, barony_id], function(err){
-    if(err) return res.status(500).json({error: err.message});
+    if(err) return handleError(res, err);
     res.json({deleted: this.changes});
   });
 });
@@ -816,18 +817,18 @@ app.get('/api/barony_pixels', (req, res) => {
   const id = req.query.id;
   if (id) {
     db.get('SELECT data FROM barony_pixels WHERE barony_id=?', [id], (err, row) => {
-      if (err) return res.status(500).json({error: err.message});
+      if (err) return handleError(res, err);
       if (!row) return res.json([]);
       try {
         const json = zlib.gunzipSync(row.data).toString();
         res.json(JSON.parse(json));
       } catch(e){
-        res.status(500).json({error: e.message});
+        handleError(res, e);
       }
     });
   } else {
     db.all('SELECT barony_id, data FROM barony_pixels', [], (err, rows) => {
-      if (err) return res.status(500).json({error: err.message});
+      if (err) return handleError(res, err);
       const out = {};
       rows.forEach(r => {
         try {
@@ -849,7 +850,7 @@ app.put('/api/barony_pixels', (req, res) => {
       stmt.run(id, buf);
     }
     stmt.finalize(err => {
-      if (err) return res.status(500).json({error: err.message});
+      if (err) return handleError(res, err);
       res.json({ok: true});
     });
   });
