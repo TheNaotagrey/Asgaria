@@ -286,19 +286,23 @@ main {
   text-align: center;
 }
 
-.cost-row {
+.cost-row,
+.restriction-row {
   display: flex;
   align-items: center;
   gap: 4px;
   margin-bottom: 4px;
 }
-.cost-row select {
+.cost-row select,
+.restriction-row select {
   flex: 1;
 }
-.cost-row input {
+.cost-row input,
+.restriction-row input {
   width: 60px;
 }
-.cost-row button {
+.cost-row button,
+.restriction-row button {
   padding: 0 6px;
 }
 
