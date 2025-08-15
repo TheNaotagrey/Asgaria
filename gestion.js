@@ -77,17 +77,17 @@ async function loadAndRender() {
       }
     });
     const bpMap = Object.fromEntries(allBuildingProps.map(b => [String(b.id), b]));
-    const infraProps = allInfraProps.filter(ip => {
-      try {
-        const r = ip.restrictions ? JSON.parse(ip.restrictions) : [];
-        if (Array.isArray(r)) {
-          return r.every(p => baronyProps[p]);
+      const infraProps = allInfraProps.filter(ip => {
+        try {
+          const arr = ip.absolute_restrictions ? JSON.parse(ip.absolute_restrictions) : [];
+          if (Array.isArray(arr)) {
+            return arr.every(p => baronyProps[p]);
+          }
+          return true;
+        } catch {
+          return true;
         }
-        return true;
-      } catch {
-        return true;
-      }
-    });
+      });
     const ipMap = Object.fromEntries(allInfraProps.map(b => [String(b.id), b]));
 
     gameState = { s, employment, buildings, infrastructures, bpMap, ipMap };
@@ -144,7 +144,7 @@ async function loadAndRender() {
     const freePop = s.population + employment.slaves - employment.employed;
     if (prodDiv) {
       let html = '<table class="admin-table" id="buildingsTable">';
-      html += '<tr><th>Nom</th><th>Production</th><th>Employés</th><th>Restrictions</th><th>Construits</th><th>Max</th><th>Activer</th><th>Prod. Tot.</th><th>Emp. Tot.</th><th>Coût</th><th>Construire</th></tr>';
+      html += '<tr><th>Nom</th><th>Production</th><th>Employés</th><th>Requis</th><th>Construits</th><th>Max</th><th>Activer</th><th>Prod. Tot.</th><th>Emp. Tot.</th><th>Coût</th><th>Construire</th></tr>';
       for (const bp of buildingProps) {
         const prodLabel = resourceLabels[bp.produces] || bp.produces || '';
         const prod = bp.production ? `${bp.production} ${prodLabel}` : '';
@@ -345,7 +345,7 @@ async function handleInfraTableClick(e) {
 
 function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId) {
   const { buildings = {}, infrastructures = {}, s = {}, bpMap = {}, ipMap = {} } = gameState || {};
-  let html = `<table class="admin-table" id="${tableId}"><tr><th>Nom</th><th>Construits</th><th>Max</th><th>Effets</th><th>Restrictions</th><th>Coût</th><th>Construire</th></tr>`;
+  let html = `<table class="admin-table" id="${tableId}"><tr><th>Nom</th><th>Construits</th><th>Max</th><th>Effets</th><th>Requis</th><th>Coût</th><th>Construire</th></tr>`;
   for (const ip of list) {
     const built = infraBuilt[ip.id] || 0;
 
