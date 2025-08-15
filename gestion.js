@@ -135,18 +135,18 @@ async function loadAndRender() {
           const parts = [];
           for (const [k, q] of Object.entries(costs)) {
             const label = resourceLabels[k] || k;
-            parts.push(`${label}: ${q}`);
-            if ((inv[k] || 0) < q) hasResources = false;
+            const ok = (inv[k] || 0) >= q;
+            if (!ok) hasResources = false;
+            const color = ok ? '' : ' style="color:red"';
+            parts.push(`<span${color}>${label}: ${q}</span>`);
           }
           costHtml = parts.join('<br>');
         } catch (e) {
           costHtml = '';
         }
-        if (costHtml && !hasResources) {
-          costHtml = `<span style="color:red">${costHtml}</span>`;
-        }
 
         let restrHtml = '';
+        let restrictionsMet = true;
         try {
           const infraR = bp.infra_restrictions ? JSON.parse(bp.infra_restrictions) : {};
           const parts = [];
@@ -154,21 +154,38 @@ async function loadAndRender() {
             for (const [bid, qty] of Object.entries(infraR.buildings)) {
               const ref = bpMap[String(bid)];
               const name = ref ? (ref.label || ref.type) : bid;
-              parts.push(`${name}: ${qty}`);
+              const builtInfo = buildings[bid] || buildings[String(bid)] || {};
+              const ok = (builtInfo.built || 0) >= qty;
+              if (!ok) restrictionsMet = false;
+              const color = ok ? '' : ' style="color:red"';
+              parts.push(`<span${color}>${name}: ${qty}</span>`);
             }
           }
           if (infraR.population) {
-            parts.push(`Population: ${infraR.population}`);
+            const ok = (s.population || 0) >= infraR.population;
+            if (!ok) restrictionsMet = false;
+            const color = ok ? '' : ' style="color:red"';
+            parts.push(`<span${color}>Population: ${infraR.population}</span>`);
           }
           restrHtml = parts.join('<br>');
         } catch (e) {
           restrHtml = '';
         }
 
+        let maxReached = false;
+        if (maxVal !== '') {
+          const maxNum = parseInt(maxVal, 10);
+          if (!isNaN(maxNum) && built >= maxNum) {
+            maxReached = true;
+          }
+        }
+
+        const canBuild = hasResources && restrictionsMet && !maxReached;
+
         html += `<tr data-id="${bp.id}"><td>${bp.label || bp.type}</td><td>${prod}</td><td>${costHtml}</td><td>${restrHtml}</td><td>${built}</td><td>${maxVal}</td>`;
         html += `<td>${active}</td>`;
         html += `<td><input type="number" min="0" max="${built}" value="${active}" class="activate-input" style="width:4em" data-id="${bp.id}"><button class="activate-btn" data-id="${bp.id}">OK</button></td>`;
-        html += `<td><button class="build-btn" data-id="${bp.id}">Construire</button></td></tr>`;
+        html += `<td><button class="build-btn" data-id="${bp.id}"${canBuild ? '' : ' disabled'}>Construire</button></td></tr>`;
       }
       html += '</table>';
       infra.innerHTML = html;
