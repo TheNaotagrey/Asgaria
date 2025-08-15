@@ -392,3 +392,9 @@ main {
   flex: 1;
   min-width: 250px;
 }
+
+/* Bouton de construction désactivé */
+.build-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
