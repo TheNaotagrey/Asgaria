@@ -52,9 +52,17 @@ class BuildingProductionEffect extends Effect {
     const added = totalBonus * active;
     if (!ctx.production) ctx.production = {};
     if (!ctx.productionDetails) ctx.productionDetails = {};
-    ctx.production[bp.produces] = (ctx.production[bp.produces] || 0) + added;
-    if (!ctx.productionDetails[bp.produces]) ctx.productionDetails[bp.produces] = [];
-    ctx.productionDetails[bp.produces].push({ label, amount: added, source: count });
+    const res = bp.produces;
+    ctx.production[res] = (ctx.production[res] || 0) + added;
+    if (!ctx.productionDetails[res]) ctx.productionDetails[res] = [];
+    const arr = ctx.productionDetails[res];
+    const buildLabel = bp.label || bp.type;
+    const existing = arr.find(d => d.label === buildLabel);
+    if (existing) {
+      existing.amount += added;
+    } else {
+      arr.push({ label: buildLabel, amount: added, source: active });
+    }
   }
 }
 
