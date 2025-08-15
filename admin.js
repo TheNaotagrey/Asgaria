@@ -75,7 +75,7 @@ const infraPropLabels = {
   description:'Description',
 };
 const typeSelect = [{id:'civil',name:'Civil'},{id:'militaire',name:'Militaire'}];
-const resourceSelect = Object.entries(inventaireLabels).map(([id, name]) => ({ id, name }));
+const resourceSelect = [{ id: 'choice', name: 'Choix à la construction' }, ...Object.entries(inventaireLabels).map(([id, name]) => ({ id, name }))];
 let buildingPropsSelect = [];
 let infraPropsSelect = [];
 const maxOptions = [
@@ -287,7 +287,8 @@ function makeEffectsInput(val){
     const typeOptions = [
       {id:'storage', name:'Stockage'},
       {id:'production', name:'Production ressource'},
-      {id:'building_production', name:'Prod. bâtiment'}
+      {id:'building_production', name:'Prod. bâtiment'},
+      {id:'instant_production', name:'Prod. instantanée'}
     ];
     typeOptions.forEach(o=>{
       const op = document.createElement('option');
@@ -297,7 +298,16 @@ function makeEffectsInput(val){
       typeSel.appendChild(op);
     });
     const targetSel = document.createElement('select');
-    function populateTarget(){
+    const qty = document.createElement('input');
+    qty.type = 'number';
+    qty.min = '0';
+    const usesInput = document.createElement('input');
+    usesInput.type = 'number';
+    usesInput.min = '0';
+    const costInput = document.createElement('input');
+    costInput.type = 'text';
+
+    function populateFields(){
       targetSel.innerHTML = '';
       const blankRes = document.createElement('option');
       blankRes.value = '';
@@ -310,6 +320,8 @@ function makeEffectsInput(val){
           if(String(o.id) === String(data.building)) op.selected = true;
           targetSel.appendChild(op);
         });
+        usesInput.style.display = 'none';
+        costInput.style.display = 'none';
       }else{
         resourceSelect.forEach(o=>{
           const op = document.createElement('option');
@@ -318,17 +330,23 @@ function makeEffectsInput(val){
           if(String(o.id) === String(data.resource)) op.selected = true;
           targetSel.appendChild(op);
         });
+        if(typeSel.value === 'instant_production'){
+          usesInput.style.display = '';
+          costInput.style.display = '';
+          usesInput.value = data.uses_per_month || '';
+          costInput.value = data.costs ? JSON.stringify(data.costs) : '{}';
+        }else{
+          usesInput.style.display = 'none';
+          costInput.style.display = 'none';
+        }
       }
+      qty.value = data.amount || '';
     }
-    populateTarget();
+    populateFields();
     typeSel.addEventListener('change', ()=>{
       data = {};
-      populateTarget();
+      populateFields();
     });
-    const qty = document.createElement('input');
-    qty.type = 'number';
-    qty.min = '0';
-    qty.value = data.amount || '';
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
     removeBtn.textContent = '-';
@@ -336,6 +354,8 @@ function makeEffectsInput(val){
     row.appendChild(typeSel);
     row.appendChild(targetSel);
     row.appendChild(qty);
+    row.appendChild(usesInput);
+    row.appendChild(costInput);
     row.appendChild(removeBtn);
     list.appendChild(row);
   }
@@ -356,7 +376,14 @@ function makeEffectsInput(val){
       const type = rw.children[0].value;
       const target = rw.children[1].value;
       const amt = parseInt(rw.children[2].value,10);
-      if(type && target && amt){
+      if(type === 'instant_production'){
+        const uses = parseInt(rw.children[3].value,10) || 0;
+        let costs = {};
+        try{ costs = JSON.parse(rw.children[4].value || '{}'); }catch(e){ costs = {}; }
+        if(target && amt){
+          res.push({type, resource: target, amount: amt, uses_per_month: uses, costs});
+        }
+      }else if(type && target && amt){
         if(type === 'building_production'){
           res.push({type, building: target, amount: amt});
         }else{
