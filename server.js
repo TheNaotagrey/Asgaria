@@ -8,7 +8,7 @@ const { inventaireFields, performTransaction } = require('./transactions');
 const logger = require('./logger');
 const handleError = require('./handleError');
 const { consumeResources } = require('./services/buildingService');
-const { StorageEffect, ResourceProductionEffect } = require('./effects');
+const { StorageEffect, ResourceProductionEffect, BuildingProductionEffect } = require('./effects');
 const app = express();
 const db = new sqlite3.Database('asgaria.db');
 
@@ -209,6 +209,7 @@ CREATE TABLE IF NOT EXISTS barony_properties (
   field_limit INTEGER DEFAULT 0,
   fishing_limit INTEGER DEFAULT 0,
   high_sea_boat_limit INTEGER DEFAULT 0,
+  effects TEXT,
   FOREIGN KEY(barony_id) REFERENCES baronies(id)
 );
 CREATE TABLE IF NOT EXISTS building_properties (
@@ -343,6 +344,12 @@ db.exec(initSql, () => {
     if (err || !rows) return;
     if (!rows.some(r => r.name === 'absolute_restrictions')) {
       db.run('ALTER TABLE infrastructure_properties ADD COLUMN absolute_restrictions TEXT');
+    }
+  });
+  db.all("PRAGMA table_info(barony_properties)", (err, rows) => {
+    if (err || !rows) return;
+    if (!rows.some(r => r.name === 'effects')) {
+      db.run('ALTER TABLE barony_properties ADD COLUMN effects TEXT');
     }
   });
   // Ensure every barony has a properties row with default values
@@ -703,6 +710,7 @@ app.get('/api/my_seigneurie', (req, res) => {
               db.all('SELECT id, type, label, produces, production, workers_per_building FROM building_properties', [], (err2, bprops) => {
                 if (err2) return handleError(res, err2);
                 const props = bprops || [];
+                const bpMap = Object.fromEntries(props.map(b => [String(b.id), b]));
                 let fields = { built: 0, active: 0 };
                 const production = {};
                 const productionDetails = {};
@@ -730,6 +738,7 @@ app.get('/api/my_seigneurie', (req, res) => {
                   if (errI) return handleError(res, errI);
                   const infraList = iprops || [];
                   const capacities = { vivres: 500, points_magique: 2000 };
+                  const buildingProductionBonus = {};
                   for (const ip of infraList) {
                     const count = infrastructures[ip.id] || 0;
                     if (!count) continue;
@@ -740,9 +749,11 @@ app.get('/api/my_seigneurie', (req, res) => {
                         effObj = new StorageEffect(def.resource, def.amount || 0);
                       } else if (def.type === 'production') {
                         effObj = new ResourceProductionEffect(def.resource, def.amount || 0);
+                      } else if (def.type === 'building_production') {
+                        effObj = new BuildingProductionEffect(def.building, def.amount || 0);
                       }
                       if (effObj) {
-                        effObj.apply({ production, productionDetails, capacity: capacities }, count, ip.label || ip.type);
+                        effObj.apply({ production, productionDetails, capacity: capacities, buildings, bpMap, buildingProductionBonus }, count, ip.label || ip.type);
                       }
                     }
                   }
@@ -764,14 +775,29 @@ app.get('/api/my_seigneurie', (req, res) => {
                   }
                   const employment = { employed: Math.max(employed - slaves, 0), slaves };
                   function finalize(barony, baronyProps) {
-                    res.json({ seigneurie: s, barony, inventaire, production, productionDetails, fields, baronyProps, employment, employmentDetails, buildings, infrastructures, capacities });
+                    res.json({ seigneurie: s, barony, inventaire, production, productionDetails, fields, baronyProps, employment, employmentDetails, buildings, infrastructures, capacities, buildingProductionBonus });
                   }
                   if (s.baronnie_id) {
                     db.get('SELECT * FROM barony_properties WHERE barony_id=?', [s.baronnie_id], (err3, props) => {
                       if (err3) return handleError(res, err3);
+                      const baronyProps = props || {};
+                      const baronyEffects = safeParse(baronyProps.effects, []);
+                      for (const def of baronyEffects) {
+                        let effObj = null;
+                        if (def.type === 'storage') {
+                          effObj = new StorageEffect(def.resource, def.amount || 0);
+                        } else if (def.type === 'production') {
+                          effObj = new ResourceProductionEffect(def.resource, def.amount || 0);
+                        } else if (def.type === 'building_production') {
+                          effObj = new BuildingProductionEffect(def.building, def.amount || 0);
+                        }
+                        if (effObj) {
+                          effObj.apply({ production, productionDetails, capacity: capacities, buildings, bpMap, buildingProductionBonus }, 1, 'Baronnie');
+                        }
+                      }
                       db.get(`SELECT b.*, r.name as religion_name, c.name as culture_name FROM baronies b LEFT JOIN religions r ON b.religion_pop_id=r.id LEFT JOIN cultures c ON b.culture_id=c.id WHERE b.id=?`, [s.baronnie_id], (err4, barony) => {
                         if (err4) return handleError(res, err4);
-                        finalize(barony, props || {});
+                        finalize(barony, baronyProps);
                       });
                     });
                   } else {
@@ -820,7 +846,7 @@ app.delete('/api/baronies/:id', (req,res)=>{
   });
 });
 
-const baronyPropFields = ['barony_id','water_access','sea_access','has_or','has_argent','has_fer','has_pierre','has_epices','has_perle','has_encens','has_huiles','has_pierre_precieuses','has_soie','has_sel','has_fourrure','has_teinture','has_ivoire','has_vin','field_limit','fishing_limit','high_sea_boat_limit'];
+const baronyPropFields = ['barony_id','water_access','sea_access','has_or','has_argent','has_fer','has_pierre','has_epices','has_perle','has_encens','has_huiles','has_pierre_precieuses','has_soie','has_sel','has_fourrure','has_teinture','has_ivoire','has_vin','field_limit','fishing_limit','high_sea_boat_limit','effects'];
 app.get('/api/barony_properties', requireAdmin, (req,res)=>{
   list('barony_properties')(req,res);
 });

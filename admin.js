@@ -24,7 +24,7 @@ const inventaireLabels = Object.fromEntries([...basicResources, ...luxuryResourc
 const yesNoSelect = [{id:1,name:'Oui'},{id:0,name:'Non'}];
 const baronyPropBoolFields = ['water_access','sea_access','has_or','has_argent','has_fer','has_pierre','has_epices','has_perle','has_encens','has_huiles','has_pierre_precieuses','has_soie','has_sel','has_fourrure','has_teinture','has_ivoire','has_vin'];
 const baronyPropIntFields = ['field_limit','fishing_limit','high_sea_boat_limit'];
-const baronyPropFields = ['barony_id', ...baronyPropBoolFields, ...baronyPropIntFields];
+const baronyPropFields = ['barony_id', ...baronyPropBoolFields, ...baronyPropIntFields, 'effects'];
 const baronyPropLabels = {
   barony_id:'Baronnie',
   water_access:"Accès à l'eau",
@@ -46,7 +46,8 @@ const baronyPropLabels = {
   has_vin:'Vin',
   field_limit:'Limite de champs',
   fishing_limit:'Limite de Pêche',
-  high_sea_boat_limit:'Limite de Bateau en haute mer'
+  high_sea_boat_limit:'Limite de Bateau en haute mer',
+  effects:'Effets'
 };
 
 const buildingPropFields = ['label','produces','production','costs','max','workers_per_building','absolute_restrictions','infra_restrictions','description'];
@@ -285,7 +286,8 @@ function makeEffectsInput(val){
     typeSel.appendChild(blank);
     const typeOptions = [
       {id:'storage', name:'Stockage'},
-      {id:'production', name:'Production'}
+      {id:'production', name:'Production ressource'},
+      {id:'building_production', name:'Prod. bâtiment'}
     ];
     typeOptions.forEach(o=>{
       const op = document.createElement('option');
@@ -294,16 +296,34 @@ function makeEffectsInput(val){
       if(o.id === type) op.selected = true;
       typeSel.appendChild(op);
     });
-    const resSel = document.createElement('select');
-    const blankRes = document.createElement('option');
-    blankRes.value = '';
-    resSel.appendChild(blankRes);
-    resourceSelect.forEach(o=>{
-      const op = document.createElement('option');
-      op.value = o.id;
-      op.textContent = o.name;
-      if(String(o.id) === String(data.resource)) op.selected = true;
-      resSel.appendChild(op);
+    const targetSel = document.createElement('select');
+    function populateTarget(){
+      targetSel.innerHTML = '';
+      const blankRes = document.createElement('option');
+      blankRes.value = '';
+      targetSel.appendChild(blankRes);
+      if(typeSel.value === 'building_production'){
+        buildingPropsSelect.forEach(o=>{
+          const op = document.createElement('option');
+          op.value = o.id;
+          op.textContent = o.name;
+          if(String(o.id) === String(data.building)) op.selected = true;
+          targetSel.appendChild(op);
+        });
+      }else{
+        resourceSelect.forEach(o=>{
+          const op = document.createElement('option');
+          op.value = o.id;
+          op.textContent = o.name;
+          if(String(o.id) === String(data.resource)) op.selected = true;
+          targetSel.appendChild(op);
+        });
+      }
+    }
+    populateTarget();
+    typeSel.addEventListener('change', ()=>{
+      data = {};
+      populateTarget();
     });
     const qty = document.createElement('input');
     qty.type = 'number';
@@ -314,7 +334,7 @@ function makeEffectsInput(val){
     removeBtn.textContent = '-';
     removeBtn.addEventListener('click', ()=> row.remove());
     row.appendChild(typeSel);
-    row.appendChild(resSel);
+    row.appendChild(targetSel);
     row.appendChild(qty);
     row.appendChild(removeBtn);
     list.appendChild(row);
@@ -323,7 +343,7 @@ function makeEffectsInput(val){
   try{
     const arr = JSON.parse(val || '[]');
     if(Array.isArray(arr) && arr.length){
-      arr.forEach(e=> addRow(e.type, {resource:e.resource, amount:e.amount}));
+      arr.forEach(e=> addRow(e.type, e));
     }else{
       addRow();
     }
@@ -334,10 +354,14 @@ function makeEffectsInput(val){
     const res = [];
     list.querySelectorAll('.effect-row').forEach(rw=>{
       const type = rw.children[0].value;
-      const resource = rw.children[1].value;
+      const target = rw.children[1].value;
       const amt = parseInt(rw.children[2].value,10);
-      if(type && resource && amt){
-        res.push({type, resource, amount: amt});
+      if(type && target && amt){
+        if(type === 'building_production'){
+          res.push({type, building: target, amount: amt});
+        }else{
+          res.push({type, resource: target, amount: amt});
+        }
       }
     });
     return JSON.stringify(res);
@@ -759,6 +783,9 @@ async function loadAll(){
     labels:{name:'Nom', user_id:'Utilisateur', religion_id:'Religion', overlord_id:'Suzerain'}
   });
 
+  buildingPropsSelect = buildingProps.map(b => ({ id: b.id, name: b.label || b.type }));
+  infraPropsSelect = infraProps.map(i => ({ id: i.id, name: i.label || i.type }));
+
   const baronyPropsById = baronyProps.slice().sort((a,b)=>a.id - b.id);
   const boolSelects = {};
   baronyPropBoolFields.forEach(f => { boolSelects[f] = yesNoSelect; });
@@ -768,9 +795,6 @@ async function loadAll(){
     selects:{barony_id:baroniesSelect, ...boolSelects},
     labels:baronyPropLabels
   });
-
-  buildingPropsSelect = buildingProps.map(b => ({ id: b.id, name: b.label || b.type }));
-  infraPropsSelect = infraProps.map(i => ({ id: i.id, name: i.label || i.type }));
   const buildingPropsById = buildingProps.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableBuildingProps'), buildingPropsById, {
     endpoint:'building_properties',
