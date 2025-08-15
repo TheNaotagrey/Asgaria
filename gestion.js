@@ -97,7 +97,7 @@ async function loadAndRender() {
       const tooltip = employmentDetails
         .map(src => `${src.label}: ${src.amount > 0 ? '+' : ''}${src.amount}`)
         .join('\n');
-      employedHtml = `<span class="tooltip" title="${tooltip}">${employment.employed}</span>`;
+      employedHtml = `<span class="tooltip" data-tooltip="${tooltip}">${employment.employed}</span>`;
     }
     popSummary.innerHTML = `
       <h2>Population</h2>
@@ -259,7 +259,7 @@ function buildTable(list, showMax = false, inv = {}, production = {}, production
         const tooltip = details
           .map(src => `${src.label}: ${src.amount > 0 ? '+' : ''}${src.amount}`)
           .join('\n');
-        prodHtml = `<span class="tooltip" title="${tooltip}">${spanAmount(total)}</span>`;
+        prodHtml = `<span class="tooltip" data-tooltip="${tooltip}">${spanAmount(total)}</span>`;
       } else if (production[key]) {
         prodHtml = spanAmount(production[key]);
       }
