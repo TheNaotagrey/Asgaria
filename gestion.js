@@ -94,11 +94,10 @@ async function loadAndRender() {
     const popSummary = document.getElementById('populationSummary');
     let employedHtml = employment.employed;
     if (employmentDetails.length) {
-      employedHtml = '<details><summary>' + employment.employed + '</summary><ul>';
-      for (const src of employmentDetails) {
-        employedHtml += `<li>${src.label}: ${spanAmount(src.amount)}</li>`;
-      }
-      employedHtml += '</ul></details>';
+      const tooltip = employmentDetails
+        .map(src => `${src.label}: ${src.amount > 0 ? '+' : ''}${src.amount}`)
+        .join('\n');
+      employedHtml = `<span class="tooltip" title="${tooltip}">${employment.employed}</span>`;
     }
     popSummary.innerHTML = `
       <h2>Population</h2>
@@ -254,17 +253,16 @@ function buildTable(list, showMax = false, inv = {}, production = {}, production
   for (const [key, label] of list) {
     const qty = inv[key] ?? 0;
     const details = productionDetails[key] || [];
-    let prodHtml = '';
-    if (details.length) {
-      const total = details.reduce((sum, s) => sum + s.amount, 0);
-      prodHtml = '<details><summary>' + spanAmount(total) + '</summary><ul>';
-      for (const src of details) {
-        prodHtml += `<li>${src.label}: ${spanAmount(src.amount)}</li>`;
+      let prodHtml = '';
+      if (details.length) {
+        const total = details.reduce((sum, s) => sum + s.amount, 0);
+        const tooltip = details
+          .map(src => `${src.label}: ${src.amount > 0 ? '+' : ''}${src.amount}`)
+          .join('\n');
+        prodHtml = `<span class="tooltip" title="${tooltip}">${spanAmount(total)}</span>`;
+      } else if (production[key]) {
+        prodHtml = spanAmount(production[key]);
       }
-      prodHtml += '</ul></details>';
-    } else if (production[key]) {
-      prodHtml = spanAmount(production[key]);
-    }
     html += `<tr><td>${label}</td><td>${qty}</td><td>${prodHtml}</td>`;
     if (showMax) html += '<td></td>';
     html += '</tr>';
