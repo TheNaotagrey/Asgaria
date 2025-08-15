@@ -58,10 +58,10 @@ const buildingPropLabels = {
   max:'Maximum',
   workers_per_building:'Travailleurs/bâtiment',
   absolute_restrictions:'Restrictions absolues',
-  infra_restrictions:'Restrictions infrastructure',
+  infra_restrictions:'Requis',
   description:'Description'
 };
-const infraPropFields = ['label','type','max','workers_per_building','effects','costs','restrictions','description'];
+const infraPropFields = ['label','type','max','workers_per_building','effects','costs','absolute_restrictions','restrictions','description'];
 const infraPropLabels = {
   label:'Nom',
   type:'Type',
@@ -69,7 +69,8 @@ const infraPropLabels = {
   workers_per_building:'Travailleurs/bâtiment',
   effects:'Effets',
   costs:'Coûts',
-  restrictions:'Restrictions',
+  absolute_restrictions:'Restrictions absolues',
+  restrictions:'Requis',
   description:'Description',
 };
 const typeSelect = [{id:'civil',name:'Civil'},{id:'militaire',name:'Militaire'}];

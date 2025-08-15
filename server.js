@@ -232,6 +232,7 @@ CREATE TABLE IF NOT EXISTS infrastructure_properties (
   workers_per_building INTEGER DEFAULT 0,
   effects TEXT,
   costs TEXT,
+  absolute_restrictions TEXT,
   restrictions TEXT,
   description TEXT
 );
@@ -336,6 +337,12 @@ db.exec(initSql, () => {
     }
     if (!rows.some(r => r.name === 'infra_restrictions')) {
       db.run('ALTER TABLE building_properties ADD COLUMN infra_restrictions TEXT');
+    }
+  });
+  db.all("PRAGMA table_info(infrastructure_properties)", (err, rows) => {
+    if (err || !rows) return;
+    if (!rows.some(r => r.name === 'absolute_restrictions')) {
+      db.run('ALTER TABLE infrastructure_properties ADD COLUMN absolute_restrictions TEXT');
     }
   });
   // Ensure every barony has a properties row with default values
@@ -835,7 +842,7 @@ app.put('/api/building_properties/:id', requireAdmin, (req,res)=>{
   update('building_properties', buildingPropFields)(req,res);
 });
 
-const infraPropFields = ['label','type','max','workers_per_building','effects','costs','restrictions','description'];
+const infraPropFields = ['label','type','max','workers_per_building','effects','costs','absolute_restrictions','restrictions','description'];
 app.get('/api/infrastructure_properties', (req,res)=>{
   list('infrastructure_properties')(req,res);
 });
@@ -926,6 +933,7 @@ function canConstructInfra(db, srow, id, qty, cb){
     if(!iprop) return cb(new Error('Type inconnu'));
     if(!srow.baronnie_id) return cb(new Error('Aucune baronnie associée'));
     const costObj = safeParse(iprop.costs, {});
+    const absReq = safeParse(iprop.absolute_restrictions, []);
     const restrictions = safeParse(iprop.restrictions, {});
     const costs = {};
     Object.entries(costObj).forEach(([res, val]) => { costs[res] = (parseInt(val,10) || 0) * qty; });
@@ -938,49 +946,35 @@ function canConstructInfra(db, srow, id, qty, cb){
         if(!isNaN(parsed)) max = parsed;
         else if(barProps[iprop.max] != null) max = barProps[iprop.max];
       }
-      if(Array.isArray(restrictions)){
-        for(const prop of restrictions){
-          if(!barProps[prop]) return cb(new Error('Restriction non satisfaite'));
-        }
-      } else {
-        const buildings = safeParse(srow.buildings, {});
-        const infrastructures = safeParse(srow.infrastructures, {});
-        if(restrictions.buildings){
-          for(const [bid, count] of Object.entries(restrictions.buildings)){
-            const builtCount = buildings[bid] ? (buildings[bid].built || 0) : 0;
-            if(builtCount < count) return cb(new Error('Restriction non satisfaite'));
-          }
-        }
-        if(restrictions.infrastructures){
-          for(const [iid, count] of Object.entries(restrictions.infrastructures)){
-            const builtCount = infrastructures[iid] || infrastructures[String(iid)] || 0;
-            if(builtCount < count) return cb(new Error('Restriction non satisfaite'));
-          }
-        }
-        if(restrictions.population && (srow.population || 0) < restrictions.population){
-          return cb(new Error('Restriction non satisfaite'));
-        }
-        const built = infrastructures[id] || 0;
-        if(built + qty > max) return cb(new Error('Limite atteinte'));
-        db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err3, inv) => {
-          if(err3) return cb(err3);
-          if(restrictions.resources){
-            for(const [res, val] of Object.entries(restrictions.resources)){
-              if((inv[res] || 0) < val) return cb(new Error('Restriction non satisfaite'));
-            }
-          }
-          for(const [res, val] of Object.entries(costs)){
-            if((inv[res] || 0) < val) return cb(new Error('Ressources insuffisantes'));
-          }
-          cb(null, { costs, built, infrastructures });
-        });
-        return;
+      for(const prop of absReq){
+        if(!barProps[prop]) return cb(new Error('Restriction non satisfaite'));
       }
+      const buildings = safeParse(srow.buildings, {});
       const infrastructures = safeParse(srow.infrastructures, {});
+      if(restrictions.buildings){
+        for(const [bid, count] of Object.entries(restrictions.buildings)){
+          const builtCount = buildings[bid] ? (buildings[bid].built || 0) : 0;
+          if(builtCount < count) return cb(new Error('Restriction non satisfaite'));
+        }
+      }
+      if(restrictions.infrastructures){
+        for(const [iid, count] of Object.entries(restrictions.infrastructures)){
+          const builtCount = infrastructures[iid] || infrastructures[String(iid)] || 0;
+          if(builtCount < count) return cb(new Error('Restriction non satisfaite'));
+        }
+      }
+      if(restrictions.population && (srow.population || 0) < restrictions.population){
+        return cb(new Error('Restriction non satisfaite'));
+      }
       const built = infrastructures[id] || 0;
       if(built + qty > max) return cb(new Error('Limite atteinte'));
       db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err3, inv) => {
         if(err3) return cb(err3);
+        if(restrictions.resources){
+          for(const [res, val] of Object.entries(restrictions.resources)){
+            if((inv[res] || 0) < val) return cb(new Error('Restriction non satisfaite'));
+          }
+        }
         for(const [res, val] of Object.entries(costs)){
           if((inv[res] || 0) < val) return cb(new Error('Ressources insuffisantes'));
         }
