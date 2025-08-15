@@ -471,16 +471,11 @@ function buildTable(list, showMax = false, inv = {}, production = {}, production
   for (const [key, label] of list) {
     const qty = inv[key] ?? 0;
     const details = productionDetails[key] || [];
-      let prodHtml = '';
-      if (details.length) {
-        const total = details.reduce((sum, s) => sum + s.amount, 0);
-        const rows = details
-          .map(src => `<tr><td>${src.source} ${src.label}</td><td>${spanAmount(src.amount)}</td></tr>`)
-          .join('');
-        prodHtml = `<span class="tooltip">${spanAmount(total)}<table class="tooltip-table">${rows}</table></span>`;
-      } else if (production[key]) {
-        prodHtml = spanAmount(production[key]);
-      }
+    const total =
+      production[key] !== undefined
+        ? production[key]
+        : details.reduce((sum, s) => sum + s.amount, 0);
+    const prodHtml = total ? spanAmount(total) : '';
     html += `<tr><td>${label}</td><td>${qty}</td><td>${prodHtml}</td>`;
     if (showMax) html += `<td>${capacity[key] !== undefined ? capacity[key] : ''}</td>`;
     html += '</tr>';
