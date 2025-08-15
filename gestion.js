@@ -60,6 +60,7 @@ async function loadAndRender() {
     const productionDetails = data.productionDetails || {};
     const baronyProps = data.baronyProps || {};
     const employment = data.employment || { employed:0, slaves:0 };
+    const employmentDetails = data.employmentDetails || [];
     const buildings = data.buildings || {};
     const buildingProps = allBuildingProps.filter(bp => {
       try {
@@ -91,12 +92,20 @@ async function loadAndRender() {
     `;
 
     const popSummary = document.getElementById('populationSummary');
+    let employedHtml = employment.employed;
+    if (employmentDetails.length) {
+      employedHtml = '<details><summary>' + employment.employed + '</summary><ul>';
+      for (const src of employmentDetails) {
+        employedHtml += `<li>${src.label}: ${spanAmount(src.amount)}</li>`;
+      }
+      employedHtml += '</ul></details>';
+    }
     popSummary.innerHTML = `
       <h2>Population</h2>
       <table class="admin-table">
         <tr><th>Type</th><th>Nombre</th></tr>
         <tr><td>Population totale</td><td>${s.population}</td></tr>
-        <tr><td>Population employée</td><td>${employment.employed}</td></tr>
+        <tr><td>Population employée</td><td>${employedHtml}</td></tr>
         <tr><td>Esclaves</td><td>${employment.slaves}</td></tr>
       </table>
     `;
