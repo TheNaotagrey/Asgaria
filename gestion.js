@@ -384,7 +384,7 @@ function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId) {
       }
     }
 
-    const effectsHtml = ip.description || '';
+    const effectsHtml = (ip.description || '').replace(/\n/g, '<br>');
 
     let costHtml = '';
     let hasRes = true;
