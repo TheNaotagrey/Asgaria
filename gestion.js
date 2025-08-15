@@ -94,10 +94,10 @@ async function loadAndRender() {
     const popSummary = document.getElementById('populationSummary');
     let employedHtml = employment.employed;
     if (employmentDetails.length) {
-      const tooltip = employmentDetails
-        .map(src => `${src.label}: ${src.amount > 0 ? '+' : ''}${src.amount}`)
-        .join('\n');
-      employedHtml = `<span class="tooltip" data-tooltip="${tooltip}">${employment.employed}</span>`;
+      const rows = employmentDetails
+        .map(src => `<tr><td>${src.label}</td><td>${spanAmount(src.amount)}</td></tr>`)
+        .join('');
+      employedHtml = `<span class="tooltip">${employment.employed}<table class="tooltip-table">${rows}</table></span>`;
     }
     popSummary.innerHTML = `
       <h2>Population</h2>
@@ -256,10 +256,10 @@ function buildTable(list, showMax = false, inv = {}, production = {}, production
       let prodHtml = '';
       if (details.length) {
         const total = details.reduce((sum, s) => sum + s.amount, 0);
-        const tooltip = details
-          .map(src => `${src.label}: ${src.amount > 0 ? '+' : ''}${src.amount}`)
-          .join('\n');
-        prodHtml = `<span class="tooltip" data-tooltip="${tooltip}">${spanAmount(total)}</span>`;
+        const rows = details
+          .map(src => `<tr><td>${src.label}</td><td>${spanAmount(src.amount)}</td></tr>`)
+          .join('');
+        prodHtml = `<span class="tooltip">${spanAmount(total)}<table class="tooltip-table">${rows}</table></span>`;
       } else if (production[key]) {
         prodHtml = spanAmount(production[key]);
       }
