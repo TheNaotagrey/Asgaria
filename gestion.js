@@ -99,7 +99,7 @@ async function loadAndRender() {
     let employedHtml = employment.employed;
     if (employmentDetails.length) {
       const rows = employmentDetails
-        .map(src => `<tr><td>${Math.abs(src.amount)} ${src.label}</td></tr>`)
+        .map(src => `<tr><td>${src.source} ${src.label}</td><td>${spanAmount(src.amount)}</td></tr>`)
         .join('');
       employedHtml = `<span class="tooltip">${employment.employed}<table class="tooltip-table">${rows}</table></span>`;
     }
@@ -286,7 +286,7 @@ function buildTable(list, showMax = false, inv = {}, production = {}, production
       if (details.length) {
         const total = details.reduce((sum, s) => sum + s.amount, 0);
         const rows = details
-          .map(src => `<tr><td>${Math.abs(src.amount)} ${src.label}</td></tr>`)
+          .map(src => `<tr><td>${src.source} ${src.label}</td><td>${spanAmount(src.amount)}</td></tr>`)
           .join('');
         prodHtml = `<span class="tooltip">${spanAmount(total)}<table class="tooltip-table">${rows}</table></span>`;
       } else if (production[key]) {
