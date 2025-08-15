@@ -99,7 +99,7 @@ async function loadAndRender() {
     let employedHtml = employment.employed;
     if (employmentDetails.length) {
       const rows = employmentDetails
-        .map(src => `<tr><td>${src.label}${src.source !== undefined ? ` (${spanAmount(src.source)})` : ''}</td><td>${spanAmount(src.amount)}</td></tr>`)
+        .map(src => `<tr><td>${Math.abs(src.amount)} ${src.label}</td></tr>`)
         .join('');
       employedHtml = `<span class="tooltip">${employment.employed}<table class="tooltip-table">${rows}</table></span>`;
     }
@@ -126,7 +126,7 @@ async function loadAndRender() {
     const freePop = s.population + employment.slaves - employment.employed;
     if (infra) {
       let html = '<h2>Infrastructure</h2><table class="admin-table" id="buildingsTable">';
-      html += '<tr><th>Nom</th><th>Production</th><th>Coût</th><th>Restrictions</th><th>Construits</th><th>Max</th><th>Actifs</th><th>Activer</th><th>Construire</th></tr>';
+      html += '<tr><th>Nom</th><th>Production</th><th>Restrictions</th><th>Construits</th><th>Max</th><th>Activer</th><th>Coût</th><th>Construire</th></tr>';
       for (const bp of buildingProps) {
         const prodLabel = resourceLabels[bp.produces] || bp.produces || '';
         const prod = bp.production ? `${bp.production} ${prodLabel}` : '';
@@ -198,8 +198,7 @@ async function loadAndRender() {
 
         const canBuild = hasResources && restrictionsMet && !maxReached;
 
-        html += `<tr data-id="${bp.id}"><td>${bp.label || bp.type}</td><td>${prod}</td><td>${costHtml}</td><td>${restrHtml}</td><td>${built}</td><td>${maxVal}</td>`;
-        html += `<td>${active}</td>`;
+        html += `<tr data-id="${bp.id}"><td>${bp.label || bp.type}</td><td>${prod}</td><td>${restrHtml}</td><td>${built}</td><td>${maxVal}</td>`;
         if (built > 0) {
           let maxActivate = built;
           if (bp.workers_per_building) {
@@ -207,17 +206,19 @@ async function loadAndRender() {
             const available = freePop + active * workersPer;
             maxActivate = Math.min(built, Math.floor(available / workersPer));
           }
-          html += `<td><input type="number" min="0" max="${maxActivate}" value="${active}" class="activate-input" style="width:4em" data-id="${bp.id}"><button class="activate-btn" data-id="${bp.id}">OK</button></td>`;
+          html += `<td><input type="number" min="0" max="${maxActivate}" value="${active}" class="activate-input" style="width:4em" data-id="${bp.id}"></td>`;
+
         } else {
           html += '<td></td>';
         }
-        html += `<td><button class="build-btn" data-id="${bp.id}"${canBuild ? '' : ' disabled'}>Construire</button></td></tr>`;
+        html += `<td>${costHtml}</td><td><button class="build-btn" data-id="${bp.id}"${canBuild ? '' : ' disabled'}>Construire</button></td></tr>`;
       }
       html += '</table>';
       infra.innerHTML = html;
 
       const table = document.getElementById('buildingsTable');
       table.addEventListener('click', handleBuildingTableClick);
+      table.addEventListener('change', handleBuildingActivationChange);
     }
 
     const propsDiv = document.getElementById('baronyProps');
@@ -243,7 +244,12 @@ async function handleBuildingTableClick(e) {
     } else {
       alert('Construction impossible');
     }
-  } else if (e.target.classList.contains('activate-btn')) {
+  }
+}
+
+async function handleBuildingActivationChange(e) {
+  const table = document.getElementById('buildingsTable');
+  if (e.target.classList.contains('activate-input')) {
     const id = e.target.dataset.id;
     const input = table.querySelector(`input.activate-input[data-id="${id}"]`);
     const quantity = parseInt(input.value, 10);
@@ -255,6 +261,7 @@ async function handleBuildingTableClick(e) {
       alert('Population non employée insuffisante');
       return;
     }
+
     const resp = await fetch('/api/building/activate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -279,7 +286,7 @@ function buildTable(list, showMax = false, inv = {}, production = {}, production
       if (details.length) {
         const total = details.reduce((sum, s) => sum + s.amount, 0);
         const rows = details
-          .map(src => `<tr><td>${src.label}${src.source !== undefined ? ` (${spanAmount(src.source)})` : ''}</td><td>${spanAmount(src.amount)}</td></tr>`)
+          .map(src => `<tr><td>${Math.abs(src.amount)} ${src.label}</td></tr>`)
           .join('');
         prodHtml = `<span class="tooltip">${spanAmount(total)}<table class="tooltip-table">${rows}</table></span>`;
       } else if (production[key]) {
