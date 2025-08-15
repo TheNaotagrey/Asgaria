@@ -193,7 +193,11 @@ async function loadAndRender() {
 
         html += `<tr data-id="${bp.id}"><td>${bp.label || bp.type}</td><td>${prod}</td><td>${costHtml}</td><td>${restrHtml}</td><td>${built}</td><td>${maxVal}</td>`;
         html += `<td>${active}</td>`;
-        html += `<td><input type="number" min="0" max="${built}" value="${active}" class="activate-input" style="width:4em" data-id="${bp.id}"><button class="activate-btn" data-id="${bp.id}">OK</button></td>`;
+        if (built > 0) {
+          html += `<td><input type="number" min="0" max="${built}" value="${active}" class="activate-input" style="width:4em" data-id="${bp.id}"><button class="activate-btn" data-id="${bp.id}">OK</button></td>`;
+        } else {
+          html += '<td></td>';
+        }
         html += `<td><button class="build-btn" data-id="${bp.id}"${canBuild ? '' : ' disabled'}>Construire</button></td></tr>`;
       }
       html += '</table>';
