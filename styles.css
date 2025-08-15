@@ -287,22 +287,26 @@ main {
 }
 
 .cost-row,
-.restriction-row {
+.restriction-row,
+.effect-row {
   display: flex;
   align-items: center;
   gap: 4px;
   margin-bottom: 4px;
 }
 .cost-row select,
-.restriction-row select {
+.restriction-row select,
+.effect-row select {
   flex: 1;
 }
 .cost-row input,
-.restriction-row input {
+.restriction-row input,
+.effect-row input {
   width: 60px;
 }
 .cost-row button,
-.restriction-row button {
+.restriction-row button,
+.effect-row button {
   padding: 0 6px;
 }
 

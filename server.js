@@ -884,9 +884,16 @@ function canConstruct(db, srow, id, qty, cb){
         }
       }
       const buildings = safeParse(srow.buildings, {});
+      const infrastructures = safeParse(srow.infrastructures, {});
       if (infraReq.buildings) {
         for (const [bid, count] of Object.entries(infraReq.buildings)) {
           const builtCount = buildings[bid] ? (buildings[bid].built || 0) : 0;
+          if (builtCount < count) return cb(new Error('Restriction non satisfaite'));
+        }
+      }
+      if (infraReq.infrastructures) {
+        for (const [iid, count] of Object.entries(infraReq.infrastructures)) {
+          const builtCount = infrastructures[iid] || infrastructures[String(iid)] || 0;
           if (builtCount < count) return cb(new Error('Restriction non satisfaite'));
         }
       }
@@ -899,10 +906,15 @@ function canConstruct(db, srow, id, qty, cb){
       if (built + qty > max) return cb(new Error('Limite atteinte'));
       db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err4, inv) => {
         if (err4) return cb(err4);
+        if (infraReq.resources) {
+          for (const [res, val] of Object.entries(infraReq.resources)) {
+            if ((inv[res] || 0) < val) return cb(new Error('Restriction non satisfaite'));
+          }
+        }
         for (const [res, val] of Object.entries(costs)) {
           if ((inv[res] || 0) < val) return cb(new Error('Ressources insuffisantes'));
         }
-        cb(null, { costs, built, active, buildings });
+        cb(null, { costs, built, active, buildings, infrastructures });
       });
     });
   });
@@ -914,7 +926,7 @@ function canConstructInfra(db, srow, id, qty, cb){
     if(!iprop) return cb(new Error('Type inconnu'));
     if(!srow.baronnie_id) return cb(new Error('Aucune baronnie associée'));
     const costObj = safeParse(iprop.costs, {});
-    const restrictions = safeParse(iprop.restrictions, []);
+    const restrictions = safeParse(iprop.restrictions, {});
     const costs = {};
     Object.entries(costObj).forEach(([res, val]) => { costs[res] = (parseInt(val,10) || 0) * qty; });
     db.get('SELECT * FROM barony_properties WHERE barony_id=?', [srow.baronnie_id], (err2, props) => {
@@ -930,6 +942,39 @@ function canConstructInfra(db, srow, id, qty, cb){
         for(const prop of restrictions){
           if(!barProps[prop]) return cb(new Error('Restriction non satisfaite'));
         }
+      } else {
+        const buildings = safeParse(srow.buildings, {});
+        const infrastructures = safeParse(srow.infrastructures, {});
+        if(restrictions.buildings){
+          for(const [bid, count] of Object.entries(restrictions.buildings)){
+            const builtCount = buildings[bid] ? (buildings[bid].built || 0) : 0;
+            if(builtCount < count) return cb(new Error('Restriction non satisfaite'));
+          }
+        }
+        if(restrictions.infrastructures){
+          for(const [iid, count] of Object.entries(restrictions.infrastructures)){
+            const builtCount = infrastructures[iid] || infrastructures[String(iid)] || 0;
+            if(builtCount < count) return cb(new Error('Restriction non satisfaite'));
+          }
+        }
+        if(restrictions.population && (srow.population || 0) < restrictions.population){
+          return cb(new Error('Restriction non satisfaite'));
+        }
+        const built = infrastructures[id] || 0;
+        if(built + qty > max) return cb(new Error('Limite atteinte'));
+        db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err3, inv) => {
+          if(err3) return cb(err3);
+          if(restrictions.resources){
+            for(const [res, val] of Object.entries(restrictions.resources)){
+              if((inv[res] || 0) < val) return cb(new Error('Restriction non satisfaite'));
+            }
+          }
+          for(const [res, val] of Object.entries(costs)){
+            if((inv[res] || 0) < val) return cb(new Error('Ressources insuffisantes'));
+          }
+          cb(null, { costs, built, infrastructures });
+        });
+        return;
       }
       const infrastructures = safeParse(srow.infrastructures, {});
       const built = infrastructures[id] || 0;
@@ -952,7 +997,7 @@ app.post('/api/building', (req,res)=>{
   const qty = parseInt(quantity,10) || 0;
   if(!bId || qty <= 0) return res.status(400).json({ error: 'Quantité invalide' });
   const userId = req.session.user.id;
-  db.get('SELECT seigneuries.id as id, seigneuries.baronnie_id, seigneuries.population, seigneuries.inventaire_id, seigneuries.buildings FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?', [userId], (err, srow)=>{
+  db.get('SELECT seigneuries.id as id, seigneuries.baronnie_id, seigneuries.population, seigneuries.inventaire_id, seigneuries.buildings, seigneuries.infrastructures FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?', [userId], (err, srow)=>{
     if(err) return handleError(res, err);
     if(!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
     canConstruct(db, srow, bId, qty, (err2, info)=>{
@@ -982,7 +1027,7 @@ app.post('/api/infrastructure', (req,res)=>{
   const qty = parseInt(quantity,10) || 0;
   if(!iId || qty <= 0) return res.status(400).json({ error: 'Quantité invalide' });
   const userId = req.session.user.id;
-  db.get('SELECT seigneuries.id as id, seigneuries.baronnie_id, seigneuries.population, seigneuries.inventaire_id, seigneuries.infrastructures FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?', [userId], (err, srow)=>{
+  db.get('SELECT seigneuries.id as id, seigneuries.baronnie_id, seigneuries.population, seigneuries.inventaire_id, seigneuries.infrastructures, seigneuries.buildings FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?', [userId], (err, srow)=>{
     if(err) return handleError(res, err);
     if(!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
     canConstructInfra(db, srow, iId, qty, (err2, info)=>{
