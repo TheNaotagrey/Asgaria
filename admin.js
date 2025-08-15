@@ -75,6 +75,7 @@ const infraPropLabels = {
 const typeSelect = [{id:'civil',name:'Civil'},{id:'militaire',name:'Militaire'}];
 const resourceSelect = Object.entries(inventaireLabels).map(([id, name]) => ({ id, name }));
 let buildingPropsSelect = [];
+let infraPropsSelect = [];
 const maxOptions = [
   ...Array.from({length:10}, (_,i)=>({ id:String(i+1), name:String(i+1) })),
   ...baronyPropIntFields.map(f=>({ id:f, name:baronyPropLabels[f] || f }))
@@ -95,6 +96,252 @@ function showSaveIndicator(target) {
   setTimeout(() => {
     el.style.display = 'none';
   }, 2000);
+}
+
+function makeRestrictionsInput(val){
+  const container = document.createElement('div');
+  const list = document.createElement('div');
+  container.appendChild(list);
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.textContent = '+';
+  container.appendChild(addBtn);
+  function addRow(type = '', data = {}){
+    const row = document.createElement('div');
+    row.className = 'restriction-row';
+    const typeSel = document.createElement('select');
+    const blank = document.createElement('option');
+    blank.value = '';
+    typeSel.appendChild(blank);
+    const typeOptions = [
+      {id:'building', name:'Bâtiment'},
+      {id:'infrastructure', name:'Infrastructure'},
+      {id:'population', name:'Population'},
+      {id:'resource', name:'Ressource'}
+    ];
+    typeOptions.forEach(o=>{
+      const op = document.createElement('option');
+      op.value = o.id;
+      op.textContent = o.name;
+      if(o.id === type) op.selected = true;
+      typeSel.appendChild(op);
+    });
+    const keySpan = document.createElement('span');
+    const valSpan = document.createElement('span');
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.textContent = '-';
+    removeBtn.addEventListener('click', ()=> row.remove());
+    row.appendChild(typeSel);
+    row.appendChild(keySpan);
+    row.appendChild(valSpan);
+    row.appendChild(removeBtn);
+    function updateFields(){
+      keySpan.innerHTML = '';
+      valSpan.innerHTML = '';
+      if(typeSel.value === 'building'){
+        const sel = document.createElement('select');
+        const blank = document.createElement('option');
+        blank.value = '';
+        sel.appendChild(blank);
+        buildingPropsSelect.forEach(o=>{
+          const op = document.createElement('option');
+          op.value = o.id;
+          op.textContent = o.name;
+          if(String(o.id) === String(data.building)) op.selected = true;
+          sel.appendChild(op);
+        });
+        keySpan.appendChild(sel);
+        const qty = document.createElement('input');
+        qty.type = 'number';
+        qty.min = '0';
+        qty.value = data.value || '';
+        valSpan.appendChild(qty);
+      }else if(typeSel.value === 'infrastructure'){
+        const sel = document.createElement('select');
+        const blank = document.createElement('option');
+        blank.value = '';
+        sel.appendChild(blank);
+        infraPropsSelect.forEach(o=>{
+          const op = document.createElement('option');
+          op.value = o.id;
+          op.textContent = o.name;
+          if(String(o.id) === String(data.infrastructure)) op.selected = true;
+          sel.appendChild(op);
+        });
+        keySpan.appendChild(sel);
+        const qty = document.createElement('input');
+        qty.type = 'number';
+        qty.min = '0';
+        qty.value = data.value || '';
+        valSpan.appendChild(qty);
+      }else if(typeSel.value === 'population'){
+        const qty = document.createElement('input');
+        qty.type = 'number';
+        qty.min = '0';
+        qty.value = data.value || '';
+        valSpan.appendChild(qty);
+      }else if(typeSel.value === 'resource'){
+        const sel = document.createElement('select');
+        const blank = document.createElement('option');
+        blank.value = '';
+        sel.appendChild(blank);
+        resourceSelect.forEach(o=>{
+          const op = document.createElement('option');
+          op.value = o.id;
+          op.textContent = o.name;
+          if(String(o.id) === String(data.resource)) op.selected = true;
+          sel.appendChild(op);
+        });
+        keySpan.appendChild(sel);
+        const qty = document.createElement('input');
+        qty.type = 'number';
+        qty.min = '0';
+        qty.value = data.value || '';
+        valSpan.appendChild(qty);
+      }
+    }
+    typeSel.addEventListener('change', updateFields);
+    updateFields();
+    list.appendChild(row);
+  }
+  addBtn.addEventListener('click', ()=> addRow());
+  try{
+    const obj = JSON.parse(val || '{}');
+    if(obj.buildings){
+      Object.entries(obj.buildings).forEach(([b,v])=> addRow('building',{building:b,value:v}));
+    }
+    if(obj.infrastructures){
+      Object.entries(obj.infrastructures).forEach(([i,v])=> addRow('infrastructure',{infrastructure:i,value:v}));
+    }
+    if(obj.resources){
+      Object.entries(obj.resources).forEach(([r,v])=> addRow('resource',{resource:r,value:v}));
+    }
+    if(obj.population){
+      addRow('population',{value:obj.population});
+    }
+    if(!obj.buildings && !obj.infrastructures && !obj.resources && !obj.population){
+      addRow();
+    }
+  }catch(e){
+    addRow();
+  }
+  container.getValue = ()=>{
+    const res = {};
+    const buildings = {};
+    const infrastructures = {};
+    const resources = {};
+    let population;
+    list.querySelectorAll('.restriction-row').forEach(rw=>{
+      const type = rw.querySelector('select').value;
+      if(type === 'building'){
+        const sel = rw.querySelector('span select');
+        const inp = rw.querySelector('span input');
+        const b = sel.value;
+        const q = parseInt(inp.value,10);
+        if(b && q) buildings[b] = q;
+      }else if(type === 'infrastructure'){
+        const sel = rw.querySelector('span select');
+        const inp = rw.querySelector('span input');
+        const i = sel.value;
+        const q = parseInt(inp.value,10);
+        if(i && q) infrastructures[i] = q;
+      }else if(type === 'population'){
+        const inp = rw.querySelector('span input');
+        const q = parseInt(inp.value,10);
+        if(q) population = q;
+      }else if(type === 'resource'){
+        const sel = rw.querySelector('span select');
+        const inp = rw.querySelector('span input');
+        const r = sel.value;
+        const q = parseInt(inp.value,10);
+        if(r && q) resources[r] = q;
+      }
+    });
+    if(Object.keys(buildings).length) res.buildings = buildings;
+    if(Object.keys(infrastructures).length) res.infrastructures = infrastructures;
+    if(Object.keys(resources).length) res.resources = resources;
+    if(population != null) res.population = population;
+    return JSON.stringify(res);
+  };
+  return container;
+}
+
+function makeEffectsInput(val){
+  const container = document.createElement('div');
+  const list = document.createElement('div');
+  container.appendChild(list);
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.textContent = '+';
+  container.appendChild(addBtn);
+  function addRow(type = '', data = {}){
+    const row = document.createElement('div');
+    row.className = 'effect-row';
+    const typeSel = document.createElement('select');
+    const blank = document.createElement('option');
+    blank.value = '';
+    typeSel.appendChild(blank);
+    const typeOptions = [
+      {id:'storage', name:'Stockage'},
+      {id:'production', name:'Production'}
+    ];
+    typeOptions.forEach(o=>{
+      const op = document.createElement('option');
+      op.value = o.id;
+      op.textContent = o.name;
+      if(o.id === type) op.selected = true;
+      typeSel.appendChild(op);
+    });
+    const resSel = document.createElement('select');
+    const blankRes = document.createElement('option');
+    blankRes.value = '';
+    resSel.appendChild(blankRes);
+    resourceSelect.forEach(o=>{
+      const op = document.createElement('option');
+      op.value = o.id;
+      op.textContent = o.name;
+      if(String(o.id) === String(data.resource)) op.selected = true;
+      resSel.appendChild(op);
+    });
+    const qty = document.createElement('input');
+    qty.type = 'number';
+    qty.min = '0';
+    qty.value = data.amount || '';
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.textContent = '-';
+    removeBtn.addEventListener('click', ()=> row.remove());
+    row.appendChild(typeSel);
+    row.appendChild(resSel);
+    row.appendChild(qty);
+    row.appendChild(removeBtn);
+    list.appendChild(row);
+  }
+  addBtn.addEventListener('click', ()=> addRow());
+  try{
+    const arr = JSON.parse(val || '[]');
+    if(Array.isArray(arr) && arr.length){
+      arr.forEach(e=> addRow(e.type, {resource:e.resource, amount:e.amount}));
+    }else{
+      addRow();
+    }
+  }catch(e){
+    addRow();
+  }
+  container.getValue = ()=>{
+    const res = [];
+    list.querySelectorAll('.effect-row').forEach(rw=>{
+      const type = rw.children[0].value;
+      const resource = rw.children[1].value;
+      const amt = parseInt(rw.children[2].value,10);
+      if(type && resource && amt){
+        res.push({type, resource, amount: amt});
+      }
+    });
+    return JSON.stringify(res);
+  };
+  return container;
 }
 
 function renderTable(container, rows, opts){
@@ -267,113 +514,11 @@ function renderTable(container, rows, opts){
       };
       return container;
     }
-    if(field === 'infra_restrictions'){
-      const container = document.createElement('div');
-      const list = document.createElement('div');
-      container.appendChild(list);
-      const addBtn = document.createElement('button');
-      addBtn.type = 'button';
-      addBtn.textContent = '+';
-      container.appendChild(addBtn);
-      function addRow(type = '', data = {}){
-        const row = document.createElement('div');
-        row.className = 'restriction-row';
-        const typeSel = document.createElement('select');
-        const blank = document.createElement('option');
-        blank.value = '';
-        typeSel.appendChild(blank);
-        const typeOptions = [
-          {id:'building', name:'Bâtiment'},
-          {id:'population', name:'Population'}
-        ];
-        typeOptions.forEach(o=>{
-          const op = document.createElement('option');
-          op.value = o.id;
-          op.textContent = o.name;
-          if(o.id === type) op.selected = true;
-          typeSel.appendChild(op);
-        });
-        const keySpan = document.createElement('span');
-        const valSpan = document.createElement('span');
-        const removeBtn = document.createElement('button');
-        removeBtn.type = 'button';
-        removeBtn.textContent = '-';
-        removeBtn.addEventListener('click', ()=> row.remove());
-        row.appendChild(typeSel);
-        row.appendChild(keySpan);
-        row.appendChild(valSpan);
-        row.appendChild(removeBtn);
-        function updateFields(){
-          keySpan.innerHTML = '';
-          valSpan.innerHTML = '';
-          if(typeSel.value === 'building'){
-            const sel = document.createElement('select');
-            const blank = document.createElement('option');
-            blank.value = '';
-            sel.appendChild(blank);
-            buildingPropsSelect.forEach(o=>{
-              const op = document.createElement('option');
-              op.value = o.id;
-              op.textContent = o.name;
-              if(String(o.id) === String(data.building)) op.selected = true;
-              sel.appendChild(op);
-            });
-            keySpan.appendChild(sel);
-            const qty = document.createElement('input');
-            qty.type = 'number';
-            qty.min = '0';
-            qty.value = data.value || '';
-            valSpan.appendChild(qty);
-          } else if(typeSel.value === 'population'){
-            const qty = document.createElement('input');
-            qty.type = 'number';
-            qty.min = '0';
-            qty.value = data.value || '';
-            valSpan.appendChild(qty);
-          }
-        }
-        typeSel.addEventListener('change', updateFields);
-        updateFields();
-        list.appendChild(row);
-      }
-      addBtn.addEventListener('click', ()=> addRow());
-      try{
-        const obj = JSON.parse(val || '{}');
-        if(obj.buildings){
-          Object.entries(obj.buildings).forEach(([b,v])=> addRow('building',{building:b,value:v}));
-        }
-        if(obj.population){
-          addRow('population',{value:obj.population});
-        }
-        if(!obj.buildings && !obj.population){
-          addRow();
-        }
-      } catch(e){
-        addRow();
-      }
-      container.getValue = ()=>{
-        const res = {};
-        const buildings = {};
-        let population;
-        list.querySelectorAll('.restriction-row').forEach(rw=>{
-          const type = rw.querySelector('select').value;
-          if(type === 'building'){
-            const sel = rw.querySelector('span select');
-            const inp = rw.querySelector('span input');
-            const b = sel.value;
-            const q = parseInt(inp.value,10);
-            if(b && q) buildings[b] = q;
-          } else if(type === 'population'){
-            const inp = rw.querySelector('span input');
-            const q = parseInt(inp.value,10);
-            if(q) population = q;
-          }
-        });
-        if(Object.keys(buildings).length) res.buildings = buildings;
-        if(population != null) res.population = population;
-        return JSON.stringify(res);
-      };
-      return container;
+    if(field === 'infra_restrictions' || field === 'restrictions'){
+      return makeRestrictionsInput(val);
+    }
+    if(field === 'effects'){
+      return makeEffectsInput(val);
     }
     if(opts.selects && opts.selects[field]){
       const select = document.createElement('select');
@@ -624,6 +769,7 @@ async function loadAll(){
   });
 
   buildingPropsSelect = buildingProps.map(b => ({ id: b.id, name: b.label || b.type }));
+  infraPropsSelect = infraProps.map(i => ({ id: i.id, name: i.label || i.type }));
   const buildingPropsById = buildingProps.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableBuildingProps'), buildingPropsById, {
     endpoint:'building_properties',

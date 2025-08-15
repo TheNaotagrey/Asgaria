@@ -79,8 +79,11 @@ async function loadAndRender() {
     const bpMap = Object.fromEntries(allBuildingProps.map(b => [String(b.id), b]));
     const infraProps = allInfraProps.filter(ip => {
       try {
-        const arr = ip.restrictions ? JSON.parse(ip.restrictions) : [];
-        return arr.every(p => baronyProps[p]);
+        const r = ip.restrictions ? JSON.parse(ip.restrictions) : [];
+        if (Array.isArray(r)) {
+          return r.every(p => baronyProps[p]);
+        }
+        return true;
       } catch {
         return true;
       }
@@ -192,11 +195,31 @@ async function loadAndRender() {
               parts.push(`<span${color}>${name}: ${qty}</span>`);
             }
           }
+          if (infraR.infrastructures) {
+            for (const [iid, qty] of Object.entries(infraR.infrastructures)) {
+              const ref = ipMap[String(iid)];
+              const name = ref ? (ref.label || ref.type) : iid;
+              const builtCount = infrastructures[iid] || infrastructures[String(iid)] || 0;
+              const ok = builtCount >= qty;
+              if (!ok) restrictionsMet = false;
+              const color = ok ? '' : ' style="color:red"';
+              parts.push(`<span${color}>${name}: ${qty}</span>`);
+            }
+          }
           if (infraR.population) {
             const ok = (s.population || 0) >= infraR.population;
             if (!ok) restrictionsMet = false;
             const color = ok ? '' : ' style="color:red"';
             parts.push(`<span${color}>Population: ${infraR.population}</span>`);
+          }
+          if (infraR.resources) {
+            for (const [res, qty] of Object.entries(infraR.resources)) {
+              const label = resourceLabels[res] || res;
+              const ok = (inv[res] || 0) >= qty;
+              if (!ok) restrictionsMet = false;
+              const color = ok ? '' : ' style="color:red"';
+              parts.push(`<span${color}>${label}: ${qty}</span>`);
+            }
           }
           restrHtml = parts.join('<br>');
         } catch (e) {
@@ -318,7 +341,8 @@ async function handleInfraTableClick(e) {
 }
 
 function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId) {
-  let html = `<table class="admin-table" id="${tableId}"><tr><th>Nom</th><th>Construits</th><th>Coût</th><th>Construire</th></tr>`;
+  const { buildings = {}, infrastructures = {}, s = {}, bpMap = {}, ipMap = {} } = gameState || {};
+  let html = `<table class="admin-table" id="${tableId}"><tr><th>Nom</th><th>Restrictions</th><th>Construits</th><th>Coût</th><th>Construire</th></tr>`;
   for (const ip of list) {
     const built = infraBuilt[ip.id] || 0;
     let costHtml = '';
@@ -335,7 +359,54 @@ function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId) {
       }
       costHtml = parts.join('<br>');
     } catch {}
-    html += `<tr data-id="${ip.id}"><td>${ip.label}</td><td>${built}</td><td>${costHtml}</td><td><button class="infra-build-btn" data-id="${ip.id}"${hasRes ? '' : ' disabled'}>Construire</button></td></tr>`;
+
+    let restrHtml = '';
+    let restrOk = true;
+    try {
+      const restr = ip.restrictions ? JSON.parse(ip.restrictions) : {};
+      const parts = [];
+      if (restr.buildings) {
+        for (const [bid, qty] of Object.entries(restr.buildings)) {
+          const ref = bpMap[String(bid)];
+          const name = ref ? (ref.label || ref.type) : bid;
+          const builtInfo = buildings[bid] || buildings[String(bid)] || {};
+          const ok = (builtInfo.built || 0) >= qty;
+          if (!ok) restrOk = false;
+          const color = ok ? '' : ' style="color:red"';
+          parts.push(`<span${color}>${name}: ${qty}</span>`);
+        }
+      }
+      if (restr.infrastructures) {
+        for (const [iid, qty] of Object.entries(restr.infrastructures)) {
+          const ref = ipMap[String(iid)];
+          const name = ref ? (ref.label || ref.type) : iid;
+          const builtCount = infrastructures[iid] || infrastructures[String(iid)] || 0;
+          const ok = builtCount >= qty;
+          if (!ok) restrOk = false;
+          const color = ok ? '' : ' style="color:red"';
+          parts.push(`<span${color}>${name}: ${qty}</span>`);
+        }
+      }
+      if (restr.population) {
+        const ok = (s.population || 0) >= restr.population;
+        if (!ok) restrOk = false;
+        const color = ok ? '' : ' style="color:red"';
+        parts.push(`<span${color}>Population: ${restr.population}</span>`);
+      }
+      if (restr.resources) {
+        for (const [res, qty] of Object.entries(restr.resources)) {
+          const label = resourceLabels[res] || res;
+          const ok = (inv[res] || 0) >= qty;
+          if (!ok) restrOk = false;
+          const color = ok ? '' : ' style="color:red"';
+          parts.push(`<span${color}>${label}: ${qty}</span>`);
+        }
+      }
+      restrHtml = parts.join('<br>');
+    } catch {}
+
+    const canBuild = hasRes && restrOk;
+    html += `<tr data-id="${ip.id}"><td>${ip.label}</td><td>${restrHtml}</td><td>${built}</td><td>${costHtml}</td><td><button class="infra-build-btn" data-id="${ip.id}"${canBuild ? '' : ' disabled'}>Construire</button></td></tr>`;
   }
   html += '</table>';
   return html;
