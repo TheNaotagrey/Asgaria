@@ -8,6 +8,7 @@ const { inventaireFields, performTransaction } = require('./transactions');
 const logger = require('./logger');
 const handleError = require('./handleError');
 const { consumeResources } = require('./services/buildingService');
+const { StorageEffect, ResourceProductionEffect } = require('./effects');
 const app = express();
 const db = new sqlite3.Database('asgaria.db');
 
@@ -15,7 +16,7 @@ const VALID_TABLES = new Set([
   'users','religions','cultures','seigneurs','empires','kingdoms','archduchies',
   'duchies','marquisates','counties','viscounties','baronies','barony_pixels',
   'canonical_lands','inventaire','seigneuries','transactions','barony_properties',
-  'building_properties'
+  'building_properties','infrastructure_properties'
 ]);
 
 // create tables if they do not exist
@@ -172,6 +173,7 @@ CREATE TABLE IF NOT EXISTS seigneuries (
   population INTEGER,
   inventaire_id INTEGER,
   buildings TEXT DEFAULT '{}',
+  infrastructures TEXT DEFAULT '{}',
   FOREIGN KEY(baronnie_id) REFERENCES baronies(id),
   FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id),
   FOREIGN KEY(inventaire_id) REFERENCES inventaire(id)
@@ -222,6 +224,17 @@ CREATE TABLE IF NOT EXISTS building_properties (
   infra_restrictions TEXT,
   description TEXT
 );
+CREATE TABLE IF NOT EXISTS infrastructure_properties (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  label TEXT,
+  type TEXT,
+  max TEXT,
+  workers_per_building INTEGER DEFAULT 0,
+  effects TEXT,
+  costs TEXT,
+  restrictions TEXT,
+  description TEXT
+);
 `;
 
 db.exec(initSql, () => {
@@ -245,8 +258,13 @@ db.exec(initSql, () => {
     }
   });
   db.all("PRAGMA table_info(seigneuries)", (err, rows) => {
-    if (!err && rows && !rows.some(r => r.name === 'buildings')) {
-      db.run("ALTER TABLE seigneuries ADD COLUMN buildings TEXT DEFAULT '{}' ");
+    if (!err && rows) {
+      if (!rows.some(r => r.name === 'buildings')) {
+        db.run("ALTER TABLE seigneuries ADD COLUMN buildings TEXT DEFAULT '{}' ");
+      }
+      if (!rows.some(r => r.name === 'infrastructures')) {
+        db.run("ALTER TABLE seigneuries ADD COLUMN infrastructures TEXT DEFAULT '{}' ");
+      }
     }
   });
   db.all("PRAGMA table_info(cultures)", (err, rows) => {
@@ -600,7 +618,7 @@ app.put('/api/inventaire/:id', update('inventaire', inventaireFields));
 
 app.get('/api/seigneuries', requireAdmin, (req, res) => {
   const invSelect = inventaireFields.map(f => `i.${f}`).join(',');
-  db.all(`SELECT s.id, s.baronnie_id, s.seigneur_id, s.population, s.inventaire_id, s.buildings, ${invSelect} FROM seigneuries s JOIN inventaire i ON s.inventaire_id=i.id`, [], (err, rows) => {
+  db.all(`SELECT s.id, s.baronnie_id, s.seigneur_id, s.population, s.inventaire_id, s.buildings, s.infrastructures, ${invSelect} FROM seigneuries s JOIN inventaire i ON s.inventaire_id=i.id`, [], (err, rows) => {
     if (err) return handleError(res, err);
     res.json(rows);
   });
@@ -614,8 +632,8 @@ app.post('/api/seigneuries', requireAdmin, (req, res) => {
   db.run(`INSERT INTO inventaire (${inventaireFields.join(',')}) VALUES (${invPlace})`, invValues, function(err){
     if (err) return handleError(res, err);
     const invId = this.lastID;
-  db.run('INSERT INTO seigneuries (baronnie_id,seigneur_id,population,inventaire_id,buildings) VALUES (?,?,?,?,?)',
-    [...seigValues, invId, '{}'], function(err2){
+  db.run('INSERT INTO seigneuries (baronnie_id,seigneur_id,population,inventaire_id,buildings,infrastructures) VALUES (?,?,?,?,?,?)',
+    [...seigValues, invId, '{}', '{}'], function(err2){
       if (err2) return handleError(res, err2);
       res.json({ id: this.lastID, inventaire_id: invId });
     });
@@ -663,10 +681,10 @@ app.get('/api/my_seigneurie', (req, res) => {
             db.run('INSERT INTO inventaire DEFAULT VALUES', function(err){
               if (err) return handleError(res, err);
               const invId = this.lastID;
-              db.run('INSERT INTO seigneuries (baronnie_id,seigneur_id,population,inventaire_id,buildings) VALUES (NULL,?,?,?,?)',
-                [seig.id, 0, invId, '{}'], function(err){
+              db.run('INSERT INTO seigneuries (baronnie_id,seigneur_id,population,inventaire_id,buildings,infrastructures) VALUES (NULL,?,?,?,?,?,?)',
+                [seig.id, 0, invId, '{}', '{}'], function(err){
                   if (err) return handleError(res, err);
-                  cb({ id: this.lastID, baronnie_id: null, seigneur_id: seig.id, population: 0, inventaire_id: invId, buildings: '{}' });
+                  cb({ id: this.lastID, baronnie_id: null, seigneur_id: seig.id, population: 0, inventaire_id: invId, buildings: '{}', infrastructures: '{}' });
                 });
             });
           }
@@ -674,6 +692,7 @@ app.get('/api/my_seigneurie', (req, res) => {
             db.get('SELECT * FROM inventaire WHERE id=?', [s.inventaire_id], (err, inventaire) => {
               if (err) return handleError(res, err);
               const buildings = s.buildings ? JSON.parse(s.buildings) : {};
+              const infrastructures = s.infrastructures ? JSON.parse(s.infrastructures) : {};
               db.all('SELECT id, type, label, produces, production, workers_per_building FROM building_properties', [], (err2, bprops) => {
                 if (err2) return handleError(res, err2);
                 const props = bprops || [];
@@ -700,37 +719,58 @@ app.get('/api/my_seigneurie', (req, res) => {
                     productionDetails[bp.produces].push({ label: bp.label || bp.type, amount, source: active });
                   }
                 }
-                const slaves = inventaire.esclaves || 0;
-                if (slaves) {
-                  employmentDetails.push({ label: 'Esclaves', amount: -slaves, source: slaves });
-                }
-                const populationCons = s.population * 15;
-                const slaveCons = slaves * 5;
-                if (populationCons || slaveCons) {
-                  production.vivres = (production.vivres || 0) - (populationCons + slaveCons);
-                  if (!productionDetails.vivres) productionDetails.vivres = [];
-                  if (populationCons) {
-                    productionDetails.vivres.push({ label: 'Population', amount: -populationCons, source: s.population });
+                db.all('SELECT * FROM infrastructure_properties', [], (errI, iprops) => {
+                  if (errI) return handleError(res, errI);
+                  const infraList = iprops || [];
+                  const capacities = { vivres: 500, points_magique: 2000 };
+                  for (const ip of infraList) {
+                    const count = infrastructures[ip.id] || 0;
+                    if (!count) continue;
+                    const effects = safeParse(ip.effects, []);
+                    for (const def of effects) {
+                      let effObj = null;
+                      if (def.type === 'storage') {
+                        effObj = new StorageEffect(def.resource, def.amount || 0);
+                      } else if (def.type === 'production') {
+                        effObj = new ResourceProductionEffect(def.resource, def.amount || 0);
+                      }
+                      if (effObj) {
+                        effObj.apply({ production, productionDetails, capacity: capacities }, count, ip.label || ip.type);
+                      }
+                    }
                   }
-                  if (slaveCons) {
-                    productionDetails.vivres.push({ label: 'Esclaves', amount: -slaveCons, source: slaves });
+                  const slaves = inventaire.esclaves || 0;
+                  if (slaves) {
+                    employmentDetails.push({ label: 'Esclaves', amount: -slaves, source: slaves });
                   }
-                }
-                const employment = { employed: Math.max(employed - slaves, 0), slaves };
-                function finalize(barony, baronyProps) {
-                  res.json({ seigneurie: s, barony, inventaire, production, productionDetails, fields, baronyProps, employment, employmentDetails, buildings });
-                }
-                if (s.baronnie_id) {
-                  db.get('SELECT * FROM barony_properties WHERE barony_id=?', [s.baronnie_id], (err3, props) => {
-                    if (err3) return handleError(res, err3);
-                    db.get(`SELECT b.*, r.name as religion_name, c.name as culture_name FROM baronies b LEFT JOIN religions r ON b.religion_pop_id=r.id LEFT JOIN cultures c ON b.culture_id=c.id WHERE b.id=?`, [s.baronnie_id], (err4, barony) => {
-                      if (err4) return handleError(res, err4);
-                      finalize(barony, props || {});
+                  const populationCons = s.population * 15;
+                  const slaveCons = slaves * 5;
+                  if (populationCons || slaveCons) {
+                    production.vivres = (production.vivres || 0) - (populationCons + slaveCons);
+                    if (!productionDetails.vivres) productionDetails.vivres = [];
+                    if (populationCons) {
+                      productionDetails.vivres.push({ label: 'Population', amount: -populationCons, source: s.population });
+                    }
+                    if (slaveCons) {
+                      productionDetails.vivres.push({ label: 'Esclaves', amount: -slaveCons, source: slaves });
+                    }
+                  }
+                  const employment = { employed: Math.max(employed - slaves, 0), slaves };
+                  function finalize(barony, baronyProps) {
+                    res.json({ seigneurie: s, barony, inventaire, production, productionDetails, fields, baronyProps, employment, employmentDetails, buildings, infrastructures, capacities });
+                  }
+                  if (s.baronnie_id) {
+                    db.get('SELECT * FROM barony_properties WHERE barony_id=?', [s.baronnie_id], (err3, props) => {
+                      if (err3) return handleError(res, err3);
+                      db.get(`SELECT b.*, r.name as religion_name, c.name as culture_name FROM baronies b LEFT JOIN religions r ON b.religion_pop_id=r.id LEFT JOIN cultures c ON b.culture_id=c.id WHERE b.id=?`, [s.baronnie_id], (err4, barony) => {
+                        if (err4) return handleError(res, err4);
+                        finalize(barony, props || {});
+                      });
                     });
-                  });
-                } else {
-                  finalize(null, {});
-                }
+                  } else {
+                    finalize(null, {});
+                  }
+                });
               });
             });
           });
@@ -795,6 +835,17 @@ app.put('/api/building_properties/:id', requireAdmin, (req,res)=>{
   update('building_properties', buildingPropFields)(req,res);
 });
 
+const infraPropFields = ['label','type','max','workers_per_building','effects','costs','restrictions','description'];
+app.get('/api/infrastructure_properties', (req,res)=>{
+  list('infrastructure_properties')(req,res);
+});
+app.post('/api/infrastructure_properties', requireAdmin, (req,res)=>{
+  create('infrastructure_properties', infraPropFields)(req,res);
+});
+app.put('/api/infrastructure_properties/:id', requireAdmin, (req,res)=>{
+  update('infrastructure_properties', infraPropFields)(req,res);
+});
+
 function safeParse(json, fallback){
   try {
     return json ? JSON.parse(json) : fallback;
@@ -857,6 +908,43 @@ function canConstruct(db, srow, id, qty, cb){
   });
 }
 
+function canConstructInfra(db, srow, id, qty, cb){
+  db.get('SELECT * FROM infrastructure_properties WHERE id=?', [id], (err, iprop) => {
+    if(err) return cb(err);
+    if(!iprop) return cb(new Error('Type inconnu'));
+    if(!srow.baronnie_id) return cb(new Error('Aucune baronnie associée'));
+    const costObj = safeParse(iprop.costs, {});
+    const restrictions = safeParse(iprop.restrictions, []);
+    const costs = {};
+    Object.entries(costObj).forEach(([res, val]) => { costs[res] = (parseInt(val,10) || 0) * qty; });
+    db.get('SELECT * FROM barony_properties WHERE barony_id=?', [srow.baronnie_id], (err2, props) => {
+      if(err2) return cb(err2);
+      const barProps = props || {};
+      let max = Infinity;
+      if(iprop.max != null){
+        const parsed = parseInt(iprop.max,10);
+        if(!isNaN(parsed)) max = parsed;
+        else if(barProps[iprop.max] != null) max = barProps[iprop.max];
+      }
+      if(Array.isArray(restrictions)){
+        for(const prop of restrictions){
+          if(!barProps[prop]) return cb(new Error('Restriction non satisfaite'));
+        }
+      }
+      const infrastructures = safeParse(srow.infrastructures, {});
+      const built = infrastructures[id] || 0;
+      if(built + qty > max) return cb(new Error('Limite atteinte'));
+      db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err3, inv) => {
+        if(err3) return cb(err3);
+        for(const [res, val] of Object.entries(costs)){
+          if((inv[res] || 0) < val) return cb(new Error('Ressources insuffisantes'));
+        }
+        cb(null, { costs, built, infrastructures });
+      });
+    });
+  });
+}
+
 app.post('/api/building', (req,res)=>{
   if(!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
   const { id, quantity } = req.body;
@@ -880,6 +968,35 @@ app.post('/api/building', (req,res)=>{
           db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err5, inventaire)=>{
             if(err5) return handleError(res, err5);
             res.json({ buildings, inventaire });
+          });
+        });
+      });
+    });
+  });
+});
+
+app.post('/api/infrastructure', (req,res)=>{
+  if(!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
+  const { id, quantity } = req.body;
+  const iId = parseInt(id,10);
+  const qty = parseInt(quantity,10) || 0;
+  if(!iId || qty <= 0) return res.status(400).json({ error: 'Quantité invalide' });
+  const userId = req.session.user.id;
+  db.get('SELECT seigneuries.id as id, seigneuries.baronnie_id, seigneuries.population, seigneuries.inventaire_id, seigneuries.infrastructures FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?', [userId], (err, srow)=>{
+    if(err) return handleError(res, err);
+    if(!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
+    canConstructInfra(db, srow, iId, qty, (err2, info)=>{
+      if(err2) return res.status(400).json({ error: err2.message });
+      consumeResources(db, srow.id, info.costs, err3 => {
+        if(err3) return handleError(res, err3);
+        const newBuilt = info.built + qty;
+        const infrastructures = info.infrastructures;
+        infrastructures[iId] = newBuilt;
+        db.run('UPDATE seigneuries SET infrastructures=? WHERE id=?', [JSON.stringify(infrastructures), srow.id], function(err4){
+          if(err4) return handleError(res, err4);
+          db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err5, inventaire)=>{
+            if(err5) return handleError(res, err5);
+            res.json({ infrastructures, inventaire });
           });
         });
       });
