@@ -161,7 +161,7 @@ async function loadAndRender() {
           if (bonusProd) {
             const rows = [`<tr><td>Base</td><td>${spanAmount(baseProd)}</td></tr>`];
             for (const det of bonusDetails) {
-              rows.push(`<tr><td>${det.label}</td><td>${spanAmount(det.amount)}</td></tr>`);
+              rows.push(`<tr><td>${formatDetailLabel(det.label)}</td><td>${spanAmount(det.amount)}</td></tr>`);
             }
             prod = `<span class="tooltip">${per} ${prodLabel}<table class="tooltip-table">${rows.join('')}</table></span>`;
           } else {
@@ -475,7 +475,15 @@ function buildTable(list, showMax = false, inv = {}, production = {}, production
       production[key] !== undefined
         ? production[key]
         : details.reduce((sum, s) => sum + s.amount, 0);
-    const prodHtml = total ? spanAmount(total) : '';
+    let prodHtml = '';
+    if (total) {
+      if (details.length) {
+        const rows = details.map(d => `<tr><td>${formatDetailLabel(d.label)}</td><td>${spanAmount(d.amount)}</td></tr>`);
+        prodHtml = `<span class="tooltip">${spanAmount(total)}<table class="tooltip-table">${rows.join('')}</table></span>`;
+      } else {
+        prodHtml = spanAmount(total);
+      }
+    }
     html += `<tr><td>${label}</td><td>${qty}</td><td>${prodHtml}</td>`;
     if (showMax) html += `<td>${capacity[key] !== undefined ? capacity[key] : ''}</td>`;
     html += '</tr>';
@@ -487,6 +495,10 @@ function spanAmount(val) {
   const sign = val > 0 ? '+' : '';
   const cls = val > 0 ? 'prod-positive' : 'prod-negative';
   return `<span class="${cls}">${sign}${val}</span>`;
+}
+
+function formatDetailLabel(label) {
+  return label === 'Baronnie' ? 'Bonus Baronnie' : label;
 }
 
 function formatRestriction(name, qty) {
