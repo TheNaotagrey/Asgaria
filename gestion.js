@@ -38,6 +38,8 @@ const baronyPropLabels = {
   high_sea_boat_limit:'Limite de Bateau en haute mer'
 };
 
+let gameState = {};
+
 document.addEventListener('DOMContentLoaded', init);
 
 async function init() {
@@ -72,6 +74,8 @@ async function loadAndRender() {
     });
     const bpMap = Object.fromEntries(allBuildingProps.map(b => [String(b.id), b]));
 
+    gameState = { s, employment, buildings, bpMap };
+
     const summary = document.getElementById('summary');
     summary.innerHTML = `
       <p><strong>Baronnie :</strong> ${barony.name || 'Aucune'}</p>
@@ -99,6 +103,9 @@ async function loadAndRender() {
         .join('');
       employedHtml = `<span class="tooltip">${employment.employed}<table class="tooltip-table">${rows}</table></span>`;
     }
+    if (employment.employed > s.population) {
+      employedHtml = `<span style="color:red">${employedHtml}</span>`;
+    }
     popSummary.innerHTML = `
       <h2>Population</h2>
       <table class="admin-table">
@@ -116,6 +123,7 @@ async function loadAndRender() {
     luxuryTable.innerHTML = buildTable(luxuryResources, false, inv, production, productionDetails);
 
     const infra = document.getElementById('infrastructure');
+    const freePop = s.population + employment.slaves - employment.employed;
     if (infra) {
       let html = '<h2>Infrastructure</h2><table class="admin-table" id="buildingsTable">';
       html += '<tr><th>Nom</th><th>Production</th><th>Coût</th><th>Restrictions</th><th>Construits</th><th>Max</th><th>Actifs</th><th>Activer</th><th>Construire</th></tr>';
@@ -193,7 +201,13 @@ async function loadAndRender() {
         html += `<tr data-id="${bp.id}"><td>${bp.label || bp.type}</td><td>${prod}</td><td>${costHtml}</td><td>${restrHtml}</td><td>${built}</td><td>${maxVal}</td>`;
         html += `<td>${active}</td>`;
         if (built > 0) {
-          html += `<td><input type="number" min="0" max="${built}" value="${active}" class="activate-input" style="width:4em" data-id="${bp.id}"><button class="activate-btn" data-id="${bp.id}">OK</button></td>`;
+          let maxActivate = built;
+          if (bp.workers_per_building) {
+            const workersPer = bp.workers_per_building;
+            const available = freePop + active * workersPer;
+            maxActivate = Math.min(built, Math.floor(available / workersPer));
+          }
+          html += `<td><input type="number" min="0" max="${maxActivate}" value="${active}" class="activate-input" style="width:4em" data-id="${bp.id}"><button class="activate-btn" data-id="${bp.id}">OK</button></td>`;
         } else {
           html += '<td></td>';
         }
@@ -233,6 +247,14 @@ async function handleBuildingTableClick(e) {
     const id = e.target.dataset.id;
     const input = table.querySelector(`input.activate-input[data-id="${id}"]`);
     const quantity = parseInt(input.value, 10);
+    const bp = gameState.bpMap[id];
+    const info = gameState.buildings[id] || { built: 0, active: 0 };
+    const workersPer = bp ? (bp.workers_per_building || 0) : 0;
+    const available = gameState.s.population + gameState.employment.slaves - gameState.employment.employed + (info.active || 0) * workersPer;
+    if (workersPer && quantity * workersPer > available) {
+      alert('Population non employée insuffisante');
+      return;
+    }
     const resp = await fetch('/api/building/activate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

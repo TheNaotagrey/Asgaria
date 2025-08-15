@@ -897,10 +897,10 @@ app.post('/api/building/activate', (req,res)=>{
     if(err) return handleError(res, err);
     if(!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
     const buildings = safeParse(srow.buildings, {});
-    db.get('SELECT id, workers_per_building FROM building_properties WHERE id=?', [id], (err2, bprop)=>{
+    db.all('SELECT id, type, label, workers_per_building FROM building_properties', [], (err2, bprops) => {
       if(err2) return handleError(res, err2);
+      const bprop = bprops.find(bp => bp.id === id);
       if(!bprop) return res.status(400).json({ error: 'Bâtiment introuvable' });
-      const baseWorkers = bprop.workers_per_building || 0;
       const binfo = buildings[id] || { built: 0, active: 0 };
       const built = binfo.built;
       if(qty > built) return res.status(400).json({ error: 'Quantité supérieure au construit' });
@@ -908,32 +908,28 @@ app.post('/api/building/activate', (req,res)=>{
         if(err3) return handleError(res, err3);
         const slaves = inv ? (inv.esclaves || 0) : 0;
         const totalPop = srow.population + slaves;
-        if(qty > totalPop) return res.status(400).json({ error: 'Travailleurs insuffisants' });
+        let employed = 0;
+        const employmentDetails = [];
+        for(const bp of bprops || []){
+          const info = buildings[bp.id] || { built: 0, active: 0 };
+          const active = (bp.id === id) ? qty : (info.active || 0);
+          const workers = active * (bp.workers_per_building || 0);
+          employed += workers;
+          if(workers) employmentDetails.push({ label: bp.label || bp.type, amount: workers, source: active });
+        }
+        if(employed > totalPop) return res.status(400).json({ error: 'Travailleurs insuffisants' });
+        if(slaves) employmentDetails.push({ label: 'Esclaves', amount: -slaves, source: slaves });
+        const employment = { employed: Math.max(employed - slaves, 0), slaves };
         binfo.active = qty;
         buildings[id] = binfo;
         db.run('UPDATE seigneuries SET buildings=? WHERE id=?', [JSON.stringify(buildings), srow.id], function(err4){
           if(err4) return handleError(res, err4);
-          db.all('SELECT id, type, label, workers_per_building FROM building_properties', [], (err5, bprops) => {
-            if(err5) return handleError(res, err5);
-            let employed = 0;
-            const employmentDetails = [];
-            for(const bp of bprops || []){
-              const info = buildings[bp.id] || { built: 0, active: 0 };
-              const active = info.active || 0;
-              const workers = active * (bp.workers_per_building || 0);
-              employed += workers;
-              if(workers) employmentDetails.push({ label: bp.label || bp.type, amount: workers, source: active });
-            }
-            if(slaves) employmentDetails.push({ label: 'Esclaves', amount: -slaves, source: slaves });
-            const employment = { employed: Math.max(employed - slaves, 0), slaves };
-            res.json({ building: { id, built, active: qty }, employment, employmentDetails });
-          });
+          res.json({ building: { id, built, active: qty }, employment, employmentDetails });
         });
       });
     });
   });
 });
-
 app.get('/api/canonical_lands', list('canonical_lands'));
 app.post('/api/canonical_lands', create('canonical_lands',['religion_id','barony_id']));
 app.delete('/api/canonical_lands', (req, res) => {
