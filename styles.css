@@ -405,6 +405,7 @@ main {
 
 .tooltip-table td {
   padding: 2px 6px;
+  white-space: nowrap;
 }
 
 .tooltip-table td:first-child {
