@@ -545,6 +545,11 @@ function renderTable(container, rows, opts){
     if(field === 'effects'){
       return makeEffectsInput(val);
     }
+    if(field === 'description'){
+      const textarea = document.createElement('textarea');
+      textarea.value = val ?? '';
+      return textarea;
+    }
     if(opts.selects && opts.selects[field]){
       const select = document.createElement('select');
       let optList = opts.selects[field];
@@ -601,6 +606,8 @@ function renderTable(container, rows, opts){
             payload[f] = el.getValue();
           } else if(opts.selects && opts.selects[f]){
             payload[f] = el.value ? (isNaN(el.value) ? el.value : parseInt(el.value,10)) : null;
+          } else if(f === 'description'){
+            payload[f] = el.value;
           } else {
             payload[f] = el.value.trim();
           }
@@ -636,6 +643,8 @@ function renderTable(container, rows, opts){
           payload[f] = el.getValue();
         } else if(opts.selects && opts.selects[f]){
           payload[f] = el.value ? (isNaN(el.value) ? el.value : parseInt(el.value,10)) : null;
+        } else if(f === 'description'){
+          payload[f] = el.value;
         } else {
           payload[f] = el.value.trim();
         }
