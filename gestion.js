@@ -110,7 +110,7 @@ async function loadAndRender() {
     const infra = document.getElementById('infrastructure');
     if (infra) {
       let html = '<h2>Infrastructure</h2><table class="admin-table" id="buildingsTable">';
-      html += '<tr><th>Nom</th><th>Production</th><th>Coût</th><th>Construits</th><th>Max</th><th>Actifs</th><th>Activer</th><th>Construire</th></tr>';
+      html += '<tr><th>Nom</th><th>Production</th><th>Coût</th><th>Restrictions</th><th>Construits</th><th>Max</th><th>Actifs</th><th>Activer</th><th>Construire</th></tr>';
       for (const bp of buildingProps) {
         const prodLabel = resourceLabels[bp.produces] || bp.produces || '';
         const prod = bp.production ? `${bp.production} ${prodLabel}` : '';
@@ -146,7 +146,26 @@ async function loadAndRender() {
           costHtml = `<span style="color:red">${costHtml}</span>`;
         }
 
-        html += `<tr data-id="${bp.id}"><td>${bp.label || bp.type}</td><td>${prod}</td><td>${costHtml}</td><td>${built}</td><td>${maxVal}</td>`;
+        let restrHtml = '';
+        try {
+          const infraR = bp.infra_restrictions ? JSON.parse(bp.infra_restrictions) : {};
+          const parts = [];
+          if (infraR.buildings) {
+            for (const [bid, qty] of Object.entries(infraR.buildings)) {
+              const ref = bpMap[String(bid)];
+              const name = ref ? (ref.label || ref.type) : bid;
+              parts.push(`${name}: ${qty}`);
+            }
+          }
+          if (infraR.population) {
+            parts.push(`Population: ${infraR.population}`);
+          }
+          restrHtml = parts.join('<br>');
+        } catch (e) {
+          restrHtml = '';
+        }
+
+        html += `<tr data-id="${bp.id}"><td>${bp.label || bp.type}</td><td>${prod}</td><td>${costHtml}</td><td>${restrHtml}</td><td>${built}</td><td>${maxVal}</td>`;
         html += `<td>${active}</td>`;
         html += `<td><input type="number" min="0" max="${built}" value="${active}" class="activate-input" style="width:4em" data-id="${bp.id}"><button class="activate-btn" data-id="${bp.id}">OK</button></td>`;
         html += `<td><button class="build-btn" data-id="${bp.id}">Construire</button></td></tr>`;
@@ -161,31 +180,6 @@ async function loadAndRender() {
     const propsDiv = document.getElementById('baronyProps');
     if (propsDiv) {
       propsDiv.innerHTML = buildPropsTable(baronyProps);
-    }
-    const restrDiv = document.getElementById('restrictions');
-    if (restrDiv) {
-      let html = '<h2>Restrictions</h2><table class="admin-table"><tr><th>Bâtiment</th><th>Restrictions</th></tr>';
-      for (const bp of buildingProps) {
-        try {
-          const infra = bp.infra_restrictions ? JSON.parse(bp.infra_restrictions) : {};
-          const parts = [];
-          if (infra.buildings) {
-            for (const [bid, qty] of Object.entries(infra.buildings)) {
-              const ref = bpMap[String(bid)];
-              const name = ref ? (ref.label || ref.type) : bid;
-              parts.push(`${name}: ${qty}`);
-            }
-          }
-          if (infra.population) {
-            parts.push(`Population: ${infra.population}`);
-          }
-          if (parts.length) {
-            html += `<tr><td>${bp.label || bp.type}</td><td>${parts.join('<br>')}</td></tr>`;
-          }
-        } catch(e){ /* ignore */ }
-      }
-      html += '</table>';
-      restrDiv.innerHTML = html;
     }
   } catch (e) {
     document.getElementById('summary').textContent = 'Erreur de chargement';
