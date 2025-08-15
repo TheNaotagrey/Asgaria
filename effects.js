@@ -31,4 +31,28 @@ class ResourceProductionEffect extends Effect {
   }
 }
 
-module.exports = { Effect, StorageEffect, ResourceProductionEffect };
+class BuildingProductionEffect extends Effect {
+  constructor(building, amount) {
+    super();
+    this.building = building;
+    this.amount = amount;
+  }
+  apply(ctx, count, label) {
+    const totalBonus = this.amount * count;
+    if (!ctx.buildingProductionBonus) ctx.buildingProductionBonus = {};
+    ctx.buildingProductionBonus[this.building] = (ctx.buildingProductionBonus[this.building] || 0) + totalBonus;
+    const bp = ctx.bpMap ? ctx.bpMap[String(this.building)] : null;
+    if (!bp || !bp.produces) return;
+    const info = ctx.buildings ? (ctx.buildings[this.building] || ctx.buildings[String(this.building)] || {}) : {};
+    const active = info.active || 0;
+    if (active <= 0) return;
+    const added = totalBonus * active;
+    if (!ctx.production) ctx.production = {};
+    if (!ctx.productionDetails) ctx.productionDetails = {};
+    ctx.production[bp.produces] = (ctx.production[bp.produces] || 0) + added;
+    if (!ctx.productionDetails[bp.produces]) ctx.productionDetails[bp.produces] = [];
+    ctx.productionDetails[bp.produces].push({ label, amount: added, source: count });
+  }
+}
+
+module.exports = { Effect, StorageEffect, ResourceProductionEffect, BuildingProductionEffect };

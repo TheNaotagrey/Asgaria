@@ -68,6 +68,7 @@ async function loadAndRender() {
     const buildings = data.buildings || {};
     const infrastructures = data.infrastructures || {};
     const capacities = data.capacities || {};
+    const buildingBonuses = data.buildingProductionBonus || {};
     const buildingProps = allBuildingProps.filter(bp => {
       try {
         const arr = bp.absolute_restrictions ? JSON.parse(bp.absolute_restrictions) : [];
@@ -90,7 +91,7 @@ async function loadAndRender() {
       });
     const ipMap = Object.fromEntries(allInfraProps.map(b => [String(b.id), b]));
 
-    gameState = { s, employment, buildings, infrastructures, bpMap, ipMap };
+    gameState = { s, employment, buildings, infrastructures, bpMap, ipMap, buildingBonuses };
 
     const summary = document.getElementById('summary');
     summary.innerHTML = `
@@ -147,7 +148,19 @@ async function loadAndRender() {
       html += '<tr><th>Nom</th><th>Production</th><th>Employés</th><th>Requis</th><th>Construits</th><th>Max</th><th>Activer</th><th>Prod. Tot.</th><th>Emp. Tot.</th><th>Coût</th><th>Construire</th></tr>';
       for (const bp of buildingProps) {
         const prodLabel = resourceLabels[bp.produces] || bp.produces || '';
-        const prod = bp.production ? `${bp.production} ${prodLabel}` : '';
+        const baseProd = bp.production || 0;
+        const bonusProd = buildingBonuses[bp.id] || buildingBonuses[String(bp.id)] || 0;
+        let prod = '';
+        if (baseProd || bonusProd) {
+          const per = baseProd + bonusProd;
+          if (bonusProd) {
+            const rows = [`<tr><td>Base</td><td>${spanAmount(baseProd)}</td></tr>`];
+            rows.push(`<tr><td>Bonus</td><td>${spanAmount(bonusProd)}</td></tr>`);
+            prod = `<span class="tooltip">${per} ${prodLabel}<table class="tooltip-table">${rows.join('')}</table></span>`;
+          } else {
+            prod = `${per} ${prodLabel}`;
+          }
+        }
         const info = buildings[bp.id] || { built: 0, active: 0 };
         const built = info.built || 0;
         const active = info.active || 0;
@@ -237,8 +250,18 @@ async function loadAndRender() {
 
         const canBuild = hasResources && restrictionsMet && !maxReached;
 
-        const prodTotal = bp.production ? bp.production * active : 0;
-        const prodTotalHtml = prodTotal ? `${prodTotal} ${prodLabel}` : '';
+        const perProd = baseProd + bonusProd;
+        const prodTotal = perProd * active;
+        let prodTotalHtml = '';
+        if (prodTotal) {
+          if (bonusProd) {
+            const rows = [`<tr><td>Base</td><td>${spanAmount(baseProd * active)}</td></tr>`];
+            rows.push(`<tr><td>Bonus</td><td>${spanAmount(bonusProd * active)}</td></tr>`);
+            prodTotalHtml = `<span class="tooltip">${prodTotal} ${prodLabel}<table class="tooltip-table">${rows.join('')}</table></span>`;
+          } else {
+            prodTotalHtml = `${prodTotal} ${prodLabel}`;
+          }
+        }
         const empTotal = workersPer * active;
 
         html += `<tr data-id="${bp.id}"><td>${bp.label || bp.type}</td><td>${prod}</td><td>${workersPer}</td><td>${restrHtml}</td><td>${built}</td><td>${maxVal}</td>`;
@@ -361,20 +384,7 @@ function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId) {
       }
     }
 
-    let effectsHtml = '';
-    try {
-      const effects = ip.effects ? JSON.parse(ip.effects) : [];
-      const eParts = [];
-      for (const eff of effects) {
-        const label = resourceLabels[eff.resource] || eff.resource;
-        if (eff.type === 'storage') {
-          eParts.push(`Stockage ${label} +${eff.amount}`);
-        } else if (eff.type === 'production') {
-          eParts.push(`Production ${label} +${eff.amount}`);
-        }
-      }
-      effectsHtml = eParts.join('<br>');
-    } catch {}
+    const effectsHtml = ip.description || '';
 
     let costHtml = '';
     let hasRes = true;
