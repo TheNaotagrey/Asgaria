@@ -61,6 +61,18 @@ const buildingPropLabels = {
   infra_restrictions:'Restrictions infrastructure',
   description:'Description'
 };
+const infraPropFields = ['label','type','max','workers_per_building','effects','costs','restrictions','description'];
+const infraPropLabels = {
+  label:'Nom',
+  type:'Type',
+  max:'Maximum',
+  workers_per_building:'Travailleurs/bâtiment',
+  effects:'Effets',
+  costs:'Coûts',
+  restrictions:'Restrictions',
+  description:'Description',
+};
+const typeSelect = [{id:'civil',name:'Civil'},{id:'militaire',name:'Militaire'}];
 const resourceSelect = Object.entries(inventaireLabels).map(([id, name]) => ({ id, name }));
 let buildingPropsSelect = [];
 const maxOptions = [
@@ -475,7 +487,7 @@ function renderTable(container, rows, opts){
 }
 
 async function loadAll(){
-  const [seigneurs, religions, cultures, kingdoms, counties, duchies, viscounties, marquisates, archduchies, empires, users, seigneuries, baronies, baronyProps, buildingProps] = await Promise.all([
+  const [seigneurs, religions, cultures, kingdoms, counties, duchies, viscounties, marquisates, archduchies, empires, users, seigneuries, baronies, baronyProps, buildingProps, infraProps] = await Promise.all([
     fetchJSON('/api/seigneurs'),
     fetchJSON('/api/religions'),
     fetchJSON('/api/cultures'),
@@ -491,6 +503,7 @@ async function loadAll(){
     fetchJSON('/api/baronies'),
     fetchJSON('/api/barony_properties'),
     fetchJSON('/api/building_properties'),
+    fetchJSON('/api/infrastructure_properties'),
   ]);
 
   const seigneursSelect = seigneurs.slice().sort((a, b) => a.name.localeCompare(b.name));
@@ -617,6 +630,13 @@ async function loadAll(){
     fields:buildingPropFields,
     labels:buildingPropLabels,
     selects:{produces: resourceSelect, max: maxOptions}
+  });
+  const infraPropsById = infraProps.slice().sort((a,b)=>a.id - b.id);
+  renderTable(document.getElementById('tableInfraProps'), infraPropsById, {
+    endpoint:'infrastructure_properties',
+    fields:infraPropFields,
+    labels:infraPropLabels,
+    selects:{type:typeSelect}
   });
 }
 

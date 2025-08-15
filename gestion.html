@@ -16,7 +16,8 @@
     <div class="tab-container" style="overflow:auto;flex:1">
       <div class="tab-buttons">
         <button class="tab-btn active" data-tab="ressources">Ressources</button>
-        <button class="tab-btn" data-tab="infra">Infrastructure Civile</button>
+        <button class="tab-btn" data-tab="infra">Infrastructures Civiles</button>
+        <button class="tab-btn" data-tab="infraMili">Infrastructures Militaires</button>
         <button class="tab-btn" data-tab="proprietes">Propriétés</button>
       </div>
       <div class="tab-panels">
@@ -24,7 +25,13 @@
           <div id="summary"></div>
         </div>
         <div id="tab-infra" class="tab-panel">
-          <div id="infrastructure"></div>
+          <h2>Production</h2>
+          <div id="productionInfra"></div>
+          <h2>Infrastructures Civiles</h2>
+          <div id="civilInfra"></div>
+        </div>
+        <div id="tab-infraMili" class="tab-panel">
+          <div id="militaryInfra"></div>
         </div>
         <div id="tab-proprietes" class="tab-panel">
           <div id="baronyProps"></div>
