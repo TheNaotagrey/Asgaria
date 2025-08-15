@@ -739,6 +739,7 @@ app.get('/api/my_seigneurie', (req, res) => {
                   const infraList = iprops || [];
                   const capacities = { vivres: 500, points_magique: 2000 };
                   const buildingProductionBonus = {};
+                  const buildingProductionBonusDetails = {};
                   for (const ip of infraList) {
                     const count = infrastructures[ip.id] || 0;
                     if (!count) continue;
@@ -753,7 +754,7 @@ app.get('/api/my_seigneurie', (req, res) => {
                         effObj = new BuildingProductionEffect(def.building, def.amount || 0);
                       }
                       if (effObj) {
-                        effObj.apply({ production, productionDetails, capacity: capacities, buildings, bpMap, buildingProductionBonus }, count, ip.label || ip.type);
+                        effObj.apply({ production, productionDetails, capacity: capacities, buildings, bpMap, buildingProductionBonus, buildingProductionBonusDetails }, count, ip.label || ip.type);
                       }
                     }
                   }
@@ -775,7 +776,7 @@ app.get('/api/my_seigneurie', (req, res) => {
                   }
                   const employment = { employed: Math.max(employed - slaves, 0), slaves };
                   function finalize(barony, baronyProps) {
-                    res.json({ seigneurie: s, barony, inventaire, production, productionDetails, fields, baronyProps, employment, employmentDetails, buildings, infrastructures, capacities, buildingProductionBonus });
+                    res.json({ seigneurie: s, barony, inventaire, production, productionDetails, fields, baronyProps, employment, employmentDetails, buildings, infrastructures, capacities, buildingProductionBonus, buildingProductionBonusDetails });
                   }
                   if (s.baronnie_id) {
                     db.get('SELECT * FROM barony_properties WHERE barony_id=?', [s.baronnie_id], (err3, props) => {
@@ -792,7 +793,7 @@ app.get('/api/my_seigneurie', (req, res) => {
                           effObj = new BuildingProductionEffect(def.building, def.amount || 0);
                         }
                         if (effObj) {
-                          effObj.apply({ production, productionDetails, capacity: capacities, buildings, bpMap, buildingProductionBonus }, 1, 'Baronnie');
+                          effObj.apply({ production, productionDetails, capacity: capacities, buildings, bpMap, buildingProductionBonus, buildingProductionBonusDetails }, 1, 'Baronnie');
                         }
                       }
                       db.get(`SELECT b.*, r.name as religion_name, c.name as culture_name FROM baronies b LEFT JOIN religions r ON b.religion_pop_id=r.id LEFT JOIN cultures c ON b.culture_id=c.id WHERE b.id=?`, [s.baronnie_id], (err4, barony) => {

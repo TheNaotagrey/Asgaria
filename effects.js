@@ -41,6 +41,9 @@ class BuildingProductionEffect extends Effect {
     const totalBonus = this.amount * count;
     if (!ctx.buildingProductionBonus) ctx.buildingProductionBonus = {};
     ctx.buildingProductionBonus[this.building] = (ctx.buildingProductionBonus[this.building] || 0) + totalBonus;
+    if (!ctx.buildingProductionBonusDetails) ctx.buildingProductionBonusDetails = {};
+    if (!ctx.buildingProductionBonusDetails[this.building]) ctx.buildingProductionBonusDetails[this.building] = [];
+    ctx.buildingProductionBonusDetails[this.building].push({ label, amount: totalBonus, source: count });
     const bp = ctx.bpMap ? ctx.bpMap[String(this.building)] : null;
     if (!bp || !bp.produces) return;
     const info = ctx.buildings ? (ctx.buildings[this.building] || ctx.buildings[String(this.building)] || {}) : {};
