@@ -66,4 +66,26 @@ class BuildingProductionEffect extends Effect {
   }
 }
 
-module.exports = { Effect, StorageEffect, ResourceProductionEffect, BuildingProductionEffect };
+class InstantProductionEffect extends Effect {
+  constructor(resource, amount, costs = {}, usesPerMonth = 0) {
+    super();
+    this.resource = resource;
+    this.amount = amount;
+    this.costs = costs;
+    this.usesPerMonth = usesPerMonth;
+  }
+
+  apply(ctx, count, label) {
+    if (!ctx.instantProduction) ctx.instantProduction = [];
+    ctx.instantProduction.push({
+      label,
+      resource: this.resource,
+      amount: this.amount,
+      costs: this.costs,
+      usesPerMonth: this.usesPerMonth,
+      source: count
+    });
+  }
+}
+
+module.exports = { Effect, StorageEffect, ResourceProductionEffect, BuildingProductionEffect, InstantProductionEffect };
