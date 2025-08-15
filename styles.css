@@ -381,6 +381,12 @@ main {
   color: #c0392b;
 }
 
+/* Tooltip styling */
+.tooltip {
+  font-weight: bold;
+  cursor: help;
+}
+
 /* Tables des ressources */
 .resource-tables {
   display: flex;
