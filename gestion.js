@@ -69,6 +69,7 @@ async function loadAndRender() {
     const infrastructures = data.infrastructures || {};
     const capacities = data.capacities || {};
     const buildingBonuses = data.buildingProductionBonus || {};
+    const buildingBonusDetails = data.buildingProductionBonusDetails || {};
     const buildingProps = allBuildingProps.filter(bp => {
       try {
         const arr = bp.absolute_restrictions ? JSON.parse(bp.absolute_restrictions) : [];
@@ -91,7 +92,7 @@ async function loadAndRender() {
       });
     const ipMap = Object.fromEntries(allInfraProps.map(b => [String(b.id), b]));
 
-    gameState = { s, employment, buildings, infrastructures, bpMap, ipMap, buildingBonuses };
+    gameState = { s, employment, buildings, infrastructures, bpMap, ipMap, buildingBonuses, buildingBonusDetails };
 
     const summary = document.getElementById('summary');
     summary.innerHTML = `
@@ -149,13 +150,19 @@ async function loadAndRender() {
       for (const bp of buildingProps) {
         const prodLabel = resourceLabels[bp.produces] || bp.produces || '';
         const baseProd = bp.production || 0;
-        const bonusProd = buildingBonuses[bp.id] || buildingBonuses[String(bp.id)] || 0;
+        let bonusProd = buildingBonuses[bp.id] || buildingBonuses[String(bp.id)] || 0;
+        const bonusDetails = buildingBonusDetails[bp.id] || buildingBonusDetails[String(bp.id)] || [];
+        if (!bonusProd && bonusDetails.length) {
+          bonusProd = bonusDetails.reduce((sum, b) => sum + b.amount, 0);
+        }
         let prod = '';
         if (baseProd || bonusProd) {
           const per = baseProd + bonusProd;
           if (bonusProd) {
             const rows = [`<tr><td>Base</td><td>${spanAmount(baseProd)}</td></tr>`];
-            rows.push(`<tr><td>Bonus</td><td>${spanAmount(bonusProd)}</td></tr>`);
+            for (const det of bonusDetails) {
+              rows.push(`<tr><td>${det.label}</td><td>${spanAmount(det.amount)}</td></tr>`);
+            }
             prod = `<span class="tooltip">${per} ${prodLabel}<table class="tooltip-table">${rows.join('')}</table></span>`;
           } else {
             prod = `${per} ${prodLabel}`;
@@ -248,19 +255,13 @@ async function loadAndRender() {
           }
         }
 
-        const canBuild = hasResources && restrictionsMet && !maxReached;
+        const canBuild = hasResources && restrictionsMet;
 
         const perProd = baseProd + bonusProd;
         const prodTotal = perProd * active;
         let prodTotalHtml = '';
         if (prodTotal) {
-          if (bonusProd) {
-            const rows = [`<tr><td>Base</td><td>${spanAmount(baseProd * active)}</td></tr>`];
-            rows.push(`<tr><td>Bonus</td><td>${spanAmount(bonusProd * active)}</td></tr>`);
-            prodTotalHtml = `<span class="tooltip">${prodTotal} ${prodLabel}<table class="tooltip-table">${rows.join('')}</table></span>`;
-          } else {
-            prodTotalHtml = `${prodTotal} ${prodLabel}`;
-          }
+          prodTotalHtml = `${prodTotal} ${prodLabel}`;
         }
         const empTotal = workersPer * active;
 
@@ -275,7 +276,12 @@ async function loadAndRender() {
         } else {
           html += '<td></td>';
         }
-        html += `<td>${prodTotalHtml}</td><td>${empTotal}</td><td>${costHtml}</td><td><button class="build-btn" data-id="${bp.id}"${canBuild ? '' : ' disabled'}>Construire</button></td></tr>`;
+        html += `<td>${prodTotalHtml}</td><td>${empTotal}</td><td>${costHtml}</td>`;
+        if (maxReached) {
+          html += '<td></td></tr>';
+        } else {
+          html += `<td><button class="build-btn" data-id="${bp.id}"${canBuild ? '' : ' disabled'}>Construire</button></td></tr>`;
+        }
       }
       html += '</table>';
       prodDiv.innerHTML = html;
@@ -446,8 +452,13 @@ function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId) {
       restrHtml = parts.join('<br>');
     } catch {}
 
-    const canBuild = hasRes && restrOk && !maxReached;
-    html += `<tr data-id="${ip.id}"><td>${ip.label}</td><td>${built}</td><td>${maxVal}</td><td>${effectsHtml}</td><td>${restrHtml}</td><td>${costHtml}</td><td><button class="infra-build-btn" data-id="${ip.id}"${canBuild ? '' : ' disabled'}>Construire</button></td></tr>`;
+    const canBuild = hasRes && restrOk;
+    html += `<tr data-id="${ip.id}"><td>${ip.label}</td><td>${built}</td><td>${maxVal}</td><td>${effectsHtml}</td><td>${restrHtml}</td><td>${costHtml}</td>`;
+    if (maxReached) {
+      html += '<td></td></tr>';
+    } else {
+      html += `<td><button class="build-btn infra-build-btn" data-id="${ip.id}"${canBuild ? '' : ' disabled'}>Construire</button></td></tr>`;
+    }
   }
   html += '</table>';
   return html;
