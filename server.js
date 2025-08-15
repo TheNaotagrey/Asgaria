@@ -681,10 +681,13 @@ app.get('/api/my_seigneurie', (req, res) => {
                 const production = {};
                 const productionDetails = {};
                 let employed = 0;
+                const employmentDetails = [];
                 for (const bp of props) {
                   const info = buildings[bp.id] || { built: 0, active: 0 };
                   const active = info.active || 0;
-                  employed += active * (bp.workers_per_building || 0);
+                  const workers = active * (bp.workers_per_building || 0);
+                  employed += workers;
+                  if (workers) employmentDetails.push({ label: bp.label || bp.type, amount: workers });
                   if (bp.type === 'field') {
                     fields = info;
                   }
@@ -696,6 +699,7 @@ app.get('/api/my_seigneurie', (req, res) => {
                   }
                 }
                 const slaves = inventaire.esclaves || 0;
+                if (slaves) employmentDetails.push({ label: 'Esclaves', amount: -slaves });
                 const populationCons = s.population * 15;
                 const slaveCons = slaves * 5;
                 if (populationCons || slaveCons) {
@@ -704,9 +708,9 @@ app.get('/api/my_seigneurie', (req, res) => {
                   if (populationCons) productionDetails.vivres.push({ label: 'Population', amount: -populationCons });
                   if (slaveCons) productionDetails.vivres.push({ label: 'Esclaves', amount: -slaveCons });
                 }
-                const employment = { employed, slaves };
+                const employment = { employed: Math.max(employed - slaves, 0), slaves };
                 function finalize(barony, baronyProps) {
-                  res.json({ seigneurie: s, barony, inventaire, production, productionDetails, fields, baronyProps, employment, buildings });
+                  res.json({ seigneurie: s, barony, inventaire, production, productionDetails, fields, baronyProps, employment, employmentDetails, buildings });
                 }
                 if (s.baronnie_id) {
                   db.get('SELECT * FROM barony_properties WHERE barony_id=?', [s.baronnie_id], (err3, props) => {
@@ -901,8 +905,20 @@ app.post('/api/building/activate', (req,res)=>{
         buildings[id] = binfo;
         db.run('UPDATE seigneuries SET buildings=? WHERE id=?', [JSON.stringify(buildings), srow.id], function(err4){
           if(err4) return handleError(res, err4);
-          const employed = qty * baseWorkers;
-          res.json({ building: { id, built, active: qty }, employment: { employed, slaves } });
+          db.all('SELECT id, type, label, workers_per_building FROM building_properties', [], (err5, bprops) => {
+            if(err5) return handleError(res, err5);
+            let employed = 0;
+            const employmentDetails = [];
+            for(const bp of bprops || []){
+              const info = buildings[bp.id] || { built: 0, active: 0 };
+              const workers = (info.active || 0) * (bp.workers_per_building || 0);
+              employed += workers;
+              if(workers) employmentDetails.push({ label: bp.label || bp.type, amount: workers });
+            }
+            if(slaves) employmentDetails.push({ label: 'Esclaves', amount: -slaves });
+            const employment = { employed: Math.max(employed - slaves, 0), slaves };
+            res.json({ building: { id, built, active: qty }, employment, employmentDetails });
+          });
         });
       });
     });
