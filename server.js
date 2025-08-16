@@ -727,11 +727,20 @@ app.get('/api/my_seigneurie', (req, res) => {
                   if (bp.type === 'field') {
                     fields = info;
                   }
-                  if (active > 0 && bp.produces && bp.production) {
+                  let prodRes = bp.produces;
+                  if (prodRes) {
+                    try {
+                      const obj = JSON.parse(prodRes);
+                      if (obj && obj.choice) {
+                        prodRes = info.produces;
+                      }
+                    } catch {}
+                  }
+                  if (active > 0 && prodRes && bp.production) {
                     const amount = active * bp.production;
-                    production[bp.produces] = (production[bp.produces] || 0) + amount;
-                    if (!productionDetails[bp.produces]) productionDetails[bp.produces] = [];
-                    productionDetails[bp.produces].push({ label: bp.label || bp.type, amount, source: active });
+                    production[prodRes] = (production[prodRes] || 0) + amount;
+                    if (!productionDetails[prodRes]) productionDetails[prodRes] = [];
+                    productionDetails[prodRes].push({ label: bp.label || bp.type, amount, source: active });
                   }
                 }
                 db.all('SELECT * FROM infrastructure_properties', [], (errI, iprops) => {
@@ -741,7 +750,8 @@ app.get('/api/my_seigneurie', (req, res) => {
                   const buildingProductionBonus = {};
                   const buildingProductionBonusDetails = {};
                   for (const ip of infraList) {
-                    const count = infrastructures[ip.id] || 0;
+                    const entry = infrastructures[ip.id] || infrastructures[String(ip.id)] || 0;
+                    const count = typeof entry === 'object' ? (entry.built || 0) : entry;
                     if (!count) continue;
                     const effects = safeParse(ip.effects, []);
                     for (const def of effects) {
@@ -927,7 +937,8 @@ function canConstruct(db, srow, id, qty, cb){
       }
       if (infraReq.infrastructures) {
         for (const [iid, count] of Object.entries(infraReq.infrastructures)) {
-          const builtCount = infrastructures[iid] || infrastructures[String(iid)] || 0;
+          const entry = infrastructures[iid] || infrastructures[String(iid)] || 0;
+          const builtCount = typeof entry === 'object' ? (entry.built || 0) : entry;
           if (builtCount < count) return cb(new Error('Restriction non satisfaite'));
         }
       }
@@ -962,6 +973,7 @@ function canConstructInfra(db, srow, id, qty, cb){
     const costObj = safeParse(iprop.costs, {});
     const absReq = safeParse(iprop.absolute_restrictions, []);
     const restrictions = safeParse(iprop.restrictions, {});
+    const effects = safeParse(iprop.effects, []);
     const costs = {};
     Object.entries(costObj).forEach(([res, val]) => { costs[res] = (parseInt(val,10) || 0) * qty; });
     db.get('SELECT * FROM barony_properties WHERE barony_id=?', [srow.baronnie_id], (err2, props) => {
@@ -986,14 +998,16 @@ function canConstructInfra(db, srow, id, qty, cb){
       }
       if(restrictions.infrastructures){
         for(const [iid, count] of Object.entries(restrictions.infrastructures)){
-          const builtCount = infrastructures[iid] || infrastructures[String(iid)] || 0;
+          const entry = infrastructures[iid] || infrastructures[String(iid)] || 0;
+          const builtCount = typeof entry === 'object' ? (entry.built || 0) : entry;
           if(builtCount < count) return cb(new Error('Restriction non satisfaite'));
         }
       }
       if(restrictions.population && (srow.population || 0) < restrictions.population){
         return cb(new Error('Restriction non satisfaite'));
       }
-      const built = infrastructures[id] || 0;
+      const entry = infrastructures[id] || infrastructures[String(id)] || 0;
+      const built = typeof entry === 'object' ? (entry.built || 0) : entry;
       if(built + qty > max) return cb(new Error('Limite atteinte'));
       db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err3, inv) => {
         if(err3) return cb(err3);
@@ -1005,7 +1019,7 @@ function canConstructInfra(db, srow, id, qty, cb){
         for(const [res, val] of Object.entries(costs)){
           if((inv[res] || 0) < val) return cb(new Error('Ressources insuffisantes'));
         }
-        cb(null, { costs, built, infrastructures });
+        cb(null, { costs, built, infrastructures, effects });
       });
     });
   });
@@ -1013,7 +1027,7 @@ function canConstructInfra(db, srow, id, qty, cb){
 
 app.post('/api/building', (req,res)=>{
   if(!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
-  const { id, quantity } = req.body;
+  const { id, quantity, props } = req.body;
   const bId = parseInt(id,10);
   const qty = parseInt(quantity,10) || 0;
   if(!bId || qty <= 0) return res.status(400).json({ error: 'Quantité invalide' });
@@ -1028,7 +1042,8 @@ app.post('/api/building', (req,res)=>{
         const newBuilt = info.built + qty;
         const newActive = info.active + qty;
         const buildings = info.buildings;
-        buildings[bId] = { built: newBuilt, active: newActive };
+        const existing = buildings[bId] || {};
+        buildings[bId] = { built: newBuilt, active: newActive, ...existing, ...(props || {}) };
         db.run('UPDATE seigneuries SET buildings=? WHERE id=?', [JSON.stringify(buildings), srow.id], function(err4){
           if(err4) return handleError(res, err4);
           db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err5, inventaire)=>{
@@ -1043,7 +1058,7 @@ app.post('/api/building', (req,res)=>{
 
 app.post('/api/infrastructure', (req,res)=>{
   if(!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
-  const { id, quantity } = req.body;
+  const { id, quantity, props } = req.body;
   const iId = parseInt(id,10);
   const qty = parseInt(quantity,10) || 0;
   if(!iId || qty <= 0) return res.status(400).json({ error: 'Quantité invalide' });
@@ -1057,7 +1072,14 @@ app.post('/api/infrastructure', (req,res)=>{
         if(err3) return handleError(res, err3);
         const newBuilt = info.built + qty;
         const infrastructures = info.infrastructures;
-        infrastructures[iId] = newBuilt;
+        const existing = infrastructures[iId] || {};
+        const uses = {};
+        (info.effects || []).forEach((eff, idx) => {
+          if (eff.type === 'instant_production' && eff.uses_per_month != null) {
+            uses[`effect_${idx}_remaining`] = eff.uses_per_month;
+          }
+        });
+        infrastructures[iId] = { built: newBuilt, ...existing, ...uses, ...(props || {}) };
         db.run('UPDATE seigneuries SET infrastructures=? WHERE id=?', [JSON.stringify(infrastructures), srow.id], function(err4){
           if(err4) return handleError(res, err4);
           db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err5, inventaire)=>{
@@ -1108,6 +1130,58 @@ app.post('/api/building/activate', (req,res)=>{
         db.run('UPDATE seigneuries SET buildings=? WHERE id=?', [JSON.stringify(buildings), srow.id], function(err4){
           if(err4) return handleError(res, err4);
           res.json({ building: { id, built, active: qty }, employment, employmentDetails });
+        });
+      });
+    });
+  });
+});
+
+app.post('/api/infrastructure/instant_production', (req,res)=>{
+  if(!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
+  const { id, index, quantity } = req.body;
+  const iId = parseInt(id,10);
+  const idx = parseInt(index,10);
+  const qty = parseInt(quantity,10) || 0;
+  if(!iId || isNaN(idx) || qty <= 0) return res.status(400).json({ error: 'Quantité invalide' });
+  const userId = req.session.user.id;
+  db.get('SELECT seigneuries.id as id, seigneuries.inventaire_id, seigneuries.infrastructures FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?', [userId], (err, srow) => {
+    if(err) return handleError(res, err);
+    if(!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
+    db.get('SELECT effects FROM infrastructure_properties WHERE id=?', [iId], (err2, iprop) => {
+      if(err2) return handleError(res, err2);
+      const effects = safeParse(iprop ? iprop.effects : '[]', []);
+      const eff = effects[idx];
+      if(!eff || eff.type !== 'instant_production') return res.status(400).json({ error: 'Effet introuvable' });
+      const infra = safeParse(srow.infrastructures, {});
+      const entry = infra[iId] || infra[String(iId)] || {};
+      const key = `effect_${idx}_remaining`;
+      const remaining = entry[key] || 0;
+      if(qty > remaining) return res.status(400).json({ error: 'Utilisations insuffisantes' });
+      const totalCosts = {};
+      const costObj = eff.costs || {};
+      for(const [resName, amt] of Object.entries(costObj)){
+        totalCosts[resName] = (parseInt(amt,10) || 0) * qty;
+      }
+      db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err3, inv)=>{
+        if(err3) return handleError(res, err3);
+        for(const [resName, amt] of Object.entries(totalCosts)){
+          if((inv[resName] || 0) < amt) return res.status(400).json({ error: 'Ressources insuffisantes' });
+        }
+        consumeResources(db, srow.id, totalCosts, err4 => {
+          if(err4) return handleError(res, err4);
+          const amount = (parseInt(eff.amount,10) || 0) * qty;
+          performTransaction(db, srow.id, eff.resource, amount, err5 => {
+            if(err5) return handleError(res, err5);
+            entry[key] = remaining - qty;
+            infra[iId] = entry;
+            db.run('UPDATE seigneuries SET infrastructures=? WHERE id=?', [JSON.stringify(infra), srow.id], function(err6){
+              if(err6) return handleError(res, err6);
+              db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err7, inventaire)=>{
+                if(err7) return handleError(res, err7);
+                res.json({ infrastructures: infra, inventaire });
+              });
+            });
+          });
         });
       });
     });
