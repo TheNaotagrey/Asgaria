@@ -424,7 +424,7 @@ async function handleInfraTableClick(e) {
 
 function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId) {
   const { buildings = {}, infrastructures = {}, s = {}, bpMap = {}, ipMap = {} } = gameState || {};
-  let html = `<table class="admin-table" id="${tableId}"><tr><th>Nom</th><th>Construits</th><th>Max</th><th>Effets</th><th>Requis</th><th>Coût</th><th>Construire</th><th>Prod. instantanée</th></tr>`;
+  let html = `<table class="admin-table" id="${tableId}"><tr><th>Nom</th><th>Construits</th><th>Max</th><th>Effets</th><th>Requis</th><th>Coût</th><th>Construire</th><th class="multi-col"></th></tr>`;
   for (const ip of list) {
     const entry = infraBuilt[ip.id] || infraBuilt[String(ip.id)] || 0;
     const built = typeof entry === 'object' ? (entry.built || 0) : entry;
@@ -512,7 +512,7 @@ function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId) {
       html += `<td><button class="build-btn infra-build-btn" data-id="${ip.id}"${canBuild ? '' : ' disabled'}>Construire</button></td>`;
     }
 
-    let instantHtml = '';
+    let extraHtml = '';
     try {
       const effects = ip.effects ? JSON.parse(ip.effects) : [];
       const inst = effects.filter(e => e.type === 'instant_production');
@@ -528,10 +528,10 @@ function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId) {
         tables.push(`<table class="admin-table instant-prod-table"><tr><th>Production</th><th>Restant</th><th>Nb</th><th>Coût total</th><th>Convertir</th></tr><tr><td class="prod-cell" data-base="${eff.amount}" data-res="${eff.resource}">${eff.amount} ${label}</td><td class="rem-cell">${remaining}</td><td><input type="number" class="inst-nb" min="1" max="${remaining}" value="${remaining}" oninput="updateInstantCost(this)"></td><td class="cost-cell" data-costs='${JSON.stringify(baseCosts)}'>${costStr}</td><td><button class="instant-btn" data-id="${ip.id}" data-idx="${idx}">Convertir</button></td></tr></table>`);
       });
       if (tables.length) {
-        instantHtml = tables.join('');
+        extraHtml = tables.join('');
       }
     } catch {}
-    html += `<td class="instant-prod-cell">${instantHtml}</td></tr>`;
+    html += `<td class="multi-col">${extraHtml}</td></tr>`;
   }
   html += '</table>';
   return html;
