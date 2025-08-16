@@ -466,30 +466,54 @@ function renderTable(container, rows, opts){
       addBtn.type = 'button';
       addBtn.textContent = '+';
       container.appendChild(addBtn);
-      function addRow(res = '', qty = ''){
+      function addRow(res = '', qty = '', opts = []){
         const row = document.createElement('div');
         row.className = 'cost-row';
         const sel = document.createElement('select');
         const blank = document.createElement('option');
         blank.value = '';
         sel.appendChild(blank);
-        Object.entries(inventaireLabels).forEach(([k,l])=>{
+        resourceSelect.forEach(o=>{
           const op = document.createElement('option');
-          op.value = k;
-          op.textContent = l;
-          if(k === res) op.selected = true;
+          op.value = o.id;
+          op.textContent = o.name;
+          if(o.id === res) op.selected = true;
           sel.appendChild(op);
         });
         const qtyInput = document.createElement('input');
         qtyInput.type = 'number';
         qtyInput.min = '0';
         qtyInput.value = qty;
+        const choiceDiv = document.createElement('div');
+        const choiceList = document.createElement('div');
+        choiceDiv.appendChild(choiceList);
+        const addChoiceBtn = document.createElement('button');
+        addChoiceBtn.type = 'button';
+        addChoiceBtn.textContent = '+';
+        choiceDiv.appendChild(addChoiceBtn);
+        function addChoice(val=''){
+          const rw = document.createElement('div');
+          const s = document.createElement('select');
+          const bl = document.createElement('option');
+          bl.value=''; s.appendChild(bl);
+          resourceSelect.filter(r=>r.id!=='choice').forEach(o=>{
+            const op=document.createElement('option');
+            op.value=o.id; op.textContent=o.name; if(o.id===val) op.selected=true; s.appendChild(op);
+          });
+          const rm=document.createElement('button'); rm.type='button'; rm.textContent='-'; rm.addEventListener('click',()=>rw.remove());
+          rw.appendChild(s); rw.appendChild(rm); choiceList.appendChild(rw);
+        }
+        addChoiceBtn.addEventListener('click',()=>addChoice());
+        if(opts.length){ opts.forEach(o=>addChoice(o)); } else { addChoice(); }
+        choiceDiv.style.display = res==='choice' ? '' : 'none';
+        sel.addEventListener('change',()=>{ choiceDiv.style.display = sel.value==='choice'? '' : 'none'; });
         const removeBtn = document.createElement('button');
         removeBtn.type = 'button';
         removeBtn.textContent = '-';
         removeBtn.addEventListener('click', ()=> row.remove());
         row.appendChild(sel);
         row.appendChild(qtyInput);
+        row.appendChild(choiceDiv);
         row.appendChild(removeBtn);
         list.appendChild(row);
       }
@@ -498,7 +522,13 @@ function renderTable(container, rows, opts){
         const obj = JSON.parse(val || '{}');
         const entries = Object.entries(obj);
         if(entries.length){
-          entries.forEach(([r,q])=> addRow(r,q));
+          entries.forEach(([r,q])=>{
+            if(r==='choice' && q && q.options){
+              addRow('choice', q.amount || '', q.options);
+            } else {
+              addRow(r,q);
+            }
+          });
         } else {
           addRow();
         }
@@ -509,8 +539,14 @@ function renderTable(container, rows, opts){
         const res = {};
         list.querySelectorAll('.cost-row').forEach(rw=>{
           const k = rw.querySelector('select').value;
-          const q = parseInt(rw.querySelector('input').value,10);
-          if(k && q) res[k] = q;
+          const q = parseInt(rw.querySelector('input[type="number"]').value,10);
+          if(k === 'choice'){
+            const opts = [];
+            rw.querySelectorAll('div select').forEach(s=>{ if(s.value) opts.push(s.value); });
+            if(opts.length && q) res.choice = { options: opts, amount: q };
+          } else if(k && q){
+            res[k] = q;
+          }
         });
         return JSON.stringify(res);
       };
@@ -578,9 +614,10 @@ function renderTable(container, rows, opts){
       return textarea;
     }
     if(opts.selects && opts.selects[field]){
-      const select = document.createElement('select');
       let optList = opts.selects[field];
       if (typeof optList === 'function') optList = optList(item);
+      const container = document.createElement('div');
+      const select = document.createElement('select');
       const blank = document.createElement('option');
       blank.value = '';
       if (opts.nullLabels && opts.nullLabels[field]) {
@@ -589,14 +626,61 @@ function renderTable(container, rows, opts){
         blank.textContent = '';
       }
       select.appendChild(blank);
+      let choiceOpts = [];
+      let selectedVal = val;
+      if(typeof val === 'string'){ try{ const obj = JSON.parse(val); if(obj && obj.choice){ selectedVal = 'choice'; choiceOpts = obj.choice; } }catch{} }
       optList.forEach(o=>{
         const op = document.createElement('option');
         op.value = o.id;
         op.textContent = o.name;
-        if(String(o.id) === String(val)) op.selected = true;
+        if(String(o.id) === String(selectedVal)) op.selected = true;
         select.appendChild(op);
       });
-      return select;
+      container.appendChild(select);
+      const choiceDiv = document.createElement('div');
+      choiceDiv.style.display = select.value === 'choice' ? '' : 'none';
+      const choiceList = document.createElement('div');
+      choiceDiv.appendChild(choiceList);
+      const addChoiceBtn = document.createElement('button');
+      addChoiceBtn.type = 'button';
+      addChoiceBtn.textContent = '+';
+      choiceDiv.appendChild(addChoiceBtn);
+      function addChoiceRow(val=''){
+        const row = document.createElement('div');
+        const sel = document.createElement('select');
+        const blank = document.createElement('option');
+        blank.value = '';
+        sel.appendChild(blank);
+        resourceSelect.filter(r=>r.id!=='choice').forEach(o=>{
+          const op = document.createElement('option');
+          op.value = o.id;
+          op.textContent = o.name;
+          if(o.id===val) op.selected = true;
+          sel.appendChild(op);
+        });
+        const rm = document.createElement('button');
+        rm.type = 'button';
+        rm.textContent = '-';
+        rm.addEventListener('click',()=>row.remove());
+        row.appendChild(sel);
+        row.appendChild(rm);
+        choiceList.appendChild(row);
+      }
+      addChoiceBtn.addEventListener('click',()=>addChoiceRow());
+      if(choiceOpts.length){ choiceOpts.forEach(r=>addChoiceRow(r)); } else { addChoiceRow(); }
+      container.appendChild(choiceDiv);
+      select.addEventListener('change',()=>{
+        choiceDiv.style.display = select.value === 'choice' ? '' : 'none';
+      });
+      container.getValue = ()=>{
+        if(select.value === 'choice'){
+          const opts = [];
+          choiceList.querySelectorAll('select').forEach(s=>{ if(s.value) opts.push(s.value); });
+          return JSON.stringify({choice:opts});
+        }
+        return select.value ? (isNaN(select.value) ? select.value : parseInt(select.value,10)) : null;
+      };
+      return container;
     }
     if(opts.colorFields && opts.colorFields.includes(field)){
       const input = document.createElement('input');

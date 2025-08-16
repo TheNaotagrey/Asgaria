@@ -148,7 +148,25 @@ async function loadAndRender() {
       let html = '<table class="admin-table" id="buildingsTable">';
       html += '<tr><th>Nom</th><th>Production</th><th>Employés</th><th>Requis</th><th>Construits</th><th>Max</th><th>Activer</th><th>Prod. Tot.</th><th>Emp. Tot.</th><th>Coût</th><th>Construire</th></tr>';
       for (const bp of buildingProps) {
-        const prodLabel = resourceLabels[bp.produces] || bp.produces || '';
+        let prodLabel = '';
+        let prodChoices = [];
+        if (bp.produces) {
+          try {
+            const obj = JSON.parse(bp.produces);
+            if (obj && obj.choice) {
+              prodChoices = obj.choice;
+              prodLabel = 'Choix';
+            } else {
+              prodLabel = resourceLabels[bp.produces] || bp.produces || '';
+            }
+          } catch {
+            prodLabel = resourceLabels[bp.produces] || bp.produces || '';
+          }
+        }
+        const info = buildings[bp.id] || { built: 0, active: 0 };
+        if (prodChoices.length && info.produces) {
+          prodLabel = resourceLabels[info.produces] || info.produces;
+        }
         const baseProd = bp.production || 0;
         let bonusProd = buildingBonuses[bp.id] || buildingBonuses[String(bp.id)] || 0;
         const bonusDetails = buildingBonusDetails[bp.id] || buildingBonusDetails[String(bp.id)] || [];
@@ -168,7 +186,6 @@ async function loadAndRender() {
             prod = `${per} ${prodLabel}`;
           }
         }
-        const info = buildings[bp.id] || { built: 0, active: 0 };
         const built = info.built || 0;
         const active = info.active || 0;
         const workersPer = bp.workers_per_building || 0;
@@ -220,7 +237,8 @@ async function loadAndRender() {
             for (const [iid, qty] of Object.entries(infraR.infrastructures)) {
               const ref = ipMap[String(iid)];
               const name = ref ? (ref.label || ref.type) : iid;
-              const builtCount = infrastructures[iid] || infrastructures[String(iid)] || 0;
+              const entry = infrastructures[iid] || infrastructures[String(iid)] || 0;
+              const builtCount = typeof entry === 'object' ? (entry.built || 0) : entry;
               const ok = builtCount >= qty;
               if (!ok) restrictionsMet = false;
               const color = ok ? '' : ' style="color:red"';
@@ -315,10 +333,26 @@ async function handleBuildingTableClick(e) {
   const table = document.getElementById('buildingsTable');
   if (e.target.classList.contains('build-btn')) {
     const id = e.target.dataset.id;
+    const bp = gameState.bpMap[id];
+    let payload = { id, quantity: 1 };
+    if (bp && bp.produces) {
+      try {
+        const obj = JSON.parse(bp.produces);
+        if (obj && obj.choice) {
+          const info = gameState.buildings[id] || { built: 0 };
+          if (!info.built) {
+            const labelOpts = obj.choice.map(r => resourceLabels[r] || r).join('/');
+            const sel = prompt(`Choisissez la ressource produite: ${labelOpts}`);
+            if (!sel || !obj.choice.includes(sel)) return;
+            payload.props = { produces: sel };
+          }
+        }
+      } catch {}
+    }
     const resp = await fetch('/api/building', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, quantity: 1 })
+      body: JSON.stringify(payload)
     });
     if (resp.ok) {
       await loadAndRender();
@@ -369,6 +403,22 @@ async function handleInfraTableClick(e) {
     } else {
       alert('Construction impossible');
     }
+  } else if (e.target.classList.contains('instant-btn')) {
+    const id = e.target.dataset.id;
+    const idx = e.target.dataset.idx;
+    const row = e.target.closest('tr');
+    const nb = parseInt(row.querySelector('.inst-nb').value,10) || 0;
+    if(nb <= 0) return;
+    const resp = await fetch('/api/infrastructure/instant_production', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, index: idx, quantity: nb })
+    });
+    if(resp.ok){
+      await loadAndRender();
+    }else{
+      alert('Conversion impossible');
+    }
   }
 }
 
@@ -376,7 +426,8 @@ function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId) {
   const { buildings = {}, infrastructures = {}, s = {}, bpMap = {}, ipMap = {} } = gameState || {};
   let html = `<table class="admin-table" id="${tableId}"><tr><th>Nom</th><th>Construits</th><th>Max</th><th>Effets</th><th>Requis</th><th>Coût</th><th>Construire</th></tr>`;
   for (const ip of list) {
-    const built = infraBuilt[ip.id] || 0;
+    const entry = infraBuilt[ip.id] || infraBuilt[String(ip.id)] || 0;
+    const built = typeof entry === 'object' ? (entry.built || 0) : entry;
 
     let maxVal = '';
     let maxReached = false;
@@ -427,7 +478,8 @@ function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId) {
         for (const [iid, qty] of Object.entries(restr.infrastructures)) {
           const ref = ipMap[String(iid)];
           const name = ref ? (ref.label || ref.type) : iid;
-          const builtCount = infrastructures[iid] || infrastructures[String(iid)] || 0;
+          const entry = infrastructures[iid] || infrastructures[String(iid)] || 0;
+          const builtCount = typeof entry === 'object' ? (entry.built || 0) : entry;
           const ok = builtCount >= qty;
           if (!ok) restrOk = false;
           const color = ok ? '' : ' style="color:red"';
@@ -459,9 +511,43 @@ function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId) {
     } else {
       html += `<td><button class="build-btn infra-build-btn" data-id="${ip.id}"${canBuild ? '' : ' disabled'}>Construire</button></td></tr>`;
     }
+
+    let instantRows = '';
+    try {
+      const effects = ip.effects ? JSON.parse(ip.effects) : [];
+      const inst = effects.filter(e => e.type === 'instant_production');
+      inst.forEach((eff, idx) => {
+        const entry = infraBuilt[ip.id] || infraBuilt[String(ip.id)] || {};
+        const remainKey = `effect_${idx}_remaining`;
+        const remaining = entry[remainKey] || 0;
+        const label = resourceLabels[eff.resource] || eff.resource;
+        const baseCosts = eff.costs || {};
+        const costStr = Object.entries(baseCosts).map(([r,a])=>{
+          const lbl = resourceLabels[r] || r; return `${lbl}: ${a*remaining}`; }).join(', ');
+        instantRows += `<tr class="instant-prod-row" data-id="${ip.id}" data-idx="${idx}"><td></td><td colspan="6"><table class="admin-table"><tr><th>Production</th><th>Restant</th><th>Nb</th><th>Coût total</th><th>Convertir</th></tr><tr><td class="prod-cell" data-base="${eff.amount}" data-res="${eff.resource}">${eff.amount} ${label}</td><td class="rem-cell">${remaining}</td><td><input type="number" class="inst-nb" min="1" max="${remaining}" value="${remaining}" oninput="updateInstantCost(this)"></td><td class="cost-cell" data-costs='${JSON.stringify(baseCosts)}'>${costStr}</td><td><button class="instant-btn" data-id="${ip.id}" data-idx="${idx}">Convertir</button></td></tr></table></td></tr>`;
+      });
+    } catch {}
+    html += instantRows;
   }
   html += '</table>';
   return html;
+}
+
+function updateInstantCost(el){
+  const tr = el.closest('tr');
+  const costCell = tr.querySelector('.cost-cell');
+  const base = JSON.parse(costCell.dataset.costs || '{}');
+  const nb = parseInt(el.value,10) || 0;
+  const parts = [];
+  for(const [r,a] of Object.entries(base)){
+    const label = resourceLabels[r] || r;
+    parts.push(`${label}: ${a*nb}`);
+  }
+  costCell.textContent = parts.join(', ');
+  const prodCell = tr.querySelector('.prod-cell');
+  const amount = parseInt(prodCell.dataset.base,10) || 0;
+  const res = resourceLabels[prodCell.dataset.res] || prodCell.dataset.res;
+  prodCell.textContent = `${amount*nb} ${res}`;
 }
 
 function buildTable(list, showMax = false, inv = {}, production = {}, productionDetails = {}, capacity = {}) {
