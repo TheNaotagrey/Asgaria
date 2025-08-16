@@ -310,6 +310,9 @@ main {
 .effect-row select {
   flex: 1;
 }
+.effect-row span {
+  flex: 1;
+}
 .cost-row input,
 .restriction-row input,
 .effect-row input {

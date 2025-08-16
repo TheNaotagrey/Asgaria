@@ -238,6 +238,93 @@ function openCostPopup(initialVal, onSave) {
   });
 }
 
+function openInstantProductionPopup(initial, onSave) {
+  const overlay = document.createElement('div');
+  overlay.className = 'popup-overlay';
+  const popup = document.createElement('div');
+  popup.className = 'popup';
+
+  const resDiv = document.createElement('div');
+  const resLabel = document.createElement('label');
+  resLabel.textContent = 'Ressource';
+  const resSel = document.createElement('select');
+  const blank = document.createElement('option');
+  blank.value = '';
+  resSel.appendChild(blank);
+  resourceSelect.forEach(o => {
+    const op = document.createElement('option');
+    op.value = o.id;
+    op.textContent = o.name;
+    if (initial.resource === o.id) op.selected = true;
+    resSel.appendChild(op);
+  });
+  resDiv.appendChild(resLabel);
+  resDiv.appendChild(resSel);
+
+  const amtDiv = document.createElement('div');
+  const amtLabel = document.createElement('label');
+  amtLabel.textContent = 'Quantité';
+  const amtInput = document.createElement('input');
+  amtInput.type = 'number';
+  amtInput.min = '0';
+  amtInput.value = initial.amount || '';
+  amtDiv.appendChild(amtLabel);
+  amtDiv.appendChild(amtInput);
+
+  const usesDiv = document.createElement('div');
+  const usesLabel = document.createElement('label');
+  usesLabel.textContent = 'Utilisations/mois';
+  const usesInput = document.createElement('input');
+  usesInput.type = 'number';
+  usesInput.min = '0';
+  usesInput.value = initial.uses_per_month || '';
+  usesDiv.appendChild(usesLabel);
+  usesDiv.appendChild(usesInput);
+
+  const costDiv = document.createElement('div');
+  const costLabel = document.createElement('label');
+  costLabel.textContent = 'Coûts';
+  const costEditor = createCostEditor(initial.costs ? JSON.stringify(initial.costs) : '{}');
+  costDiv.appendChild(costLabel);
+  costDiv.appendChild(costEditor);
+
+  popup.appendChild(resDiv);
+  popup.appendChild(amtDiv);
+  popup.appendChild(usesDiv);
+  popup.appendChild(costDiv);
+
+  const btnRow = document.createElement('div');
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.textContent = 'Valider';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.textContent = 'Annuler';
+  btnRow.appendChild(saveBtn);
+  btnRow.appendChild(cancelBtn);
+  popup.appendChild(btnRow);
+
+  overlay.appendChild(popup);
+  document.body.appendChild(overlay);
+
+  cancelBtn.addEventListener('click', () => overlay.remove());
+  saveBtn.addEventListener('click', () => {
+    let costs = {};
+    try {
+      costs = JSON.parse(costEditor.getValue() || '{}');
+    } catch (e) {
+      costs = {};
+    }
+    onSave({
+      resource: resSel.value,
+      amount: parseInt(amtInput.value, 10) || 0,
+      uses_per_month: parseInt(usesInput.value, 10) || 0,
+      costs,
+    });
+    overlay.remove();
+  });
+}
+
 function makeRestrictionsInput(val){
   const container = document.createElement('div');
   const list = document.createElement('div');
@@ -419,6 +506,7 @@ function makeEffectsInput(val){
     const row = document.createElement('div');
     row.className = 'effect-row';
     const typeSel = document.createElement('select');
+    typeSel.dataset.role = 'type';
     const blank = document.createElement('option');
     blank.value = '';
     typeSel.appendChild(blank);
@@ -436,28 +524,39 @@ function makeEffectsInput(val){
       typeSel.appendChild(op);
     });
     const targetSel = document.createElement('select');
+    targetSel.dataset.role = 'target';
     const qty = document.createElement('input');
     qty.type = 'number';
     qty.min = '0';
-    const usesInput = document.createElement('input');
-    usesInput.type = 'number';
-    usesInput.min = '0';
-    const costInput = document.createElement('input');
-    costInput.type = 'hidden';
-    const costBtn = document.createElement('button');
-    costBtn.type = 'button';
-    costBtn.textContent = 'Coûts';
-    function updateCostBtn(){
+    qty.dataset.role = 'qty';
+    const dataInput = document.createElement('input');
+    dataInput.type = 'hidden';
+    dataInput.dataset.role = 'data';
+    const summarySpan = document.createElement('span');
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.textContent = 'Définir';
+
+    function updateSummary(){
+      summarySpan.textContent = '';
       try{
-        const obj = JSON.parse(costInput.value || '{}');
-        const nb = Object.keys(obj).length;
-        costBtn.textContent = nb ? `Coûts (${nb})` : 'Coûts';
+        const d = JSON.parse(dataInput.value || '{}');
+        if(d.resource && d.amount){
+          const resObj = resourceSelect.find(r=>r.id === d.resource);
+          const costCount = d.costs ? Object.keys(d.costs).length : 0;
+          summarySpan.textContent = `${d.amount} ${resObj ? resObj.name : d.resource}` +
+            (d.uses_per_month ? `, ${d.uses_per_month}/mois` : '') +
+            (costCount ? `, coûts: ${costCount}` : '');
+        }
       }catch(e){
-        costBtn.textContent = 'Coûts';
+        summarySpan.textContent = '';
       }
     }
-    costBtn.addEventListener('click', ()=>{
-      openCostPopup(costInput.value, val=>{ costInput.value = val; updateCostBtn(); });
+
+    editBtn.addEventListener('click', ()=>{
+      let init = {};
+      try{ init = JSON.parse(dataInput.value || '{}'); }catch(e){ init = {}; }
+      openInstantProductionPopup(init, d=>{ dataInput.value = JSON.stringify(d); updateSummary(); });
     });
 
     function populateFields(){
@@ -465,6 +564,10 @@ function makeEffectsInput(val){
       const blankRes = document.createElement('option');
       blankRes.value = '';
       targetSel.appendChild(blankRes);
+      targetSel.style.display = 'none';
+      qty.style.display = 'none';
+      summarySpan.style.display = 'none';
+      editBtn.style.display = 'none';
       if(typeSel.value === 'building_production'){
         buildingPropsSelect.forEach(o=>{
           const op = document.createElement('option');
@@ -473,8 +576,13 @@ function makeEffectsInput(val){
           if(String(o.id) === String(data.building)) op.selected = true;
           targetSel.appendChild(op);
         });
-        usesInput.style.display = 'none';
-        costBtn.style.display = 'none';
+        targetSel.style.display = '';
+        qty.style.display = '';
+      }else if(typeSel.value === 'instant_production'){
+        summarySpan.style.display = '';
+        editBtn.style.display = '';
+        if(data.resource){ dataInput.value = JSON.stringify(data); updateSummary(); }
+        else { dataInput.value = ''; updateSummary(); }
       }else{
         resourceSelect.forEach(o=>{
           const op = document.createElement('option');
@@ -483,18 +591,8 @@ function makeEffectsInput(val){
           if(String(o.id) === String(data.resource)) op.selected = true;
           targetSel.appendChild(op);
         });
-        if(typeSel.value === 'instant_production'){
-          usesInput.style.display = '';
-          costBtn.style.display = '';
-          usesInput.value = data.uses_per_month || '';
-          costInput.value = data.costs ? JSON.stringify(data.costs) : '{}';
-          updateCostBtn();
-        }else{
-          usesInput.style.display = 'none';
-          costBtn.style.display = 'none';
-          costInput.value = '{}';
-          updateCostBtn();
-        }
+        targetSel.style.display = '';
+        qty.style.display = '';
       }
       qty.value = data.amount || '';
     }
@@ -502,6 +600,7 @@ function makeEffectsInput(val){
     typeSel.addEventListener('change', ()=>{
       data = {};
       populateFields();
+      if(typeSel.value === 'instant_production') editBtn.click();
     });
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
@@ -510,9 +609,9 @@ function makeEffectsInput(val){
     row.appendChild(typeSel);
     row.appendChild(targetSel);
     row.appendChild(qty);
-    row.appendChild(usesInput);
-    row.appendChild(costInput);
-    row.appendChild(costBtn);
+    row.appendChild(summarySpan);
+    row.appendChild(editBtn);
+    row.appendChild(dataInput);
     row.appendChild(removeBtn);
     list.appendChild(row);
   }
@@ -530,21 +629,22 @@ function makeEffectsInput(val){
   container.getValue = ()=>{
     const res = [];
     list.querySelectorAll('.effect-row').forEach(rw=>{
-      const type = rw.children[0].value;
-      const target = rw.children[1].value;
-      const amt = parseInt(rw.children[2].value,10);
+      const type = rw.querySelector('select[data-role="type"]').value;
       if(type === 'instant_production'){
-        const uses = parseInt(rw.children[3].value,10) || 0;
-        let costs = {};
-        try{ costs = JSON.parse(rw.children[4].value || '{}'); }catch(e){ costs = {}; }
-        if(target && amt){
-          res.push({type, resource: target, amount: amt, uses_per_month: uses, costs});
+        let data = {};
+        try{ data = JSON.parse(rw.querySelector('input[data-role="data"]').value || '{}'); }catch(e){ data = {}; }
+        if(data.resource && data.amount){
+          res.push({type, resource: data.resource, amount: data.amount, uses_per_month: data.uses_per_month || 0, costs: data.costs || {}});
         }
-      }else if(type && target && amt){
-        if(type === 'building_production'){
-          res.push({type, building: target, amount: amt});
-        }else{
-          res.push({type, resource: target, amount: amt});
+      }else{
+        const target = rw.querySelector('select[data-role="target"]').value;
+        const amt = parseInt(rw.querySelector('input[data-role="qty"]').value,10);
+        if(type && target && amt){
+          if(type === 'building_production'){
+            res.push({type, building: target, amount: amt});
+          }else{
+            res.push({type, resource: target, amount: amt});
+          }
         }
       }
     });
