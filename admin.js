@@ -100,6 +100,144 @@ function showSaveIndicator(target) {
   }, 2000);
 }
 
+function createCostEditor(val) {
+  const container = document.createElement('div');
+  const list = document.createElement('div');
+  container.appendChild(list);
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.textContent = '+';
+  container.appendChild(addBtn);
+  function addRow(res = '', qty = '', opts = []) {
+    const row = document.createElement('div');
+    row.className = 'cost-row';
+    const sel = document.createElement('select');
+    const blank = document.createElement('option');
+    blank.value = '';
+    sel.appendChild(blank);
+    resourceSelect.forEach(o => {
+      const op = document.createElement('option');
+      op.value = o.id;
+      op.textContent = o.name;
+      if (o.id === res) op.selected = true;
+      sel.appendChild(op);
+    });
+    const qtyInput = document.createElement('input');
+    qtyInput.type = 'number';
+    qtyInput.min = '0';
+    qtyInput.value = qty;
+    const choiceDiv = document.createElement('div');
+    const choiceList = document.createElement('div');
+    choiceDiv.appendChild(choiceList);
+    const addChoiceBtn = document.createElement('button');
+    addChoiceBtn.type = 'button';
+    addChoiceBtn.textContent = '+';
+    choiceDiv.appendChild(addChoiceBtn);
+    function addChoice(val = '') {
+      const rw = document.createElement('div');
+      const s = document.createElement('select');
+      const bl = document.createElement('option');
+      bl.value = '';
+      s.appendChild(bl);
+      resourceSelect.filter(r => r.id !== 'choice').forEach(o => {
+        const op = document.createElement('option');
+        op.value = o.id;
+        op.textContent = o.name;
+        if (o.id === val) op.selected = true;
+        s.appendChild(op);
+      });
+      const rm = document.createElement('button');
+      rm.type = 'button';
+      rm.textContent = '-';
+      rm.addEventListener('click', () => rw.remove());
+      rw.appendChild(s);
+      rw.appendChild(rm);
+      choiceList.appendChild(rw);
+    }
+    addChoiceBtn.addEventListener('click', () => addChoice());
+    if (opts.length) {
+      opts.forEach(o => addChoice(o));
+    } else {
+      addChoice();
+    }
+    choiceDiv.style.display = res === 'choice' ? '' : 'none';
+    sel.addEventListener('change', () => {
+      choiceDiv.style.display = sel.value === 'choice' ? '' : 'none';
+    });
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.textContent = '-';
+    removeBtn.addEventListener('click', () => row.remove());
+    row.appendChild(sel);
+    row.appendChild(qtyInput);
+    row.appendChild(choiceDiv);
+    row.appendChild(removeBtn);
+    list.appendChild(row);
+  }
+  addBtn.addEventListener('click', () => addRow());
+  try {
+    const obj = JSON.parse(val || '{}');
+    const entries = Object.entries(obj);
+    if (entries.length) {
+      entries.forEach(([r, q]) => {
+        if (r === 'choice' && q && q.options) {
+          addRow('choice', q.amount || '', q.options);
+        } else {
+          addRow(r, q);
+        }
+      });
+    } else {
+      addRow();
+    }
+  } catch (e) {
+    addRow();
+  }
+  container.getValue = () => {
+    const res = {};
+    list.querySelectorAll('.cost-row').forEach(rw => {
+      const k = rw.querySelector('select').value;
+      const q = parseInt(rw.querySelector('input[type="number"]').value, 10);
+      if (k === 'choice') {
+        const opts = [];
+        rw.querySelectorAll('div select').forEach(s => {
+          if (s.value) opts.push(s.value);
+        });
+        if (opts.length && q) res.choice = { options: opts, amount: q };
+      } else if (k && q) {
+        res[k] = q;
+      }
+    });
+    return JSON.stringify(res);
+  };
+  return container;
+}
+
+function openCostPopup(initialVal, onSave) {
+  const overlay = document.createElement('div');
+  overlay.className = 'popup-overlay';
+  const popup = document.createElement('div');
+  popup.className = 'popup';
+  const editor = createCostEditor(initialVal);
+  popup.appendChild(editor);
+  const btnRow = document.createElement('div');
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.textContent = 'Valider';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.textContent = 'Annuler';
+  btnRow.appendChild(saveBtn);
+  btnRow.appendChild(cancelBtn);
+  popup.appendChild(btnRow);
+  overlay.appendChild(popup);
+  document.body.appendChild(overlay);
+  cancelBtn.addEventListener('click', () => overlay.remove());
+  saveBtn.addEventListener('click', () => {
+    onSave(editor.getValue());
+    overlay.remove();
+  });
+}
+
 function makeRestrictionsInput(val){
   const container = document.createElement('div');
   const list = document.createElement('div');
@@ -305,7 +443,22 @@ function makeEffectsInput(val){
     usesInput.type = 'number';
     usesInput.min = '0';
     const costInput = document.createElement('input');
-    costInput.type = 'text';
+    costInput.type = 'hidden';
+    const costBtn = document.createElement('button');
+    costBtn.type = 'button';
+    costBtn.textContent = 'Coûts';
+    function updateCostBtn(){
+      try{
+        const obj = JSON.parse(costInput.value || '{}');
+        const nb = Object.keys(obj).length;
+        costBtn.textContent = nb ? `Coûts (${nb})` : 'Coûts';
+      }catch(e){
+        costBtn.textContent = 'Coûts';
+      }
+    }
+    costBtn.addEventListener('click', ()=>{
+      openCostPopup(costInput.value, val=>{ costInput.value = val; updateCostBtn(); });
+    });
 
     function populateFields(){
       targetSel.innerHTML = '';
@@ -321,7 +474,7 @@ function makeEffectsInput(val){
           targetSel.appendChild(op);
         });
         usesInput.style.display = 'none';
-        costInput.style.display = 'none';
+        costBtn.style.display = 'none';
       }else{
         resourceSelect.forEach(o=>{
           const op = document.createElement('option');
@@ -332,12 +485,15 @@ function makeEffectsInput(val){
         });
         if(typeSel.value === 'instant_production'){
           usesInput.style.display = '';
-          costInput.style.display = '';
+          costBtn.style.display = '';
           usesInput.value = data.uses_per_month || '';
           costInput.value = data.costs ? JSON.stringify(data.costs) : '{}';
+          updateCostBtn();
         }else{
           usesInput.style.display = 'none';
-          costInput.style.display = 'none';
+          costBtn.style.display = 'none';
+          costInput.value = '{}';
+          updateCostBtn();
         }
       }
       qty.value = data.amount || '';
@@ -356,6 +512,7 @@ function makeEffectsInput(val){
     row.appendChild(qty);
     row.appendChild(usesInput);
     row.appendChild(costInput);
+    row.appendChild(costBtn);
     row.appendChild(removeBtn);
     list.appendChild(row);
   }
@@ -459,98 +616,7 @@ function renderTable(container, rows, opts){
 
   const makeInput = (val, field, item)=>{
     if(field === 'costs'){
-      const container = document.createElement('div');
-      const list = document.createElement('div');
-      container.appendChild(list);
-      const addBtn = document.createElement('button');
-      addBtn.type = 'button';
-      addBtn.textContent = '+';
-      container.appendChild(addBtn);
-      function addRow(res = '', qty = '', opts = []){
-        const row = document.createElement('div');
-        row.className = 'cost-row';
-        const sel = document.createElement('select');
-        const blank = document.createElement('option');
-        blank.value = '';
-        sel.appendChild(blank);
-        resourceSelect.forEach(o=>{
-          const op = document.createElement('option');
-          op.value = o.id;
-          op.textContent = o.name;
-          if(o.id === res) op.selected = true;
-          sel.appendChild(op);
-        });
-        const qtyInput = document.createElement('input');
-        qtyInput.type = 'number';
-        qtyInput.min = '0';
-        qtyInput.value = qty;
-        const choiceDiv = document.createElement('div');
-        const choiceList = document.createElement('div');
-        choiceDiv.appendChild(choiceList);
-        const addChoiceBtn = document.createElement('button');
-        addChoiceBtn.type = 'button';
-        addChoiceBtn.textContent = '+';
-        choiceDiv.appendChild(addChoiceBtn);
-        function addChoice(val=''){
-          const rw = document.createElement('div');
-          const s = document.createElement('select');
-          const bl = document.createElement('option');
-          bl.value=''; s.appendChild(bl);
-          resourceSelect.filter(r=>r.id!=='choice').forEach(o=>{
-            const op=document.createElement('option');
-            op.value=o.id; op.textContent=o.name; if(o.id===val) op.selected=true; s.appendChild(op);
-          });
-          const rm=document.createElement('button'); rm.type='button'; rm.textContent='-'; rm.addEventListener('click',()=>rw.remove());
-          rw.appendChild(s); rw.appendChild(rm); choiceList.appendChild(rw);
-        }
-        addChoiceBtn.addEventListener('click',()=>addChoice());
-        if(opts.length){ opts.forEach(o=>addChoice(o)); } else { addChoice(); }
-        choiceDiv.style.display = res==='choice' ? '' : 'none';
-        sel.addEventListener('change',()=>{ choiceDiv.style.display = sel.value==='choice'? '' : 'none'; });
-        const removeBtn = document.createElement('button');
-        removeBtn.type = 'button';
-        removeBtn.textContent = '-';
-        removeBtn.addEventListener('click', ()=> row.remove());
-        row.appendChild(sel);
-        row.appendChild(qtyInput);
-        row.appendChild(choiceDiv);
-        row.appendChild(removeBtn);
-        list.appendChild(row);
-      }
-      addBtn.addEventListener('click', ()=> addRow());
-      try {
-        const obj = JSON.parse(val || '{}');
-        const entries = Object.entries(obj);
-        if(entries.length){
-          entries.forEach(([r,q])=>{
-            if(r==='choice' && q && q.options){
-              addRow('choice', q.amount || '', q.options);
-            } else {
-              addRow(r,q);
-            }
-          });
-        } else {
-          addRow();
-        }
-      } catch(e){
-        addRow();
-      }
-      container.getValue = ()=>{
-        const res = {};
-        list.querySelectorAll('.cost-row').forEach(rw=>{
-          const k = rw.querySelector('select').value;
-          const q = parseInt(rw.querySelector('input[type="number"]').value,10);
-          if(k === 'choice'){
-            const opts = [];
-            rw.querySelectorAll('div select').forEach(s=>{ if(s.value) opts.push(s.value); });
-            if(opts.length && q) res.choice = { options: opts, amount: q };
-          } else if(k && q){
-            res[k] = q;
-          }
-        });
-        return JSON.stringify(res);
-      };
-      return container;
+      return createCostEditor(val);
     }
     if(field === 'absolute_restrictions'){
       const container = document.createElement('div');
