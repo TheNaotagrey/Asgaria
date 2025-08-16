@@ -914,12 +914,13 @@ function canConstruct(db, srow, id, qty, cb){
       if (err2) return cb(err2);
       const barProps = props || {};
       let max = Infinity;
-      if (bprops.max != null) {
+      if (bprops.max != null && bprops.max !== '') {
         const parsed = parseInt(bprops.max, 10);
-        if (!isNaN(parsed)) {
+        if (!isNaN(parsed) && parsed > 0) {
           max = parsed;
         } else if (barProps[bprops.max] != null) {
-          max = barProps[bprops.max];
+          const dyn = parseInt(barProps[bprops.max], 10);
+          if (!isNaN(dyn) && dyn > 0) max = dyn;
         }
       }
       if (Array.isArray(absReq)) {
@@ -980,10 +981,14 @@ function canConstructInfra(db, srow, id, qty, cb){
       if(err2) return cb(err2);
       const barProps = props || {};
       let max = Infinity;
-      if(iprop.max != null){
-        const parsed = parseInt(iprop.max,10);
-        if(!isNaN(parsed)) max = parsed;
-        else if(barProps[iprop.max] != null) max = barProps[iprop.max];
+      if (iprop.max != null && iprop.max !== '') {
+        const parsed = parseInt(iprop.max, 10);
+        if (!isNaN(parsed) && parsed > 0) {
+          max = parsed;
+        } else if (barProps[iprop.max] != null) {
+          const dyn = parseInt(barProps[iprop.max], 10);
+          if (!isNaN(dyn) && dyn > 0) max = dyn;
+        }
       }
       for(const prop of absReq){
         if(!barProps[prop]) return cb(new Error('Restriction non satisfaite'));
