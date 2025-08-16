@@ -1081,7 +1081,8 @@ app.post('/api/infrastructure', (req,res)=>{
         const uses = {};
         (info.effects || []).forEach((eff, idx) => {
           if (eff.type === 'instant_production' && eff.uses_per_month != null) {
-            uses[`effect_${idx}_remaining`] = eff.uses_per_month;
+            const existRem = existing[`effect_${idx}_remaining`] || 0;
+            uses[`effect_${idx}_remaining`] = existRem + (eff.uses_per_month * qty);
           }
         });
         infrastructures[iId] = { built: newBuilt, ...existing, ...uses, ...(props || {}) };

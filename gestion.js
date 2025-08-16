@@ -429,6 +429,7 @@ function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId) {
   for (const ip of list) {
     const entry = infraBuilt[ip.id] || infraBuilt[String(ip.id)] || 0;
     const built = typeof entry === 'object' ? (entry.built || 0) : entry;
+    const entryObj = typeof entry === 'object' ? entry : {};
 
     let maxVal = '';
     let maxReached = false;
@@ -520,16 +521,17 @@ function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId) {
       const effects = ip.effects ? JSON.parse(ip.effects) : [];
       const inst = effects.filter(e => e.type === 'instant_production');
       const tables = [];
-      inst.forEach((eff, idx) => {
-        const entry = infraBuilt[ip.id] || infraBuilt[String(ip.id)] || {};
-        const remainKey = `effect_${idx}_remaining`;
-        const remaining = entry[remainKey] || 0;
-        const label = resourceLabels[eff.resource] || eff.resource;
-        const baseCosts = eff.costs || {};
-        const costStr = Object.entries(baseCosts).map(([r,a])=>{
-          const lbl = resourceLabels[r] || r; return `${lbl}: ${a*remaining}`; }).join(', ');
-        tables.push(`<table class="admin-table instant-prod-table"><tr><th>Production</th><th>Restant</th><th>Nb</th><th>Coût total</th><th>Convertir</th></tr><tr><td class="prod-cell" data-base="${eff.amount}" data-res="${eff.resource}">${eff.amount} ${label}</td><td class="rem-cell">${remaining}</td><td><input type="number" class="inst-nb" min="1" max="${remaining}" value="${remaining}" oninput="updateInstantCost(this)"></td><td class="cost-cell" data-costs='${JSON.stringify(baseCosts)}'>${costStr}</td><td><button class="instant-btn" data-id="${ip.id}" data-idx="${idx}">Convertir</button></td></tr></table>`);
-      });
+      if (built > 0) {
+        inst.forEach((eff, idx) => {
+          const remainKey = `effect_${idx}_remaining`;
+          const remaining = entryObj[remainKey] || 0;
+          const label = resourceLabels[eff.resource] || eff.resource;
+          const baseCosts = eff.costs || {};
+          const costStr = Object.entries(baseCosts).map(([r,a])=>{
+            const lbl = resourceLabels[r] || r; return `${lbl}: ${a*remaining}`; }).join(', ');
+          tables.push(`<table class="admin-table instant-prod-table"><tr><th>Production</th><th>Restant</th><th>Nb</th><th>Coût total</th><th>Convertir</th></tr><tr><td class="prod-cell" data-base="${eff.amount}" data-res="${eff.resource}">${eff.amount} ${label}</td><td class="rem-cell">${remaining}</td><td><input type="number" class="inst-nb" min="1" max="${remaining}" value="${remaining}" oninput="updateInstantCost(this)"></td><td class="cost-cell" data-costs='${JSON.stringify(baseCosts)}'>${costStr}</td><td><button class="instant-btn" data-id="${ip.id}" data-idx="${idx}">Convertir</button></td></tr></table>`);
+        });
+      }
       if (tables.length) {
         extraHtml = tables.join('');
       }
