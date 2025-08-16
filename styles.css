@@ -271,9 +271,11 @@ main {
   background-color: #3d6db2;
 }
 
-.instant-prod-cell {
+.multi-col {
   padding-left: 10px;
   vertical-align: top;
+  display: none;
+  border: none !important;
 }
 
 .instant-prod-table {
