@@ -906,6 +906,7 @@ function canConstruct(db, srow, id, qty, cb){
     const costObj = safeParse(bprops.costs, {});
     const absReq = safeParse(bprops.absolute_restrictions, []);
     const infraReq = safeParse(bprops.infra_restrictions, {});
+    const effects = safeParse(bprops.effects, []);
     const costs = {};
     Object.entries(costObj).forEach(([res, val]) => {
       costs[res] = (parseInt(val, 10) || 0) * qty;
@@ -960,7 +961,7 @@ function canConstruct(db, srow, id, qty, cb){
         for (const [res, val] of Object.entries(costs)) {
           if ((inv[res] || 0) < val) return cb(new Error('Ressources insuffisantes'));
         }
-        cb(null, { costs, built, active, buildings, infrastructures });
+        cb(null, { costs, built, active, buildings, infrastructures, effects });
       });
     });
   });
@@ -1048,7 +1049,14 @@ app.post('/api/building', (req,res)=>{
         const newActive = info.active + qty;
         const buildings = info.buildings;
         const existing = buildings[bId] || {};
-        buildings[bId] = { built: newBuilt, active: newActive, ...existing, ...(props || {}) };
+        const uses = {};
+        (info.effects || []).forEach((eff, idx) => {
+          if (eff.type === 'instant_production' && eff.uses_per_month != null) {
+            const existRem = existing[`effect_${idx}_remaining`] || 0;
+            uses[`effect_${idx}_remaining`] = existRem + (eff.uses_per_month * qty);
+          }
+        });
+        buildings[bId] = { built: newBuilt, active: newActive, ...existing, ...uses, ...(props || {}) };
         db.run('UPDATE seigneuries SET buildings=? WHERE id=?', [JSON.stringify(buildings), srow.id], function(err4){
           if(err4) return handleError(res, err4);
           db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err5, inventaire)=>{
