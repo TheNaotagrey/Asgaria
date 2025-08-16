@@ -551,21 +551,61 @@ function updateInstantCost(el){
 }
 
 function buildTable(list, showMax = false, inv = {}, production = {}, productionDetails = {}, capacity = {}) {
+  const {
+    buildings = {},
+    bpMap = {},
+    buildingBonuses = {},
+    buildingBonusDetails = {}
+  } = gameState;
+
+  const buildingLabelSet = new Set(Object.values(bpMap).map(bp => bp.label || bp.type));
+  const bonusSourceLabels = new Set();
+  for (const arr of Object.values(buildingBonusDetails)) {
+    for (const det of arr) bonusSourceLabels.add(det.label);
+  }
+
+  const buildingContribs = {};
+  for (const [id, bp] of Object.entries(bpMap)) {
+    const res = bp.produces;
+    if (!res) continue;
+    const info = buildings[id] || buildings[String(id)] || {};
+    const active = info.active || 0;
+    if (!active) continue;
+    const base = bp.production || 0;
+    let bonus = buildingBonuses[id] || buildingBonuses[String(id)] || 0;
+    const bonusDetails = buildingBonusDetails[id] || buildingBonusDetails[String(id)] || [];
+    if (!bonus && bonusDetails.length) {
+      bonus = bonusDetails.reduce((sum, b) => sum + b.amount, 0);
+    }
+    const per = base + bonus;
+    if (!per) continue;
+    const amount = per * active;
+    const lbl = `${active} ${bp.label || bp.type}`;
+    if (!buildingContribs[res]) buildingContribs[res] = [];
+    buildingContribs[res].push({ label: lbl, amount });
+  }
+
   let html = '<tr><th>Ressource</th><th>Quantité</th><th>Production</th>';
   if (showMax) html += '<th>Maximum</th>';
   html += '</tr>';
   for (const [key, label] of list) {
     const qty = inv[key] ?? 0;
     const details = productionDetails[key] || [];
+    const rows = [];
+    if (buildingContribs[key]) rows.push(...buildingContribs[key]);
+    for (const d of details) {
+      if (buildingLabelSet.has(d.label) || bonusSourceLabels.has(d.label)) continue;
+      rows.push({ label: formatDetailLabel(d.label), amount: d.amount });
+    }
     const total =
       production[key] !== undefined
         ? production[key]
-        : details.reduce((sum, s) => sum + s.amount, 0);
+        : rows.reduce((sum, s) => sum + s.amount, 0);
     let prodHtml = '';
     if (total) {
-      if (details.length) {
-        const rows = details.map(d => `<tr><td>${formatDetailLabel(d.label)}</td><td>${spanAmount(d.amount)}</td></tr>`);
-        prodHtml = `<span class="tooltip">${spanAmount(total)}<table class="tooltip-table">${rows.join('')}</table></span>`;
+      if (rows.length) {
+        const tableRows = rows.map(r => `<tr><td>${r.label}</td><td>${spanAmount(r.amount)}</td></tr>`);
+        prodHtml = `<span class="tooltip">${spanAmount(total)}<table class="tooltip-table">${tableRows.join('')}</table></span>`;
       } else {
         prodHtml = spanAmount(total);
       }
