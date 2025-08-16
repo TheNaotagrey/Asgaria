@@ -92,7 +92,7 @@ async function loadAndRender() {
       });
     const ipMap = Object.fromEntries(allInfraProps.map(b => [String(b.id), b]));
 
-    gameState = { s, employment, buildings, infrastructures, bpMap, ipMap, buildingBonuses, buildingBonusDetails };
+    gameState = { s, employment, buildings, infrastructures, bpMap, ipMap, buildingBonuses, buildingBonusDetails, baronyProps };
 
     const summary = document.getElementById('summary');
     summary.innerHTML = `
@@ -193,10 +193,13 @@ async function loadAndRender() {
         let maxVal = '';
         if (bp.max !== undefined && bp.max !== null) {
           const parsed = parseInt(bp.max, 10);
-          if (!isNaN(parsed)) {
+          if (!isNaN(parsed) && parsed > 0) {
             maxVal = parsed;
           } else if (baronyProps[bp.max] !== undefined) {
-            maxVal = baronyProps[bp.max];
+            const barVal = parseInt(baronyProps[bp.max], 10);
+            if (!isNaN(barVal) && barVal > 0) {
+              maxVal = barVal;
+            }
           }
         }
 
@@ -423,7 +426,7 @@ async function handleInfraTableClick(e) {
 }
 
 function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId) {
-  const { buildings = {}, infrastructures = {}, s = {}, bpMap = {}, ipMap = {} } = gameState || {};
+  const { buildings = {}, infrastructures = {}, s = {}, bpMap = {}, ipMap = {}, baronyProps = {} } = gameState || {};
   let html = `<table class="admin-table" id="${tableId}"><tr><th>Nom</th><th>Construits</th><th>Max</th><th>Effets</th><th>Requis</th><th>Coût</th><th>Construire</th></tr>`;
   for (const ip of list) {
     const entry = infraBuilt[ip.id] || infraBuilt[String(ip.id)] || 0;
@@ -433,11 +436,15 @@ function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId) {
     let maxReached = false;
     if (ip.max !== undefined && ip.max !== null) {
       const parsed = parseInt(ip.max, 10);
-      if (!isNaN(parsed)) {
+      if (!isNaN(parsed) && parsed > 0) {
         maxVal = parsed;
         if (built >= parsed) maxReached = true;
-      } else {
-        maxVal = ip.max;
+      } else if (baronyProps[ip.max] !== undefined) {
+        const barVal = parseInt(baronyProps[ip.max], 10);
+        if (!isNaN(barVal) && barVal > 0) {
+          maxVal = barVal;
+          if (built >= barVal) maxReached = true;
+        }
       }
     }
 
