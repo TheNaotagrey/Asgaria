@@ -271,6 +271,15 @@ main {
   background-color: #3d6db2;
 }
 
+.instant-prod-cell {
+  padding-left: 10px;
+  vertical-align: top;
+}
+
+.instant-prod-table {
+  margin-bottom: 0;
+}
+
 .qty-control {
   display: flex;
   align-items: center;
