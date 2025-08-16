@@ -191,12 +191,13 @@ async function loadAndRender() {
         const workersPer = bp.workers_per_building || 0;
 
         let maxVal = '';
-        if (bp.max !== undefined && bp.max !== null) {
+        if (bp.max !== undefined && bp.max !== null && bp.max !== '') {
           const parsed = parseInt(bp.max, 10);
-          if (!isNaN(parsed)) {
+          if (!isNaN(parsed) && parsed > 0) {
             maxVal = parsed;
           } else if (baronyProps[bp.max] !== undefined) {
-            maxVal = baronyProps[bp.max];
+            const dyn = parseInt(baronyProps[bp.max], 10);
+            if (!isNaN(dyn) && dyn > 0) maxVal = dyn;
           }
         }
 
@@ -431,11 +432,13 @@ function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId) {
 
     let maxVal = '';
     let maxReached = false;
-    if (ip.max !== undefined && ip.max !== null) {
+    if (ip.max !== undefined && ip.max !== null && ip.max !== '') {
       const parsed = parseInt(ip.max, 10);
       if (!isNaN(parsed)) {
-        maxVal = parsed;
-        if (built >= parsed) maxReached = true;
+        if (parsed > 0) {
+          maxVal = parsed;
+          if (built >= parsed) maxReached = true;
+        }
       } else {
         maxVal = ip.max;
       }
