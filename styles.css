@@ -274,8 +274,11 @@ main {
 .multi-col {
   padding-left: 10px;
   vertical-align: top;
-  display: none;
   border: none !important;
+}
+
+th.multi-col {
+  display: none;
 }
 
 .instant-prod-table {
