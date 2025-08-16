@@ -424,7 +424,7 @@ async function handleInfraTableClick(e) {
 
 function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId) {
   const { buildings = {}, infrastructures = {}, s = {}, bpMap = {}, ipMap = {} } = gameState || {};
-  let html = `<table class="admin-table" id="${tableId}"><tr><th>Nom</th><th>Construits</th><th>Max</th><th>Effets</th><th>Requis</th><th>Coût</th><th>Construire</th></tr>`;
+  let html = `<table class="admin-table" id="${tableId}"><tr><th>Nom</th><th>Construits</th><th>Max</th><th>Effets</th><th>Requis</th><th>Coût</th><th>Construire</th><th>Prod. instantanée</th></tr>`;
   for (const ip of list) {
     const entry = infraBuilt[ip.id] || infraBuilt[String(ip.id)] || 0;
     const built = typeof entry === 'object' ? (entry.built || 0) : entry;
@@ -507,15 +507,16 @@ function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId) {
     const canBuild = hasRes && restrOk;
     html += `<tr data-id="${ip.id}"><td>${ip.label}</td><td>${built}</td><td>${maxVal}</td><td>${effectsHtml}</td><td>${restrHtml}</td><td>${costHtml}</td>`;
     if (maxReached) {
-      html += '<td></td></tr>';
+      html += '<td></td>';
     } else {
-      html += `<td><button class="build-btn infra-build-btn" data-id="${ip.id}"${canBuild ? '' : ' disabled'}>Construire</button></td></tr>`;
+      html += `<td><button class="build-btn infra-build-btn" data-id="${ip.id}"${canBuild ? '' : ' disabled'}>Construire</button></td>`;
     }
 
-    let instantRows = '';
+    let instantHtml = '';
     try {
       const effects = ip.effects ? JSON.parse(ip.effects) : [];
       const inst = effects.filter(e => e.type === 'instant_production');
+      const tables = [];
       inst.forEach((eff, idx) => {
         const entry = infraBuilt[ip.id] || infraBuilt[String(ip.id)] || {};
         const remainKey = `effect_${idx}_remaining`;
@@ -524,10 +525,13 @@ function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId) {
         const baseCosts = eff.costs || {};
         const costStr = Object.entries(baseCosts).map(([r,a])=>{
           const lbl = resourceLabels[r] || r; return `${lbl}: ${a*remaining}`; }).join(', ');
-        instantRows += `<tr class="instant-prod-row" data-id="${ip.id}" data-idx="${idx}"><td></td><td colspan="6"><table class="admin-table"><tr><th>Production</th><th>Restant</th><th>Nb</th><th>Coût total</th><th>Convertir</th></tr><tr><td class="prod-cell" data-base="${eff.amount}" data-res="${eff.resource}">${eff.amount} ${label}</td><td class="rem-cell">${remaining}</td><td><input type="number" class="inst-nb" min="1" max="${remaining}" value="${remaining}" oninput="updateInstantCost(this)"></td><td class="cost-cell" data-costs='${JSON.stringify(baseCosts)}'>${costStr}</td><td><button class="instant-btn" data-id="${ip.id}" data-idx="${idx}">Convertir</button></td></tr></table></td></tr>`;
+        tables.push(`<table class="admin-table instant-prod-table"><tr><th>Production</th><th>Restant</th><th>Nb</th><th>Coût total</th><th>Convertir</th></tr><tr><td class="prod-cell" data-base="${eff.amount}" data-res="${eff.resource}">${eff.amount} ${label}</td><td class="rem-cell">${remaining}</td><td><input type="number" class="inst-nb" min="1" max="${remaining}" value="${remaining}" oninput="updateInstantCost(this)"></td><td class="cost-cell" data-costs='${JSON.stringify(baseCosts)}'>${costStr}</td><td><button class="instant-btn" data-id="${ip.id}" data-idx="${idx}">Convertir</button></td></tr></table>`);
       });
+      if (tables.length) {
+        instantHtml = tables.join('');
+      }
     } catch {}
-    html += instantRows;
+    html += `<td class="instant-prod-cell">${instantHtml}</td></tr>`;
   }
   html += '</table>';
   return html;
