@@ -335,6 +335,7 @@ async function handleBuildingTableClick(e) {
   if (e.target.classList.contains('build-btn')) {
     const id = e.target.dataset.id;
     const bp = gameState.bpMap[id];
+    console.log('[build] Bouton de construction cliqué pour', id);
     let payload = { id, quantity: 1 };
     if (bp && bp.produces) {
       try {
@@ -342,23 +343,39 @@ async function handleBuildingTableClick(e) {
         if (obj && obj.choice) {
           const info = gameState.buildings[id] || { built: 0 };
           if (!info.built) {
-            const labelOpts = obj.choice.map(r => resourceLabels[r] || r).join('/');
+            const choices = obj.choice.map(r => ({ value: r, label: resourceLabels[r] || r }));
+            const labelOpts = choices.map(c => c.label).join('/');
             const sel = prompt(`Choisissez la ressource produite: ${labelOpts}`);
-            if (!sel || !obj.choice.includes(sel)) return;
-            payload.props = { produces: sel };
+            const found = choices.find(c => c.value === sel || c.label.toLowerCase() === String(sel).toLowerCase());
+            if (!found) {
+              console.warn('[build] Choix de ressource invalide', sel);
+              return;
+            }
+            payload.props = { produces: found.value };
           }
         }
-      } catch {}
+      } catch (err) {
+        console.error('[build] Erreur lors du traitement des options de production', err);
+      }
     }
-    const resp = await fetch('/api/building', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    if (resp.ok) {
-      await loadAndRender();
-    } else {
-      alert('Construction impossible');
+    try {
+      const resp = await fetch('/api/building', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      console.log('[build] Réponse du serveur', resp.status);
+      if (resp.ok) {
+        console.log('[build] Construction réussie');
+        await loadAndRender();
+      } else {
+        const msg = await resp.text().catch(() => '');
+        console.warn('[build] Construction refusée', resp.status, msg);
+        alert('Construction impossible');
+      }
+    } catch (err) {
+      console.error('[build] Erreur réseau ou serveur', err);
+      alert('Erreur réseau lors de la construction');
     }
   }
 }
@@ -378,14 +395,22 @@ async function handleBuildingActivationChange(e) {
       return;
     }
 
-    const resp = await fetch('/api/building/activate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, quantity })
-    });
-    if (resp.ok) {
-      await loadAndRender();
-    } else {
+    try {
+      const resp = await fetch('/api/building/activate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, quantity })
+      });
+      console.log('[build] Activation réponse', resp.status);
+      if (resp.ok) {
+        await loadAndRender();
+      } else {
+        const msg = await resp.text().catch(() => '');
+        console.warn('[build] Activation refusée', resp.status, msg);
+        alert('Activation impossible');
+      }
+    } catch (err) {
+      console.error('[build] Erreur réseau lors de l\'activation', err);
       alert('Activation impossible');
     }
   }
@@ -394,14 +419,23 @@ async function handleBuildingActivationChange(e) {
 async function handleInfraTableClick(e) {
   if (e.target.classList.contains('infra-build-btn')) {
     const id = e.target.dataset.id;
-    const resp = await fetch('/api/infrastructure', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, quantity: 1 })
-    });
-    if (resp.ok) {
-      await loadAndRender();
-    } else {
+    console.log('[infra] Bouton de construction infrastructure cliqué pour', id);
+    try {
+      const resp = await fetch('/api/infrastructure', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, quantity: 1 })
+      });
+      console.log('[infra] Réponse du serveur', resp.status);
+      if (resp.ok) {
+        await loadAndRender();
+      } else {
+        const msg = await resp.text().catch(() => '');
+        console.warn('[infra] Construction refusée', resp.status, msg);
+        alert('Construction impossible');
+      }
+    } catch (err) {
+      console.error('[infra] Erreur réseau lors de la construction', err);
       alert('Construction impossible');
     }
   } else if (e.target.classList.contains('instant-btn')) {
@@ -410,14 +444,22 @@ async function handleInfraTableClick(e) {
     const row = e.target.closest('tr');
     const nb = parseInt(row.querySelector('.inst-nb').value,10) || 0;
     if(nb <= 0) return;
-    const resp = await fetch('/api/infrastructure/instant_production', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, index: idx, quantity: nb })
-    });
-    if(resp.ok){
-      await loadAndRender();
-    }else{
+    try {
+      const resp = await fetch('/api/infrastructure/instant_production', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, index: idx, quantity: nb })
+      });
+      console.log('[infra] Conversion instantanée réponse', resp.status);
+      if(resp.ok){
+        await loadAndRender();
+      }else{
+        const msg = await resp.text().catch(() => '');
+        console.warn('[infra] Conversion refusée', resp.status, msg);
+        alert('Conversion impossible');
+      }
+    } catch (err) {
+      console.error('[infra] Erreur réseau lors de la conversion', err);
       alert('Conversion impossible');
     }
   }
