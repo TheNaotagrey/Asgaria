@@ -338,24 +338,27 @@ async function handleBuildingTableClick(e) {
     console.log('[build] Bouton de construction cliqué pour', id);
     let payload = { id, quantity: 1 };
     if (bp && bp.produces) {
-      try {
-        const obj = JSON.parse(bp.produces);
-        if (obj && obj.choice) {
-          const info = gameState.buildings[id] || { built: 0 };
-          if (!info.built) {
-            const choices = obj.choice.map(r => ({ value: r, label: resourceLabels[r] || r }));
-            const labelOpts = choices.map(c => c.label).join('/');
-            const sel = prompt(`Choisissez la ressource produite: ${labelOpts}`);
-            const found = choices.find(c => c.value === sel || c.label.toLowerCase() === String(sel).toLowerCase());
-            if (!found) {
-              console.warn('[build] Choix de ressource invalide', sel);
-              return;
+      const prodStr = String(bp.produces).trim();
+      if (prodStr.startsWith('{') || prodStr.startsWith('[')) {
+        try {
+          const obj = JSON.parse(prodStr);
+          if (obj && obj.choice) {
+            const info = gameState.buildings[id] || { built: 0 };
+            if (!info.built) {
+              const choices = obj.choice.map(r => ({ value: r, label: resourceLabels[r] || r }));
+              const labelOpts = choices.map(c => c.label).join('/');
+              const sel = prompt(`Choisissez la ressource produite: ${labelOpts}`);
+              const found = choices.find(c => c.value === sel || c.label.toLowerCase() === String(sel).toLowerCase());
+              if (!found) {
+                console.warn('[build] Choix de ressource invalide', sel);
+                return;
+              }
+              payload.props = { produces: found.value };
             }
-            payload.props = { produces: found.value };
           }
+        } catch (err) {
+          console.warn('[build] Produces JSON invalide ignoré', err);
         }
-      } catch (err) {
-        console.error('[build] Erreur lors du traitement des options de production', err);
       }
     }
     try {
