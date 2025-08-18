@@ -143,9 +143,6 @@ async function loadAndRender() {
     summary.innerHTML = `
       <p><strong>Baronnie :</strong> ${barony.name || 'Aucune'}</p>
       <div id="populationSummary"></div>
-      <p><strong>Religion :</strong> ${barony.religion_name || 'Inconnue'}</p>
-      <p><strong>Culture :</strong> ${barony.culture_name || 'Inconnue'}</p>
-      <p><strong>IDH :</strong> ${idhHtml}</p>
       <div id="resourceTables" class="resource-tables">
         <div class="resource-table-container">
           <h2>Ressources de base</h2>
@@ -176,10 +173,13 @@ async function loadAndRender() {
     popSummary.innerHTML = `
       <h2>Population</h2>
       <table class="admin-table">
-        <tr><th>Type</th><th>Nombre</th></tr>
+        <tr><th>Info</th><th>Nombre</th></tr>
         <tr><td>Population totale</td><td>${s.population}</td></tr>
         <tr><td>Population employée</td><td>${employedHtml}</td></tr>
         <tr><td>Esclaves</td><td>${employment.slaves}</td></tr>
+        <tr><td>IDH</td><td>${idhHtml}</td></tr>
+        <tr><td>Religion</td><td>${barony.religion_name || 'Inconnue'}</td></tr>
+        <tr><td>Culture</td><td>${barony.culture_name || 'Inconnue'}</td></tr>
         <tr><td>Taxes (écus)</td><td><select id="taxRate">${taxOptions}</select></td></tr>
       </table>
     `;
