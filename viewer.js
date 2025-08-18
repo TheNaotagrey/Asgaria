@@ -21,6 +21,7 @@
   let seigneurToViscounty = {}, seigneurToCounty = {}, seigneurToMarquisate = {}, seigneurToDuchy = {}, seigneurToArchduchy = {}, seigneurToKingdom = {}, seigneurToEmpire = {};
   let canonicalLandMap = {};
   let canonicalPatterns = {};
+  let baronyAdjacency = {};
   let currentFilter = '';
 
   async function loadPixelData() {
@@ -32,7 +33,7 @@
   }
 
   async function loadMetaData() {
-    const [baronies, seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires, canonicalLands] = await Promise.all([
+    const [baronies, seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires, canonicalLands, connections] = await Promise.all([
       fetch(API_BASE + '/api/baronies').then(r => r.json()),
       fetch(API_BASE + '/api/seigneurs').then(r => r.json()),
       fetch(API_BASE + '/api/religions').then(r => r.json()),
@@ -44,7 +45,8 @@
       fetch(API_BASE + '/api/marquisates').then(r => r.json()),
       fetch(API_BASE + '/api/archduchies').then(r => r.json()),
       fetch(API_BASE + '/api/empires').then(r => r.json()),
-      fetch(API_BASE + '/api/canonical_lands').then(r => r.json())
+      fetch(API_BASE + '/api/canonical_lands').then(r => r.json()),
+      fetch(API_BASE + '/api/barony_connections').then(r => r.json())
     ]);
     baronyMeta = {};
     baronies.forEach(b => { baronyMeta[b.id] = b; });
@@ -79,6 +81,13 @@
     canonicalLands.forEach(cl => {
       if (!canonicalLandMap[cl.barony_id]) canonicalLandMap[cl.barony_id] = [];
       canonicalLandMap[cl.barony_id].push(cl.religion_id);
+    });
+    baronyAdjacency = {};
+    connections.forEach(c => {
+      if (!baronyAdjacency[c.barony_id_1]) baronyAdjacency[c.barony_id_1] = [];
+      if (!baronyAdjacency[c.barony_id_2]) baronyAdjacency[c.barony_id_2] = [];
+      baronyAdjacency[c.barony_id_1].push(c.barony_id_2);
+      baronyAdjacency[c.barony_id_2].push(c.barony_id_1);
     });
   }
 
@@ -295,7 +304,7 @@
     currentSelectedId = id;
     if (!id) {
       if (infoPanel) infoPanel.style.display = 'none';
-      drawAll();
+      if (currentFilter) applyFilter(currentFilter); else drawAll();
       return;
     }
     if (!colorMap[id]) colorMap[id] = generateColor(id);
@@ -330,7 +339,7 @@
       infoCanonical.textContent = canon.map(rid => religionMap[rid]?.name || '').filter(Boolean).join(', ');
       infoPanel.style.display = 'block';
     }
-    drawAll();
+    if (currentFilter) applyFilter(currentFilter); else drawAll();
   }
 
   function handleCanvasClick(e) {
@@ -375,6 +384,37 @@
       initColorMap();
       updateLegend(null);
       if (currentSelectedId) colorMap[currentSelectedId][3] = 180;
+      drawAll();
+      return;
+    }
+    if (type === 'distance') {
+      colorMap = {};
+      if (!currentSelectedId) {
+        drawAll();
+        return;
+      }
+      const distances = {};
+      const queue = [currentSelectedId];
+      distances[currentSelectedId] = 0;
+      while (queue.length > 0) {
+        const cur = queue.shift();
+        const next = baronyAdjacency[cur] || [];
+        next.forEach(n => {
+          if (distances[n] === undefined) {
+            distances[n] = distances[cur] + 1;
+            queue.push(n);
+          }
+        });
+      }
+      Object.keys(baronyMeta).forEach(id => {
+        const d = distances[id];
+        if (d === undefined) return;
+        const hue = (d * 40) % 360;
+        const [r, g, b] = hslToRgb(hue, 65, 65);
+        colorMap[id] = [r, g, b, 100];
+      });
+      if (currentSelectedId && colorMap[currentSelectedId]) colorMap[currentSelectedId][3] = 180;
+      updateLegend(null);
       drawAll();
       return;
     }
