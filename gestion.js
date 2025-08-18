@@ -178,24 +178,10 @@ async function loadAndRender() {
       html += '<tr><th>Nom</th><th>Production</th><th>Employés</th><th>Requis</th><th>Construits</th><th>Max</th><th>Activer</th><th>Prod. Tot.</th><th>Emp. Tot.</th><th>Coût</th><th>Construire</th></tr>';
       for (const bp of buildingProps) {
         let prodLabel = '';
-        let prodChoices = [];
         if (bp.produces) {
-          try {
-            const obj = JSON.parse(bp.produces);
-            if (obj && obj.choice) {
-              prodChoices = obj.choice;
-              prodLabel = 'Choix';
-            } else {
-              prodLabel = resourceLabels[bp.produces] || bp.produces || '';
-            }
-          } catch {
-            prodLabel = resourceLabels[bp.produces] || bp.produces || '';
-          }
+          prodLabel = resourceLabels[bp.produces] || bp.produces || '';
         }
         const info = buildings[bp.id] || { built: 0, active: 0 };
-        if (prodChoices.length && info.produces) {
-          prodLabel = resourceLabels[info.produces] || info.produces;
-        }
         const baseProd = bp.production || 0;
         let bonusProd = buildingBonuses[bp.id] || buildingBonuses[String(bp.id)] || 0;
         const bonusDetails = buildingBonusDetails[bp.id] || buildingBonusDetails[String(bp.id)] || [];
@@ -363,33 +349,8 @@ async function handleBuildingTableClick(e) {
   const table = document.getElementById('buildingsTable');
   if (e.target.classList.contains('build-btn')) {
     const id = e.target.dataset.id;
-    const bp = gameState.bpMap[id];
     console.log('[build] Bouton de construction cliqué pour', id);
     let payload = { id, quantity: 1 };
-    if (bp && bp.produces) {
-      const prodStr = String(bp.produces).trim();
-      if (prodStr.startsWith('{') || prodStr.startsWith('[')) {
-        try {
-          const obj = JSON.parse(prodStr);
-          if (obj && obj.choice) {
-            const info = gameState.buildings[id] || { built: 0 };
-            if (!info.built) {
-              const choices = obj.choice.map(r => ({ value: r, label: resourceLabels[r] || r }));
-              const labelOpts = choices.map(c => c.label).join('/');
-              const sel = prompt(`Choisissez la ressource produite: ${labelOpts}`);
-              const found = choices.find(c => c.value === sel || c.label.toLowerCase() === String(sel).toLowerCase());
-              if (!found) {
-                console.warn('[build] Choix de ressource invalide', sel);
-                return;
-              }
-              payload.props = { produces: found.value };
-            }
-          }
-        } catch (err) {
-          console.warn('[build] Produces JSON invalide ignoré', err);
-        }
-      }
-    }
     try {
       const resp = await fetch('/api/building', {
         method: 'POST',

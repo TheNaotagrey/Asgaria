@@ -742,15 +742,7 @@ app.get('/api/my_seigneurie', (req, res) => {
                   if (bp.type === 'field') {
                     fields = info;
                   }
-                  let prodRes = bp.produces;
-                  if (prodRes) {
-                    try {
-                      const obj = JSON.parse(prodRes);
-                      if (obj && obj.choice) {
-                        prodRes = info.produces;
-                      }
-                    } catch {}
-                  }
+                  const prodRes = bp.produces;
                   if (active > 0 && prodRes && bp.production) {
                     const amount = active * bp.production;
                     production[prodRes] = (production[prodRes] || 0) + amount;
