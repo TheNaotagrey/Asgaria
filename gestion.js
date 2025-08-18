@@ -38,7 +38,13 @@ const baronyPropLabels = {
   high_sea_boat_limit:'Limite de Bateau en haute mer'
 };
 
+function safeParse(json, fallback){
+  try { return json ? JSON.parse(json) : fallback; } catch { return fallback; }
+}
+
 let gameState = {};
+let tagLabels = {};
+let tagCounts = {};
 
 document.addEventListener('DOMContentLoaded', init);
 
@@ -48,15 +54,18 @@ async function init() {
 
 async function loadAndRender() {
   try {
-    const [res, bRes, iRes] = await Promise.all([
+    const [res, bRes, iRes, tRes] = await Promise.all([
       fetch('/api/my_seigneurie'),
       fetch('/api/building_properties'),
-      fetch('/api/infrastructure_properties')
+      fetch('/api/infrastructure_properties'),
+      fetch('/api/tags')
     ]);
     if (!res.ok) throw new Error('Erreur');
     const data = await res.json();
     const allBuildingProps = bRes.ok ? await bRes.json() : [];
     const allInfraProps = iRes.ok ? await iRes.json() : [];
+    const tags = tRes.ok ? await tRes.json() : [];
+    tagLabels = Object.fromEntries(tags.map(t=> [String(t.id), t.label]));
     const s = data.seigneurie;
     const inv = data.inventaire || {};
     const barony = data.barony || {};
@@ -91,6 +100,25 @@ async function loadAndRender() {
         }
       });
     const ipMap = Object.fromEntries(allInfraProps.map(b => [String(b.id), b]));
+
+    tagCounts = {};
+    Object.entries(buildings).forEach(([bid, info]) => {
+      const bp = bpMap[String(bid)];
+      if (!bp) return;
+      const tags = safeParse(bp.tags, []);
+      tags.forEach(tid => {
+        tagCounts[tid] = (tagCounts[tid] || 0) + (info.built || 0);
+      });
+    });
+    Object.entries(infrastructures).forEach(([iid, entry]) => {
+      const ip = ipMap[String(iid)];
+      if (!ip) return;
+      const tags = safeParse(ip.tags, []);
+      const builtCount = typeof entry === 'object' ? (entry.built || 0) : entry;
+      tags.forEach(tid => {
+        tagCounts[tid] = (tagCounts[tid] || 0) + builtCount;
+      });
+    });
 
     gameState = { s, employment, buildings, infrastructures, bpMap, ipMap, buildingBonuses, buildingBonusDetails };
 
@@ -275,6 +303,20 @@ async function loadAndRender() {
               const color = ok ? '' : ' style="color:red"';
               parts.push(`<span${color}>Avoir au moins ${qty} ${label}</span>`);
             }
+          }
+          if (infraR.tags) {
+            infraR.tags.forEach(cond => {
+              const tagId = cond.tag || cond.tag_id;
+              const cmp = cond.cmp || cond.op;
+              const qty = cond.value;
+              const name = tagLabels[tagId] || tagId;
+              const count = tagCounts[tagId] || 0;
+              const ok = cmp === '>=' ? count >= qty : count <= qty;
+              if (!ok) restrictionsMet = false;
+              const color = ok ? '' : ' style="color:red"';
+              const cmpText = cmp === '>=' ? 'Avoir au moins' : 'Avoir au plus';
+              parts.push(`<span${color}>${cmpText} ${qty} ${name}</span>`);
+            });
           }
           restrHtml = parts.join('<br>');
         } catch (e) {
@@ -539,6 +581,20 @@ function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId) {
           const color = ok ? '' : ' style="color:red"';
           parts.push(`<span${color}>Avoir au moins ${qty} ${label}</span>`);
         }
+      }
+      if (restr.tags) {
+        restr.tags.forEach(cond => {
+          const tagId = cond.tag || cond.tag_id;
+          const cmp = cond.cmp || cond.op;
+          const qty = cond.value;
+          const name = tagLabels[tagId] || tagId;
+          const count = tagCounts[tagId] || 0;
+          const ok = cmp === '>=' ? count >= qty : count <= qty;
+          if (!ok) restrOk = false;
+          const color = ok ? '' : ' style="color:red"';
+          const cmpText = cmp === '>=' ? 'Avoir au moins' : 'Avoir au plus';
+          parts.push(`<span${color}>${cmpText} ${qty} ${name}</span>`);
+        });
       }
       restrHtml = parts.join('<br>');
     } catch {}
