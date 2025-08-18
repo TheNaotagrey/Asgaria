@@ -9,7 +9,7 @@ const { inventaireFields, performTransaction } = require('./transactions');
 const logger = require('./logger');
 const handleError = require('./handleError');
 const { consumeResources } = require('./services/buildingService');
-const { StorageEffect, ResourceProductionEffect, BuildingProductionEffect } = require('./effects');
+const { StorageEffect, ResourceProductionEffect, BuildingProductionEffect, IDHEffect } = require('./effects');
 const app = express();
 const db = new sqlite3.Database('asgaria.db');
 
@@ -768,6 +768,7 @@ app.get('/api/my_seigneurie', (req, res) => {
                   const capacities = { vivres: 500, points_magique: 2000 };
                   const buildingProductionBonus = {};
                   const buildingProductionBonusDetails = {};
+                  const effectCtx = { production, productionDetails, capacity: capacities, buildings, bpMap, buildingProductionBonus, buildingProductionBonusDetails, idh: 5, idhDetails: [] };
                   for (const ip of infraList) {
                     const entry = infrastructures[ip.id] || infrastructures[String(ip.id)] || 0;
                     const count = typeof entry === 'object' ? (entry.built || 0) : entry;
@@ -781,9 +782,11 @@ app.get('/api/my_seigneurie', (req, res) => {
                         effObj = new ResourceProductionEffect(def.resource, def.amount || 0);
                       } else if (def.type === 'building_production') {
                         effObj = new BuildingProductionEffect(def.building, def.amount || 0);
+                      } else if (def.type === 'idh') {
+                        effObj = new IDHEffect(def.amount || 0);
                       }
                       if (effObj) {
-                        effObj.apply({ production, productionDetails, capacity: capacities, buildings, bpMap, buildingProductionBonus, buildingProductionBonusDetails }, count, ip.label || ip.type);
+                        effObj.apply(effectCtx, count, ip.label || ip.type);
                       }
                     }
                   }
@@ -812,7 +815,27 @@ app.get('/api/my_seigneurie', (req, res) => {
                   }
                   const employment = { employed: Math.max(employed - slaves, 0), slaves };
                   function finalize(barony, baronyProps) {
-                    res.json({ seigneurie: s, barony, inventaire, production, productionDetails, fields, baronyProps, employment, employmentDetails, buildings, infrastructures, capacities, buildingProductionBonus, buildingProductionBonusDetails });
+                    let idh = effectCtx.idh;
+                    if (taxRate === 0) {
+                      idh += 3;
+                    } else if (taxRate <= 2) {
+                      idh += 2;
+                    } else if (taxRate <= 4) {
+                      idh += 1;
+                    } else {
+                      idh -= (taxRate - 5);
+                    }
+                    idh -= Math.min(Math.floor(s.population / 1000), 5);
+                    if (!seig.religion_id) idh -= 1;
+                    if (barony && seig.religion_id !== barony.religion_pop_id) idh -= 1;
+                    const totalPop = s.population + slaves;
+                    if (totalPop > 0) {
+                      let slavePenalty = Math.floor((20 * slaves) / totalPop) - 1;
+                      if (slavePenalty < 0) slavePenalty = 0;
+                      if (slavePenalty > 5) slavePenalty = 5;
+                      idh -= slavePenalty;
+                    }
+                    res.json({ seigneurie: s, barony, inventaire, production, productionDetails, fields, baronyProps, employment, employmentDetails, buildings, infrastructures, capacities, buildingProductionBonus, buildingProductionBonusDetails, idh });
                   }
                   if (s.baronnie_id) {
                     db.get('SELECT * FROM barony_properties WHERE barony_id=?', [s.baronnie_id], (err3, props) => {
@@ -827,9 +850,11 @@ app.get('/api/my_seigneurie', (req, res) => {
                           effObj = new ResourceProductionEffect(def.resource, def.amount || 0);
                         } else if (def.type === 'building_production') {
                           effObj = new BuildingProductionEffect(def.building, def.amount || 0);
+                        } else if (def.type === 'idh') {
+                          effObj = new IDHEffect(def.amount || 0);
                         }
                         if (effObj) {
-                          effObj.apply({ production, productionDetails, capacity: capacities, buildings, bpMap, buildingProductionBonus, buildingProductionBonusDetails }, 1, 'Baronnie');
+                          effObj.apply(effectCtx, 1, 'Baronnie');
                         }
                       }
                       db.get(`SELECT b.*, r.name as religion_name, c.name as culture_name FROM baronies b LEFT JOIN religions r ON b.religion_pop_id=r.id LEFT JOIN cultures c ON b.culture_id=c.id WHERE b.id=?`, [s.baronnie_id], (err4, barony) => {

@@ -88,4 +88,18 @@ class InstantProductionEffect extends Effect {
   }
 }
 
-module.exports = { Effect, StorageEffect, ResourceProductionEffect, BuildingProductionEffect, InstantProductionEffect };
+class IDHEffect extends Effect {
+  constructor(amount) {
+    super();
+    this.amount = amount;
+  }
+  apply(ctx, count, label) {
+    const total = this.amount * count;
+    ctx.idh = (ctx.idh || 0) + total;
+    if (ctx.idhDetails) {
+      ctx.idhDetails.push({ label, amount: total, source: count });
+    }
+  }
+}
+
+module.exports = { Effect, StorageEffect, ResourceProductionEffect, BuildingProductionEffect, InstantProductionEffect, IDHEffect };
