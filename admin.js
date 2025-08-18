@@ -508,6 +508,7 @@ function makeEffectsInput(val){
       {id:'storage', name:'Stockage'},
       {id:'production', name:'Production ressource'},
       {id:'building_production', name:'Prod. bâtiment'},
+      {id:'idh', name:'IDH'},
       {id:'instant_production', name:'Prod. instantanée'}
     ];
     typeOptions.forEach(o=>{
@@ -577,6 +578,8 @@ function makeEffectsInput(val){
         editBtn.style.display = '';
         if(data.resource){ dataInput.value = JSON.stringify(data); updateSummary(); }
         else { dataInput.value = ''; updateSummary(); }
+      }else if(typeSel.value === 'idh'){
+        qty.style.display = '';
       }else{
         resourceSelect.forEach(o=>{
           const op = document.createElement('option');
@@ -629,6 +632,11 @@ function makeEffectsInput(val){
         try{ data = JSON.parse(rw.querySelector('input[data-role="data"]').value || '{}'); }catch(e){ data = {}; }
         if(data.resource && data.amount){
           res.push({type, resource: data.resource, amount: data.amount, uses_per_month: data.uses_per_month || 0, costs: data.costs || {}});
+        }
+      }else if(type === 'idh'){
+        const amt = parseInt(rw.querySelector('input[data-role="qty"]').value,10);
+        if(type && !isNaN(amt)){
+          res.push({ type, amount: amt });
         }
       }else{
         const target = rw.querySelector('select[data-role="target"]').value;
@@ -769,22 +777,54 @@ function renderTable(container, rows, opts){
       return makeEffectsInput(val);
     }
     if(field === 'tags'){
-      const sel = document.createElement('select');
-      sel.multiple = true;
-      let arr = [];
+      const container = document.createElement('div');
+      const list = document.createElement('div');
+      container.appendChild(list);
+      const addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.textContent = '+';
+      container.appendChild(addBtn);
+      function addRow(tag = ''){
+        const row = document.createElement('div');
+        row.className = 'tag-row';
+        const sel = document.createElement('select');
+        const blank = document.createElement('option');
+        blank.value = '';
+        sel.appendChild(blank);
+        tagsSelect.forEach(o=>{
+          const op = document.createElement('option');
+          op.value = o.id;
+          op.textContent = o.name;
+          if(String(o.id) === String(tag)) op.selected = true;
+          sel.appendChild(op);
+        });
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.textContent = '-';
+        removeBtn.addEventListener('click', ()=> row.remove());
+        row.appendChild(sel);
+        row.appendChild(removeBtn);
+        list.appendChild(row);
+      }
+      addBtn.addEventListener('click', ()=> addRow());
       try {
-        const parsed = JSON.parse(val || '[]');
-        if(Array.isArray(parsed)) arr = parsed.map(v=>String(v));
-      } catch {}
-      tagsSelect.forEach(o=>{
-        const op = document.createElement('option');
-        op.value = o.id;
-        op.textContent = o.name;
-        if(arr.includes(String(o.id))) op.selected = true;
-        sel.appendChild(op);
-      });
-      sel.getValue = ()=> JSON.stringify(Array.from(sel.selectedOptions).map(o=> parseInt(o.value,10)));
-      return sel;
+        const arr = JSON.parse(val || '[]');
+        if(Array.isArray(arr) && arr.length){
+          arr.forEach(t=> addRow(t));
+        } else {
+          addRow();
+        }
+      } catch {
+        addRow();
+      }
+      container.getValue = ()=>{
+        const res = [];
+        list.querySelectorAll('select').forEach(sel=>{
+          if(sel.value) res.push(parseInt(sel.value,10));
+        });
+        return JSON.stringify(res);
+      };
+      return container;
     }
     if(field === 'description'){
       const textarea = document.createElement('textarea');

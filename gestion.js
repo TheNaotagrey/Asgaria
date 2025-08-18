@@ -70,13 +70,18 @@ async function loadAndRender() {
     const inv = data.inventaire || {};
     const barony = data.barony || {};
     const idh = data.idh || 0;
+    const idhDetails = data.idhDetails || [];
     let idhClass = '';
     if (idh < 5) {
       idhClass = 'prod-negative';
     } else if (idh >= 10) {
       idhClass = 'prod-positive';
     }
-    const idhHtml = `<span class="${idhClass}">${idh}</span>`;
+    const idhTooltip = idhDetails
+      .map(d => `${d.label}: ${d.amount > 0 ? '+' : ''}${d.amount}`)
+      .join('&#10;')
+      .replace(/"/g, '&quot;');
+    const idhHtml = `<span class="${idhClass}" title="${idhTooltip}">${idh}</span>`;
     const production = data.production || {};
     const productionDetails = data.productionDetails || {};
     const baronyProps = data.baronyProps || {};
