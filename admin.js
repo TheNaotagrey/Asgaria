@@ -450,23 +450,23 @@ function makeRestrictionsInput(val){
         const inp = rw.querySelector('span input');
         const b = sel.value;
         const q = parseInt(inp.value,10);
-        if(b && q) buildings[b] = q;
+        if (b && !isNaN(q)) buildings[b] = q;
       }else if(type === 'infrastructure'){
         const sel = rw.querySelector('span select');
         const inp = rw.querySelector('span input');
         const i = sel.value;
         const q = parseInt(inp.value,10);
-        if(i && q) infrastructures[i] = q;
+        if (i && !isNaN(q)) infrastructures[i] = q;
       }else if(type === 'population'){
         const inp = rw.querySelector('span input');
         const q = parseInt(inp.value,10);
-        if(q) population = q;
+        if (!isNaN(q)) population = q;
       }else if(type === 'resource'){
         const sel = rw.querySelector('span select');
         const inp = rw.querySelector('span input');
         const r = sel.value;
         const q = parseInt(inp.value,10);
-        if(r && q) resources[r] = q;
+        if (r && !isNaN(q)) resources[r] = q;
       }else if(type === 'tag'){
         const spans = rw.querySelectorAll('span');
         const tagSel = spans[0].querySelector('select');

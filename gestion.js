@@ -77,11 +77,15 @@ async function loadAndRender() {
     } else if (idh >= 10) {
       idhClass = 'prod-positive';
     }
-    const idhTooltip = idhDetails
-      .map(d => `${d.label}: ${d.amount > 0 ? '+' : ''}${d.amount}`)
-      .join('&#10;')
-      .replace(/"/g, '&quot;');
-    const idhHtml = `<span class="${idhClass}" title="${idhTooltip}">${idh}</span>`;
+    let idhHtml;
+    if (idhDetails.length) {
+      const rows = idhDetails
+        .map(d => `<tr><td>${formatDetailLabel(d.label)}</td><td>${spanAmount(d.amount)}</td></tr>`)
+        .join('');
+      idhHtml = `<span class="tooltip ${idhClass}">${idh}<table class="tooltip-table">${rows}</table></span>`;
+    } else {
+      idhHtml = `<span class="${idhClass}">${idh}</span>`;
+    }
     const production = data.production || {};
     const productionDetails = data.productionDetails || {};
     const baronyProps = data.baronyProps || {};
