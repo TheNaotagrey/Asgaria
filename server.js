@@ -3,6 +3,7 @@ const sqlite3 = require('sqlite3');
 const zlib = require('zlib');
 const path = require('path');
 const session = require('express-session');
+const SQLiteStore = require('connect-sqlite3')(session);
 const bcrypt = require('bcryptjs');
 const { inventaireFields, performTransaction } = require('./transactions');
 const logger = require('./logger');
@@ -377,10 +378,12 @@ if (!sessionSecret) {
   logger.warn('SESSION_SECRET environment variable not set; using fallback secret');
 }
 app.use(session({
+  store: new SQLiteStore({ db: 'sessions.db', dir: '.' }),
   secret: sessionSecret || 'dev-secret',
   resave: false,
   saveUninitialized: false,
   cookie: {
+    maxAge: 30 * 24 * 60 * 60 * 1000,
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'strict'
