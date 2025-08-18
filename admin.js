@@ -800,15 +800,45 @@ function renderTable(container, rows, opts){
       const container = document.createElement('div');
       const hidden = document.createElement('input');
       hidden.type = 'hidden';
-      hidden.value = val || '[]';
+      hidden.value = val || '{}';
       const summary = document.createElement('span');
       const editBtn = document.createElement('button');
       editBtn.type = 'button';
       editBtn.textContent = 'Définir';
       function updateSummary(){
-        let arr = [];
-        try{ arr = JSON.parse(hidden.value || '[]'); }catch(e){ arr = []; }
-        summary.textContent = arr.length ? `${arr.length} requis` : '';
+        let obj = {};
+        try{ obj = JSON.parse(hidden.value || '{}'); }catch(e){ obj = {}; }
+        const parts = [];
+        if(obj.population != null) parts.push(`Pop:${obj.population}`);
+        if(obj.buildings){
+          Object.entries(obj.buildings).forEach(([id,q])=>{
+            const name = (buildingPropsSelect.find(o=>String(o.id)===String(id))?.name) || id;
+            parts.push(`B:${name}x${q}`);
+          });
+        }
+        if(obj.infrastructures){
+          Object.entries(obj.infrastructures).forEach(([id,q])=>{
+            const name = (infraPropsSelect.find(o=>String(o.id)===String(id))?.name) || id;
+            parts.push(`I:${name}x${q}`);
+          });
+        }
+        if(obj.resources){
+          Object.entries(obj.resources).forEach(([id,q])=>{
+            const name = (resourceSelect.find(o=>String(o.id)===String(id))?.name) || id;
+            parts.push(`R:${name}x${q}`);
+          });
+        }
+        if(obj.tags){
+          obj.tags.forEach(t=>{
+            const tagId = t.tag || t.tag_id;
+            const name = (tagsSelect.find(o=>String(o.id)===String(tagId))?.name) || tagId;
+            const cmp = t.cmp || '>=';
+            parts.push(`T:${name}${cmp}${t.value}`);
+          });
+        }
+        const short = parts.slice(0,3);
+        if(parts.length > 3) short.push('…');
+        summary.textContent = short.join(', ');
       }
       editBtn.addEventListener('click', ()=>{
         openRestrictionsPopup(hidden.value, v=>{ hidden.value = v; updateSummary(); });
