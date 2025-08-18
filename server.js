@@ -1056,7 +1056,7 @@ app.post('/api/building', (req,res)=>{
             uses[`effect_${idx}_remaining`] = existRem + (eff.uses_per_month * qty);
           }
         });
-        buildings[bId] = { built: newBuilt, active: newActive, ...existing, ...uses, ...(props || {}) };
+        buildings[bId] = { ...existing, ...uses, ...(props || {}), built: newBuilt, active: newActive };
         db.run('UPDATE seigneuries SET buildings=? WHERE id=?', [JSON.stringify(buildings), srow.id], function(err4){
           if(err4) return handleError(res, err4);
           db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err5, inventaire)=>{
@@ -1093,7 +1093,7 @@ app.post('/api/infrastructure', (req,res)=>{
             uses[`effect_${idx}_remaining`] = existRem + (eff.uses_per_month * qty);
           }
         });
-        infrastructures[iId] = { built: newBuilt, ...existing, ...uses, ...(props || {}) };
+        infrastructures[iId] = { ...existing, ...uses, ...(props || {}), built: newBuilt };
         db.run('UPDATE seigneuries SET infrastructures=? WHERE id=?', [JSON.stringify(infrastructures), srow.id], function(err4){
           if(err4) return handleError(res, err4);
           db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err5, inventaire)=>{
