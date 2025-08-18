@@ -271,6 +271,19 @@
     if (currentSelectedId) linkMode = 'unlink';
   });
 
+  // Raccourcis clavier : Ctrl pour lier, Ctrl+Alt pour délier
+  function updateLinkModeByKeys(e) {
+    if (e.ctrlKey && e.altKey) {
+      linkMode = currentSelectedId ? 'unlink' : null;
+    } else if (e.ctrlKey) {
+      linkMode = currentSelectedId ? 'link' : null;
+    } else {
+      linkMode = null;
+    }
+  }
+  window.addEventListener('keydown', updateLinkModeByKeys);
+  window.addEventListener('keyup', updateLinkModeByKeys);
+
   // Canvas context
   const ctx = pixelCanvas.getContext('2d');
   pixelCanvas.width = originalWidth;
