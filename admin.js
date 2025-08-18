@@ -50,7 +50,7 @@ const baronyPropLabels = {
   effects:'Effets'
 };
 
-const buildingPropFields = ['label','produces','production','costs','max','workers_per_building','absolute_restrictions','infra_restrictions','description'];
+const buildingPropFields = ['label','produces','production','costs','max','workers_per_building','absolute_restrictions','infra_restrictions','tags','description'];
 const buildingPropLabels = {
   label:'Nom',
   produces:'Ressource produite',
@@ -60,9 +60,10 @@ const buildingPropLabels = {
   workers_per_building:'Travailleurs/bâtiment',
   absolute_restrictions:'Restrictions absolues',
   infra_restrictions:'Requis',
+  tags:'Tags',
   description:'Description'
 };
-const infraPropFields = ['label','type','max','workers_per_building','effects','costs','absolute_restrictions','restrictions','description'];
+const infraPropFields = ['label','type','max','workers_per_building','effects','costs','absolute_restrictions','restrictions','tags','description'];
 const infraPropLabels = {
   label:'Nom',
   type:'Type',
@@ -72,12 +73,14 @@ const infraPropLabels = {
   costs:'Coûts',
   absolute_restrictions:'Restrictions absolues',
   restrictions:'Requis',
+  tags:'Tags',
   description:'Description',
 };
 const typeSelect = [{id:'civil',name:'Civil'},{id:'militaire',name:'Militaire'}];
 const resourceSelect = Object.entries(inventaireLabels).map(([id, name]) => ({ id, name }));
 let buildingPropsSelect = [];
 let infraPropsSelect = [];
+let tagsSelect = [];
 const maxOptions = [
   ...Array.from({length:10}, (_,i)=>({ id:String(i+1), name:String(i+1) })),
   ...baronyPropIntFields.map(f=>({ id:f, name:baronyPropLabels[f] || f }))
@@ -293,7 +296,8 @@ function makeRestrictionsInput(val){
       {id:'building', name:'Bâtiment'},
       {id:'infrastructure', name:'Infrastructure'},
       {id:'population', name:'Population'},
-      {id:'resource', name:'Ressource'}
+      {id:'resource', name:'Ressource'},
+      {id:'tag', name:'Tag'}
     ];
     typeOptions.forEach(o=>{
       const op = document.createElement('option');
@@ -375,6 +379,33 @@ function makeRestrictionsInput(val){
         qty.min = '0';
         qty.value = data.value || '';
         valSpan.appendChild(qty);
+      }else if(typeSel.value === 'tag'){
+        const sel = document.createElement('select');
+        const blank = document.createElement('option');
+        blank.value = '';
+        sel.appendChild(blank);
+        tagsSelect.forEach(o=>{
+          const op = document.createElement('option');
+          op.value = o.id;
+          op.textContent = o.name;
+          if(String(o.id) === String(data.tag)) op.selected = true;
+          sel.appendChild(op);
+        });
+        keySpan.appendChild(sel);
+        const cmp = document.createElement('select');
+        ['>=','<='].forEach(sym=>{
+          const op = document.createElement('option');
+          op.value = sym;
+          op.textContent = sym;
+          if(sym === data.cmp) op.selected = true;
+          cmp.appendChild(op);
+        });
+        const qty = document.createElement('input');
+        qty.type = 'number';
+        qty.min = '0';
+        qty.value = data.value || '';
+        valSpan.appendChild(cmp);
+        valSpan.appendChild(qty);
       }
     }
     typeSel.addEventListener('change', updateFields);
@@ -393,10 +424,13 @@ function makeRestrictionsInput(val){
     if(obj.resources){
       Object.entries(obj.resources).forEach(([r,v])=> addRow('resource',{resource:r,value:v}));
     }
+    if(obj.tags){
+      obj.tags.forEach(t=> addRow('tag',{tag:t.tag || t.tag_id, cmp:t.cmp, value:t.value}));
+    }
     if(obj.population){
       addRow('population',{value:obj.population});
     }
-    if(!obj.buildings && !obj.infrastructures && !obj.resources && !obj.population){
+    if(!obj.buildings && !obj.infrastructures && !obj.resources && !obj.population && !obj.tags){
       addRow();
     }
   }catch(e){
@@ -407,6 +441,7 @@ function makeRestrictionsInput(val){
     const buildings = {};
     const infrastructures = {};
     const resources = {};
+    const tags = [];
     let population;
     list.querySelectorAll('.restriction-row').forEach(rw=>{
       const type = rw.querySelector('select').value;
@@ -432,12 +467,22 @@ function makeRestrictionsInput(val){
         const r = sel.value;
         const q = parseInt(inp.value,10);
         if(r && q) resources[r] = q;
+      }else if(type === 'tag'){
+        const spans = rw.querySelectorAll('span');
+        const tagSel = spans[0].querySelector('select');
+        const cmpSel = spans[1].querySelector('select');
+        const inp = spans[1].querySelector('input');
+        const t = tagSel.value;
+        const cmp = cmpSel.value;
+        const q = parseInt(inp.value,10);
+        if(t && cmp && !isNaN(q)) tags.push({ tag: t, cmp, value: q });
       }
     });
     if(Object.keys(buildings).length) res.buildings = buildings;
     if(Object.keys(infrastructures).length) res.infrastructures = infrastructures;
     if(Object.keys(resources).length) res.resources = resources;
     if(population != null) res.population = population;
+    if(tags.length) res.tags = tags;
     return JSON.stringify(res);
   };
   return container;
@@ -723,6 +768,24 @@ function renderTable(container, rows, opts){
     if(field === 'effects'){
       return makeEffectsInput(val);
     }
+    if(field === 'tags'){
+      const sel = document.createElement('select');
+      sel.multiple = true;
+      let arr = [];
+      try {
+        const parsed = JSON.parse(val || '[]');
+        if(Array.isArray(parsed)) arr = parsed.map(v=>String(v));
+      } catch {}
+      tagsSelect.forEach(o=>{
+        const op = document.createElement('option');
+        op.value = o.id;
+        op.textContent = o.name;
+        if(arr.includes(String(o.id))) op.selected = true;
+        sel.appendChild(op);
+      });
+      sel.getValue = ()=> JSON.stringify(Array.from(sel.selectedOptions).map(o=> parseInt(o.value,10)));
+      return sel;
+    }
     if(field === 'description'){
       const textarea = document.createElement('textarea');
       textarea.value = val ?? '';
@@ -845,7 +908,7 @@ function renderTable(container, rows, opts){
 }
 
 async function loadAll(){
-  const [seigneurs, religions, cultures, kingdoms, counties, duchies, viscounties, marquisates, archduchies, empires, users, seigneuries, baronies, baronyProps, buildingProps, infraProps] = await Promise.all([
+  const [seigneurs, religions, cultures, kingdoms, counties, duchies, viscounties, marquisates, archduchies, empires, users, seigneuries, baronies, baronyProps, buildingProps, infraProps, tags] = await Promise.all([
     fetchJSON('/api/seigneurs'),
     fetchJSON('/api/religions'),
     fetchJSON('/api/cultures'),
@@ -862,6 +925,7 @@ async function loadAll(){
     fetchJSON('/api/barony_properties'),
     fetchJSON('/api/building_properties'),
     fetchJSON('/api/infrastructure_properties'),
+    fetchJSON('/api/tags'),
   ]);
 
   const seigneursSelect = seigneurs.slice().sort((a, b) => a.name.localeCompare(b.name));
@@ -969,6 +1033,14 @@ async function loadAll(){
     fields:['name','user_id','religion_id','overlord_id'],
     selects:{user_id:userSelectFn, religion_id:religionsSelect, overlord_id:seigneursSelect},
     labels:{name:'Nom', user_id:'Utilisateur', religion_id:'Religion', overlord_id:'Suzerain'}
+  });
+
+  tagsSelect = tags.slice().sort((a,b)=>a.label.localeCompare(b.label)).map(t=>({ id:t.id, name:t.label }));
+  const tagsById = tags.slice().sort((a,b)=>a.id - b.id);
+  renderTable(document.getElementById('tableTags'), tagsById, {
+    endpoint:'tags',
+    fields:['label'],
+    labels:{label:'Nom'}
   });
 
   buildingPropsSelect = buildingProps.map(b => ({ id: b.id, name: b.label || b.type }));

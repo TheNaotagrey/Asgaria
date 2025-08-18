@@ -17,7 +17,7 @@ const VALID_TABLES = new Set([
   'users','religions','cultures','seigneurs','empires','kingdoms','archduchies',
   'duchies','marquisates','counties','viscounties','baronies','barony_pixels',
   'canonical_lands','inventaire','seigneuries','transactions','barony_properties',
-  'building_properties','infrastructure_properties','barony_connections'
+  'building_properties','infrastructure_properties','barony_connections','tags'
 ]);
 
 // create tables if they do not exist
@@ -233,6 +233,7 @@ CREATE TABLE IF NOT EXISTS building_properties (
   workers_per_building INTEGER DEFAULT 1,
   absolute_restrictions TEXT,
   infra_restrictions TEXT,
+  tags TEXT,
   description TEXT
 );
 CREATE TABLE IF NOT EXISTS infrastructure_properties (
@@ -245,7 +246,12 @@ CREATE TABLE IF NOT EXISTS infrastructure_properties (
   costs TEXT,
   absolute_restrictions TEXT,
   restrictions TEXT,
+  tags TEXT,
   description TEXT
+);
+CREATE TABLE IF NOT EXISTS tags (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  label TEXT UNIQUE
 );
 `;
 
@@ -352,11 +358,17 @@ db.exec(initSql, () => {
     if (!rows.some(r => r.name === 'infra_restrictions')) {
       db.run('ALTER TABLE building_properties ADD COLUMN infra_restrictions TEXT');
     }
+    if (!rows.some(r => r.name === 'tags')) {
+      db.run('ALTER TABLE building_properties ADD COLUMN tags TEXT');
+    }
   });
   db.all("PRAGMA table_info(infrastructure_properties)", (err, rows) => {
     if (err || !rows) return;
     if (!rows.some(r => r.name === 'absolute_restrictions')) {
       db.run('ALTER TABLE infrastructure_properties ADD COLUMN absolute_restrictions TEXT');
+    }
+    if (!rows.some(r => r.name === 'tags')) {
+      db.run('ALTER TABLE infrastructure_properties ADD COLUMN tags TEXT');
     }
   });
   db.all("PRAGMA table_info(barony_properties)", (err, rows) => {
@@ -899,7 +911,18 @@ app.put('/api/barony_properties/:id', requireAdmin, (req,res)=>{
   update('barony_properties', baronyPropFields)(req,res);
 });
 
-const buildingPropFields = ['label','produces','production','costs','max','workers_per_building','absolute_restrictions','infra_restrictions','description'];
+const tagFields = ['label'];
+app.get('/api/tags', (req,res)=>{
+  list('tags')(req,res);
+});
+app.post('/api/tags', requireAdmin, (req,res)=>{
+  create('tags', tagFields)(req,res);
+});
+app.put('/api/tags/:id', requireAdmin, (req,res)=>{
+  update('tags', tagFields)(req,res);
+});
+
+const buildingPropFields = ['label','produces','production','costs','max','workers_per_building','absolute_restrictions','infra_restrictions','tags','description'];
 app.get('/api/building_properties', (req,res)=>{
   list('building_properties')(req,res);
 });
@@ -910,7 +933,7 @@ app.put('/api/building_properties/:id', requireAdmin, (req,res)=>{
   update('building_properties', buildingPropFields)(req,res);
 });
 
-const infraPropFields = ['label','type','max','workers_per_building','effects','costs','absolute_restrictions','restrictions','description'];
+const infraPropFields = ['label','type','max','workers_per_building','effects','costs','absolute_restrictions','restrictions','tags','description'];
 app.get('/api/infrastructure_properties', (req,res)=>{
   list('infrastructure_properties')(req,res);
 });
@@ -927,6 +950,45 @@ function safeParse(json, fallback){
   } catch {
     return fallback;
   }
+}
+
+function checkTagRestrictions(db, buildings, infrastructures, tagConds, cb) {
+  db.all('SELECT id, tags FROM building_properties', [], (err, bRows) => {
+    if (err) return cb(err);
+    const bTags = {};
+    (bRows || []).forEach(r => {
+      bTags[r.id] = safeParse(r.tags, []);
+    });
+    db.all('SELECT id, tags FROM infrastructure_properties', [], (err2, iRows) => {
+      if (err2) return cb(err2);
+      const iTags = {};
+      (iRows || []).forEach(r => {
+        iTags[r.id] = safeParse(r.tags, []);
+      });
+      for (const cond of tagConds) {
+        const tagId = parseInt(cond.tag || cond.tag_id, 10);
+        const cmp = cond.cmp || cond.operator || cond.op;
+        const val = parseInt(cond.value, 10) || 0;
+        let count = 0;
+        for (const [bid, info] of Object.entries(buildings)) {
+          const tags = bTags[bid] || bTags[String(bid)] || [];
+          if (tags.includes(tagId)) {
+            count += info.built || 0;
+          }
+        }
+        for (const [iid, entry] of Object.entries(infrastructures)) {
+          const tags = iTags[iid] || iTags[String(iid)] || [];
+          const builtCount = typeof entry === 'object' ? (entry.built || 0) : entry;
+          if (tags.includes(tagId)) {
+            count += builtCount;
+          }
+        }
+        if (cmp === '>=' && count < val) return cb(new Error('Restriction non satisfaite'));
+        if (cmp === '<=' && count > val) return cb(new Error('Restriction non satisfaite'));
+      }
+      cb(null);
+    });
+  });
 }
 
 function canConstruct(db, srow, id, qty, cb){
@@ -978,22 +1040,32 @@ function canConstruct(db, srow, id, qty, cb){
       if (infraReq.population && (srow.population || 0) < infraReq.population) {
         return cb(new Error('Restriction non satisfaite'));
       }
-      const binfo = buildings[id] || { built: 0, active: 0 };
-      const built = binfo.built;
-      const active = binfo.active;
-      if (built + qty > max) return cb(new Error('Limite atteinte'));
-      db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err4, inv) => {
-        if (err4) return cb(err4);
-        if (infraReq.resources) {
-          for (const [res, val] of Object.entries(infraReq.resources)) {
-            if ((inv[res] || 0) < val) return cb(new Error('Restriction non satisfaite'));
+      const finalize = () => {
+        const binfo = buildings[id] || { built: 0, active: 0 };
+        const built = binfo.built;
+        const active = binfo.active;
+        if (built + qty > max) return cb(new Error('Limite atteinte'));
+        db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err4, inv) => {
+          if (err4) return cb(err4);
+          if (infraReq.resources) {
+            for (const [res, val] of Object.entries(infraReq.resources)) {
+              if ((inv[res] || 0) < val) return cb(new Error('Restriction non satisfaite'));
+            }
           }
-        }
-        for (const [res, val] of Object.entries(costs)) {
-          if ((inv[res] || 0) < val) return cb(new Error('Ressources insuffisantes'));
-        }
-        cb(null, { costs, built, active, buildings, infrastructures, effects });
-      });
+          for (const [res, val] of Object.entries(costs)) {
+            if ((inv[res] || 0) < val) return cb(new Error('Ressources insuffisantes'));
+          }
+          cb(null, { costs, built, active, buildings, infrastructures, effects });
+        });
+      };
+      if (Array.isArray(infraReq.tags) && infraReq.tags.length) {
+        checkTagRestrictions(db, buildings, infrastructures, infraReq.tags, err3 => {
+          if (err3) return cb(err3);
+          finalize();
+        });
+      } else {
+        finalize();
+      }
     });
   });
 }
@@ -1043,21 +1115,31 @@ function canConstructInfra(db, srow, id, qty, cb){
       if(restrictions.population && (srow.population || 0) < restrictions.population){
         return cb(new Error('Restriction non satisfaite'));
       }
-      const entry = infrastructures[id] || infrastructures[String(id)] || 0;
-      const built = typeof entry === 'object' ? (entry.built || 0) : entry;
-      if(built + qty > max) return cb(new Error('Limite atteinte'));
-      db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err3, inv) => {
-        if(err3) return cb(err3);
-        if(restrictions.resources){
-          for(const [res, val] of Object.entries(restrictions.resources)){
-            if((inv[res] || 0) < val) return cb(new Error('Restriction non satisfaite'));
+      const finalize = () => {
+        const entry = infrastructures[id] || infrastructures[String(id)] || 0;
+        const built = typeof entry === 'object' ? (entry.built || 0) : entry;
+        if(built + qty > max) return cb(new Error('Limite atteinte'));
+        db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err3, inv) => {
+          if(err3) return cb(err3);
+          if(restrictions.resources){
+            for(const [res, val] of Object.entries(restrictions.resources)){
+              if((inv[res] || 0) < val) return cb(new Error('Restriction non satisfaite'));
+            }
           }
-        }
-        for(const [res, val] of Object.entries(costs)){
-          if((inv[res] || 0) < val) return cb(new Error('Ressources insuffisantes'));
-        }
-        cb(null, { costs, built, infrastructures, effects });
-      });
+          for(const [res, val] of Object.entries(costs)){
+            if((inv[res] || 0) < val) return cb(new Error('Ressources insuffisantes'));
+          }
+          cb(null, { costs, built, infrastructures, effects });
+        });
+      };
+      if (Array.isArray(restrictions.tags) && restrictions.tags.length) {
+        checkTagRestrictions(db, buildings, infrastructures, restrictions.tags, err3 => {
+          if (err3) return cb(err3);
+          finalize();
+        });
+      } else {
+        finalize();
+      }
     });
   });
 }
