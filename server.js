@@ -1072,9 +1072,9 @@ app.post('/api/building', (req,res)=>{
 app.post('/api/infrastructure', (req,res)=>{
   if(!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
   const { id, quantity, props } = req.body;
-  const iId = parseInt(id,10);
-  const qty = parseInt(quantity,10) || 0;
-  if(!iId || qty <= 0) return res.status(400).json({ error: 'Quantité invalide' });
+  const iId = Number.parseInt(id, 10);
+  const qty = Number.parseInt(quantity, 10) || 0;
+  if (Number.isNaN(iId) || qty <= 0) return res.status(400).json({ error: 'Quantité invalide' });
   const userId = req.session.user.id;
   db.get('SELECT seigneuries.id as id, seigneuries.baronnie_id, seigneuries.population, seigneuries.inventaire_id, seigneuries.infrastructures, seigneuries.buildings FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?', [userId], (err, srow)=>{
     if(err) return handleError(res, err);
@@ -1153,10 +1153,10 @@ app.post('/api/building/activate', (req,res)=>{
 app.post('/api/infrastructure/instant_production', (req,res)=>{
   if(!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
   const { id, index, quantity } = req.body;
-  const iId = parseInt(id,10);
-  const idx = parseInt(index,10);
-  const qty = parseInt(quantity,10) || 0;
-  if(!iId || isNaN(idx) || qty <= 0) return res.status(400).json({ error: 'Quantité invalide' });
+  const iId = Number.parseInt(id, 10);
+  const idx = Number.parseInt(index, 10);
+  const qty = Number.parseInt(quantity, 10) || 0;
+  if (Number.isNaN(iId) || Number.isNaN(idx) || qty <= 0) return res.status(400).json({ error: 'Quantité invalide' });
   const userId = req.session.user.id;
   db.get('SELECT seigneuries.id as id, seigneuries.inventaire_id, seigneuries.infrastructures FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?', [userId], (err, srow) => {
     if(err) return handleError(res, err);
