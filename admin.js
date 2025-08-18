@@ -219,7 +219,7 @@ function openInstantProductionPopup(initial, onSave) {
   const amtInput = document.createElement('input');
   amtInput.type = 'number';
   amtInput.min = '0';
-  amtInput.value = initial.amount || '';
+  amtInput.value = initial.amount ?? '';
   amtDiv.appendChild(amtLabel);
   amtDiv.appendChild(amtInput);
 
@@ -229,7 +229,7 @@ function openInstantProductionPopup(initial, onSave) {
   const usesInput = document.createElement('input');
   usesInput.type = 'number';
   usesInput.min = '0';
-  usesInput.value = initial.uses_per_month || '';
+  usesInput.value = initial.uses_per_month ?? '';
   usesDiv.appendChild(usesLabel);
   usesDiv.appendChild(usesInput);
 
@@ -335,7 +335,7 @@ function makeRestrictionsInput(val){
         const qty = document.createElement('input');
         qty.type = 'number';
         qty.min = '0';
-        qty.value = data.value || '';
+        qty.value = data.value ?? '';
         valSpan.appendChild(qty);
       }else if(typeSel.value === 'infrastructure'){
         const sel = document.createElement('select');
@@ -353,13 +353,13 @@ function makeRestrictionsInput(val){
         const qty = document.createElement('input');
         qty.type = 'number';
         qty.min = '0';
-        qty.value = data.value || '';
+        qty.value = data.value ?? '';
         valSpan.appendChild(qty);
       }else if(typeSel.value === 'population'){
         const qty = document.createElement('input');
         qty.type = 'number';
         qty.min = '0';
-        qty.value = data.value || '';
+        qty.value = data.value ?? '';
         valSpan.appendChild(qty);
       }else if(typeSel.value === 'resource'){
         const sel = document.createElement('select');
@@ -377,7 +377,7 @@ function makeRestrictionsInput(val){
         const qty = document.createElement('input');
         qty.type = 'number';
         qty.min = '0';
-        qty.value = data.value || '';
+        qty.value = data.value ?? '';
         valSpan.appendChild(qty);
       }else if(typeSel.value === 'tag'){
         const sel = document.createElement('select');
@@ -403,7 +403,7 @@ function makeRestrictionsInput(val){
         const qty = document.createElement('input');
         qty.type = 'number';
         qty.min = '0';
-        qty.value = data.value || '';
+        qty.value = data.value ?? '';
         valSpan.appendChild(cmp);
         valSpan.appendChild(qty);
       }
@@ -591,7 +591,7 @@ function makeEffectsInput(val){
         targetSel.style.display = '';
         qty.style.display = '';
       }
-      qty.value = data.amount || '';
+      qty.value = data.amount ?? '';
     }
     populateFields();
     typeSel.addEventListener('change', ()=>{
