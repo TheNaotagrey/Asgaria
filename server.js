@@ -9,7 +9,7 @@ const { inventaireFields, performTransaction } = require('./transactions');
 const logger = require('./logger');
 const handleError = require('./handleError');
 const { consumeResources } = require('./services/buildingService');
-const { StorageEffect, ResourceProductionEffect, BuildingProductionEffect, IDHEffect } = require('./effects');
+const { StorageEffect, ResourceProductionEffect, BuildingProductionEffect, IDHEffect, VariableWorkersEffect } = require('./effects');
 const app = express();
 const db = new sqlite3.Database('asgaria.db');
 
@@ -783,22 +783,34 @@ app.get('/api/my_seigneurie', (req, res) => {
                     const entry = infrastructures[ip.id] || infrastructures[String(ip.id)] || 0;
                     const count = typeof entry === 'object' ? (entry.built || 0) : entry;
                     if (!count) continue;
+                    const entryObj = typeof entry === 'object' ? entry : {};
                     const effects = safeParse(ip.effects, []);
-                    for (const def of effects) {
+                    effects.forEach((def, idx) => {
                       let effObj = null;
                       if (def.type === 'storage') {
                         effObj = new StorageEffect(def.resource, def.amount || 0);
+                        if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
                       } else if (def.type === 'production') {
                         effObj = new ResourceProductionEffect(def.resource, def.amount || 0);
+                        if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
                       } else if (def.type === 'building_production') {
                         effObj = new BuildingProductionEffect(def.building, def.amount || 0);
+                        if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
                       } else if (def.type === 'idh') {
                         effObj = new IDHEffect(def.amount || 0);
+                        if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
+                      } else if (def.type === 'variable_workers') {
+                        const max = (def.max_workers || 0) * count;
+                        let assigned = entryObj[`effect_${idx}_workers`] || 0;
+                        if (assigned > max) assigned = max;
+                        if (assigned) {
+                          employed += assigned;
+                          employmentDetails.push({ label: ip.label || ip.type, amount: assigned, source: assigned });
+                        }
+                        effObj = new VariableWorkersEffect(def.resource, def.amount || 0);
+                        if (effObj) effObj.apply(effectCtx, assigned, ip.label || ip.type);
                       }
-                      if (effObj) {
-                        effObj.apply(effectCtx, count, ip.label || ip.type);
-                      }
-                    }
+                    });
                   }
                   const slaves = inventaire.esclaves || 0;
                   if (slaves) {
@@ -1362,6 +1374,77 @@ app.post('/api/infrastructure/instant_production', (req,res)=>{
                 res.json({ infrastructures: infra, inventaire });
               });
             });
+          });
+        });
+      });
+    });
+  });
+});
+
+app.post('/api/infrastructure/assign_workers', (req,res) => {
+  if(!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
+  const { id, index, quantity } = req.body;
+  const iId = Number.parseInt(id, 10);
+  const idx = Number.parseInt(index, 10);
+  const qty = Number.parseInt(quantity, 10) || 0;
+  if (Number.isNaN(iId) || Number.isNaN(idx) || qty < 0) return res.status(400).json({ error: 'Quantité invalide' });
+  const userId = req.session.user.id;
+  db.get('SELECT seigneuries.id as id, seigneuries.population, seigneuries.inventaire_id, seigneuries.infrastructures, seigneuries.buildings FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?', [userId], (err, srow) => {
+    if(err) return handleError(res, err);
+    if(!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
+    const infrastructures = safeParse(srow.infrastructures, {});
+    const buildings = safeParse(srow.buildings, {});
+    db.all('SELECT id, label, workers_per_building FROM building_properties', [], (err2, bprops) => {
+      if(err2) return handleError(res, err2);
+      db.all('SELECT id, label, effects FROM infrastructure_properties', [], (err3, iprops) => {
+        if(err3) return handleError(res, err3);
+        const ipMap = Object.fromEntries((iprops || []).map(p => [String(p.id), p]));
+        const ip = ipMap[String(iId)];
+        if(!ip) return res.status(400).json({ error: 'Infrastructure introuvable' });
+        const effects = safeParse(ip.effects, []);
+        const def = effects[idx];
+        if(!def || def.type !== 'variable_workers') return res.status(400).json({ error: 'Effet introuvable' });
+        const existing = infrastructures[iId] || infrastructures[String(iId)] || {};
+        const built = typeof existing === 'object' ? (existing.built || 0) : existing;
+        const max = (def.max_workers || 0) * built;
+        if(qty > max) return res.status(400).json({ error: 'Au-delà du maximum' });
+        let employed = 0;
+        const employmentDetails = [];
+        for(const bp of bprops || []){
+          const info = buildings[bp.id] || { built:0, active:0 };
+          const workers = (info.active || 0) * (bp.workers_per_building || 0);
+          employed += workers;
+          if(workers) employmentDetails.push({ label: bp.label || bp.type, amount: workers, source: info.active || 0 });
+        }
+        for(const [iid, ent] of Object.entries(infrastructures)){
+          const prop = ipMap[String(iid)];
+          if(!prop) continue;
+          const builtCount = typeof ent === 'object' ? (ent.built || 0) : ent;
+          const entObj = typeof ent === 'object' ? ent : {};
+          const effs = safeParse(prop.effects, []);
+          effs.forEach((ef, eidx) => {
+            if(ef.type === 'variable_workers'){
+              const key = `effect_${eidx}_workers`;
+              const assigned = (iId === Number(iid) && eidx === idx) ? qty : (entObj[key] || 0);
+              if(assigned){
+                employed += assigned;
+                employmentDetails.push({ label: prop.label || prop.type, amount: assigned, source: assigned });
+              }
+            }
+          });
+        }
+        db.get('SELECT esclaves FROM inventaire WHERE id=?', [srow.inventaire_id], (err4, inv) => {
+          if(err4) return handleError(res, err4);
+          const slaves = inv ? (inv.esclaves || 0) : 0;
+          const totalPop = srow.population + slaves;
+          if(employed > totalPop) return res.status(400).json({ error: 'Travailleurs insuffisants' });
+          if(slaves) employmentDetails.push({ label: 'Esclaves', amount: -slaves, source: slaves });
+          const employment = { employed: Math.max(employed - slaves, 0), slaves };
+          const newEntry = typeof existing === 'object' ? { ...existing, [`effect_${idx}_workers`]: qty } : { built, [`effect_${idx}_workers`]: qty };
+          infrastructures[iId] = newEntry;
+          db.run('UPDATE seigneuries SET infrastructures=? WHERE id=?', [JSON.stringify(infrastructures), srow.id], function(err5){
+            if(err5) return handleError(res, err5);
+            res.json({ infrastructures, employment, employmentDetails });
           });
         });
       });

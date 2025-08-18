@@ -285,6 +285,10 @@ th.multi-col {
   margin-bottom: 0;
 }
 
+.var-workers-table {
+  margin-bottom: 0;
+}
+
 .qty-control {
   display: flex;
   align-items: center;

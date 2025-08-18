@@ -102,4 +102,20 @@ class IDHEffect extends Effect {
   }
 }
 
-module.exports = { Effect, StorageEffect, ResourceProductionEffect, BuildingProductionEffect, InstantProductionEffect, IDHEffect };
+class VariableWorkersEffect extends Effect {
+  constructor(resource, amount) {
+    super();
+    this.resource = resource;
+    this.amount = amount;
+  }
+  apply(ctx, workers, label) {
+    const total = this.amount * workers;
+    if (!ctx.production) ctx.production = {};
+    if (!ctx.productionDetails) ctx.productionDetails = {};
+    ctx.production[this.resource] = (ctx.production[this.resource] || 0) + total;
+    if (!ctx.productionDetails[this.resource]) ctx.productionDetails[this.resource] = [];
+    ctx.productionDetails[this.resource].push({ label, amount: total, source: workers });
+  }
+}
+
+module.exports = { Effect, StorageEffect, ResourceProductionEffect, BuildingProductionEffect, InstantProductionEffect, IDHEffect, VariableWorkersEffect };
