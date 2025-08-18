@@ -277,6 +277,32 @@ function openInstantProductionPopup(initial, onSave) {
   });
 }
 
+function openRestrictionsPopup(initialVal, onSave) {
+  const overlay = document.createElement('div');
+  overlay.className = 'popup-overlay';
+  const popup = document.createElement('div');
+  popup.className = 'popup';
+  const editor = makeRestrictionsInput(initialVal);
+  popup.appendChild(editor);
+  const btnRow = document.createElement('div');
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.textContent = 'Valider';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.textContent = 'Annuler';
+  btnRow.appendChild(saveBtn);
+  btnRow.appendChild(cancelBtn);
+  popup.appendChild(btnRow);
+  overlay.appendChild(popup);
+  document.body.appendChild(overlay);
+  cancelBtn.addEventListener('click', () => overlay.remove());
+  saveBtn.addEventListener('click', () => {
+    onSave(editor.getValue());
+    overlay.remove();
+  });
+}
+
 function makeRestrictionsInput(val){
   const container = document.createElement('div');
   const list = document.createElement('div');
@@ -771,7 +797,28 @@ function renderTable(container, rows, opts){
       return container;
     }
     if(field === 'infra_restrictions' || field === 'restrictions'){
-      return makeRestrictionsInput(val);
+      const container = document.createElement('div');
+      const hidden = document.createElement('input');
+      hidden.type = 'hidden';
+      hidden.value = val || '[]';
+      const summary = document.createElement('span');
+      const editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.textContent = 'Définir';
+      function updateSummary(){
+        let arr = [];
+        try{ arr = JSON.parse(hidden.value || '[]'); }catch(e){ arr = []; }
+        summary.textContent = arr.length ? `${arr.length} requis` : '';
+      }
+      editBtn.addEventListener('click', ()=>{
+        openRestrictionsPopup(hidden.value, v=>{ hidden.value = v; updateSummary(); });
+      });
+      updateSummary();
+      container.appendChild(summary);
+      container.appendChild(editBtn);
+      container.appendChild(hidden);
+      container.getValue = ()=> hidden.value;
+      return container;
     }
     if(field === 'effects'){
       return makeEffectsInput(val);
