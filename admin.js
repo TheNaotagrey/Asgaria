@@ -66,8 +66,8 @@ const infraPropFields = ['label','type','max','workers_per_building','effects','
 const infraPropLabels = {
   label:'Nom',
   type:'Type',
-  max:'Maximum',
-  workers_per_building:'Travailleurs/bâtiment',
+  max:'Max',
+  workers_per_building:'Gens',
   effects:'Effets',
   costs:'Coûts',
   absolute_restrictions:'Restrictions absolues',
