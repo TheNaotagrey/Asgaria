@@ -382,11 +382,13 @@ async function loadAndRender() {
       civilDiv.innerHTML = buildInfraTable(infraProps.filter(i=>i.type==='civil'), infrastructures, inv, 'civilInfraTable');
       const table = document.getElementById('civilInfraTable');
       table.addEventListener('click', handleInfraTableClick);
+      table.addEventListener('change', handleInfraTableChange);
     }
     if (miliDiv) {
       miliDiv.innerHTML = buildInfraTable(infraProps.filter(i=>i.type==='militaire'), infrastructures, inv, 'militaryInfraTable');
       const table = document.getElementById('militaryInfraTable');
       table.addEventListener('click', handleInfraTableClick);
+      table.addEventListener('change', handleInfraTableChange);
     }
 
     const propsDiv = document.getElementById('baronyProps');
@@ -511,6 +513,52 @@ async function handleInfraTableClick(e) {
   }
 }
 
+async function handleInfraTableChange(e) {
+  if (e.target.classList.contains('var-workers-input')) {
+    const id = e.target.dataset.id;
+    const idx = e.target.dataset.idx;
+    const qty = parseInt(e.target.value,10) || 0;
+    const ip = gameState.ipMap[id];
+    const entry = gameState.infrastructures[id] || gameState.infrastructures[String(id)] || {};
+    const built = typeof entry === 'object' ? (entry.built || 0) : entry;
+    let eff;
+    try { eff = JSON.parse(ip.effects || '[]')[idx]; } catch { eff = null; }
+    if(!eff) return;
+    const maxWorkers = (eff.max_workers || 0) * built;
+    const current = entry[`effect_${idx}_workers`] || 0;
+    const freePop = gameState.s.population + gameState.employment.slaves - gameState.employment.employed + current;
+    if(qty > maxWorkers){
+      alert('Nombre trop élevé');
+      e.target.value = current;
+      updateVarWorkers(e.target);
+      return;
+    }
+    if(qty > freePop){
+      alert('Population non employée insuffisante');
+      e.target.value = current;
+      updateVarWorkers(e.target);
+      return;
+    }
+    try {
+      const resp = await fetch('/api/infrastructure/assign_workers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, index: idx, quantity: qty })
+      });
+      if(resp.ok){
+        await loadAndRender();
+      }else{
+        const msg = await resp.text().catch(()=> '');
+        console.warn('[infra] Assignation refusée', resp.status, msg);
+        alert('Affectation impossible');
+      }
+    } catch(err){
+      console.error('[infra] Erreur réseau affectation', err);
+      alert('Affectation impossible');
+    }
+  }
+}
+
 function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId) {
   const { buildings = {}, infrastructures = {}, s = {}, bpMap = {}, ipMap = {} } = gameState || {};
   let html = `<table class="admin-table" id="${tableId}"><tr><th>Nom</th><th>Construits</th><th>Max</th><th>Effets</th><th>Requis</th><th>Coût</th><th>Construire</th><th class="multi-col"></th></tr>`;
@@ -621,17 +669,25 @@ function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId) {
     let extraHtml = '';
     try {
       const effects = ip.effects ? JSON.parse(ip.effects) : [];
-      const inst = effects.filter(e => e.type === 'instant_production');
       const tables = [];
       if (built > 0) {
-        inst.forEach((eff, idx) => {
-          const remainKey = `effect_${idx}_remaining`;
-          const remaining = entryObj[remainKey] || 0;
-          const label = resourceLabels[eff.resource] || eff.resource;
-          const baseCosts = eff.costs || {};
-          const costStr = Object.entries(baseCosts).map(([r,a])=>{
-            const lbl = resourceLabels[r] || r; return `${lbl}: ${a*remaining}`; }).join(', ');
-          tables.push(`<table class="admin-table instant-prod-table"><tr><th>Production</th><th>Restant</th><th>Nb</th><th>Coût total</th><th>Convertir</th></tr><tr><td class="prod-cell" data-base="${eff.amount}" data-res="${eff.resource}">${eff.amount} ${label}</td><td class="rem-cell">${remaining}</td><td><input type="number" class="inst-nb" min="1" max="${remaining}" value="${remaining}" oninput="updateInstantCost(this)"></td><td class="cost-cell" data-costs='${JSON.stringify(baseCosts)}'>${costStr}</td><td><button class="instant-btn" data-id="${ip.id}" data-idx="${idx}">Convertir</button></td></tr></table>`);
+        effects.forEach((eff, idx) => {
+          if (eff.type === 'instant_production') {
+            const remainKey = `effect_${idx}_remaining`;
+            const remaining = entryObj[remainKey] || 0;
+            const label = resourceLabels[eff.resource] || eff.resource;
+            const baseCosts = eff.costs || {};
+            const costStr = Object.entries(baseCosts).map(([r,a])=>{
+              const lbl = resourceLabels[r] || r; return `${lbl}: ${a*remaining}`; }).join(', ');
+            tables.push(`<table class="admin-table instant-prod-table"><tr><th>Production</th><th>Restant</th><th>Nb</th><th>Coût total</th><th>Convertir</th></tr><tr><td class="prod-cell" data-base="${eff.amount}" data-res="${eff.resource}">${eff.amount} ${label}</td><td class="rem-cell">${remaining}</td><td><input type="number" class="inst-nb" min="1" max="${remaining}" value="${remaining}" oninput="updateInstantCost(this)"></td><td class="cost-cell" data-costs='${JSON.stringify(baseCosts)}'>${costStr}</td><td><button class="instant-btn" data-id="${ip.id}" data-idx="${idx}">Convertir</button></td></tr></table>`);
+          } else if (eff.type === 'variable_workers') {
+            const workerKey = `effect_${idx}_workers`;
+            const assigned = entryObj[workerKey] || 0;
+            const maxWorkers = (eff.max_workers || 0) * built;
+            const label = resourceLabels[eff.resource] || eff.resource;
+            const prodTotal = assigned * (eff.amount || 0);
+            tables.push(`<table class="admin-table var-workers-table"><tr><th>Assignés</th><th>Max</th><th>Production</th></tr><tr><td><input type="number" class="var-workers-input" data-id="${ip.id}" data-idx="${idx}" min="0" max="${maxWorkers}" value="${assigned}" oninput="updateVarWorkers(this)"></td><td>${maxWorkers}</td><td class="vw-prod" data-per="${eff.amount}" data-res="${eff.resource}">${prodTotal} ${label}</td></tr></table>`);
+          }
         });
       }
       if (tables.length) {
@@ -659,6 +715,15 @@ function updateInstantCost(el){
   const amount = parseInt(prodCell.dataset.base,10) || 0;
   const res = resourceLabels[prodCell.dataset.res] || prodCell.dataset.res;
   prodCell.textContent = `${amount*nb} ${res}`;
+}
+
+function updateVarWorkers(el){
+  const tr = el.closest('tr');
+  const prodCell = tr.querySelector('.vw-prod');
+  const per = parseInt(prodCell.dataset.per,10) || 0;
+  const res = resourceLabels[prodCell.dataset.res] || prodCell.dataset.res;
+  const nb = parseInt(el.value,10) || 0;
+  prodCell.textContent = `${nb*per} ${res}`;
 }
 
 function buildTable(list, showMax = false, inv = {}, production = {}, productionDetails = {}, capacity = {}) {

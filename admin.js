@@ -277,6 +277,78 @@ function openInstantProductionPopup(initial, onSave) {
   });
 }
 
+function openVariableWorkersPopup(initial, onSave) {
+  const overlay = document.createElement('div');
+  overlay.className = 'popup-overlay';
+  const popup = document.createElement('div');
+  popup.className = 'popup';
+
+  const resDiv = document.createElement('div');
+  const resLabel = document.createElement('label');
+  resLabel.textContent = 'Ressource';
+  const resSel = document.createElement('select');
+  const blank = document.createElement('option');
+  blank.value = '';
+  resSel.appendChild(blank);
+  resourceSelect.forEach(o => {
+    const op = document.createElement('option');
+    op.value = o.id;
+    op.textContent = o.name;
+    if (initial.resource === o.id) op.selected = true;
+    resSel.appendChild(op);
+  });
+  resDiv.appendChild(resLabel);
+  resDiv.appendChild(resSel);
+
+  const amtDiv = document.createElement('div');
+  const amtLabel = document.createElement('label');
+  amtLabel.textContent = 'Production / travailleur';
+  const amtInput = document.createElement('input');
+  amtInput.type = 'number';
+  amtInput.min = '0';
+  amtInput.value = initial.amount ?? '';
+  amtDiv.appendChild(amtLabel);
+  amtDiv.appendChild(amtInput);
+
+  const maxDiv = document.createElement('div');
+  const maxLabel = document.createElement('label');
+  maxLabel.textContent = 'Max travailleurs';
+  const maxInput = document.createElement('input');
+  maxInput.type = 'number';
+  maxInput.min = '0';
+  maxInput.value = initial.max_workers ?? '';
+  maxDiv.appendChild(maxLabel);
+  maxDiv.appendChild(maxInput);
+
+  popup.appendChild(resDiv);
+  popup.appendChild(amtDiv);
+  popup.appendChild(maxDiv);
+
+  const btnRow = document.createElement('div');
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.textContent = 'Valider';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.textContent = 'Annuler';
+  btnRow.appendChild(saveBtn);
+  btnRow.appendChild(cancelBtn);
+  popup.appendChild(btnRow);
+
+  overlay.appendChild(popup);
+  document.body.appendChild(overlay);
+
+  cancelBtn.addEventListener('click', () => overlay.remove());
+  saveBtn.addEventListener('click', () => {
+    onSave({
+      resource: resSel.value,
+      amount: parseInt(amtInput.value, 10) || 0,
+      max_workers: parseInt(maxInput.value, 10) || 0,
+    });
+    overlay.remove();
+  });
+}
+
 function openRestrictionsPopup(initialVal, onSave) {
   const overlay = document.createElement('div');
   overlay.className = 'popup-overlay';
@@ -535,7 +607,8 @@ function makeEffectsInput(val){
       {id:'production', name:'Production ressource'},
       {id:'building_production', name:'Prod. bâtiment'},
       {id:'idh', name:'IDH'},
-      {id:'instant_production', name:'Prod. instantanée'}
+      {id:'instant_production', name:'Prod. instantanée'},
+      {id:'variable_workers', name:'Travailleurs variables'}
     ];
     typeOptions.forEach(o=>{
       const op = document.createElement('option');
@@ -562,12 +635,19 @@ function makeEffectsInput(val){
       summarySpan.textContent = '';
       try{
         const d = JSON.parse(dataInput.value || '{}');
-        if(d.resource && d.amount){
-          const resObj = resourceSelect.find(r=>r.id === d.resource);
-          const costCount = d.costs ? Object.keys(d.costs).length : 0;
-          summarySpan.textContent = `${d.amount} ${resObj ? resObj.name : d.resource}` +
-            (d.uses_per_month ? `, ${d.uses_per_month}/mois` : '') +
-            (costCount ? `, coûts: ${costCount}` : '');
+        if(typeSel.value === 'instant_production'){
+          if(d.resource && d.amount){
+            const resObj = resourceSelect.find(r=>r.id === d.resource);
+            const costCount = d.costs ? Object.keys(d.costs).length : 0;
+            summarySpan.textContent = `${d.amount} ${resObj ? resObj.name : d.resource}` +
+              (d.uses_per_month ? `, ${d.uses_per_month}/mois` : '') +
+              (costCount ? `, coûts: ${costCount}` : '');
+          }
+        }else if(typeSel.value === 'variable_workers'){
+          if(d.resource && d.amount && d.max_workers != null){
+            const resObj = resourceSelect.find(r=>r.id === d.resource);
+            summarySpan.textContent = `${d.amount} ${resObj ? resObj.name : d.resource} /travailleur, max ${d.max_workers}`;
+          }
         }
       }catch(e){
         summarySpan.textContent = '';
@@ -577,7 +657,11 @@ function makeEffectsInput(val){
     editBtn.addEventListener('click', ()=>{
       let init = {};
       try{ init = JSON.parse(dataInput.value || '{}'); }catch(e){ init = {}; }
-      openInstantProductionPopup(init, d=>{ dataInput.value = JSON.stringify(d); updateSummary(); });
+      if(typeSel.value === 'instant_production'){
+        openInstantProductionPopup(init, d=>{ dataInput.value = JSON.stringify(d); updateSummary(); });
+      }else if(typeSel.value === 'variable_workers'){
+        openVariableWorkersPopup(init, d=>{ dataInput.value = JSON.stringify(d); updateSummary(); });
+      }
     });
 
     function populateFields(){
@@ -604,6 +688,11 @@ function makeEffectsInput(val){
         editBtn.style.display = '';
         if(data.resource){ dataInput.value = JSON.stringify(data); updateSummary(); }
         else { dataInput.value = ''; updateSummary(); }
+      }else if(typeSel.value === 'variable_workers'){
+        summarySpan.style.display = '';
+        editBtn.style.display = '';
+        if(data.resource){ dataInput.value = JSON.stringify(data); updateSummary(); }
+        else { dataInput.value = ''; updateSummary(); }
       }else if(typeSel.value === 'idh'){
         qty.style.display = '';
       }else{
@@ -623,7 +712,7 @@ function makeEffectsInput(val){
     typeSel.addEventListener('change', ()=>{
       data = {};
       populateFields();
-      if(typeSel.value === 'instant_production') editBtn.click();
+      if(typeSel.value === 'instant_production' || typeSel.value === 'variable_workers') editBtn.click();
     });
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
@@ -658,6 +747,12 @@ function makeEffectsInput(val){
         try{ data = JSON.parse(rw.querySelector('input[data-role="data"]').value || '{}'); }catch(e){ data = {}; }
         if(data.resource && data.amount){
           res.push({type, resource: data.resource, amount: data.amount, uses_per_month: data.uses_per_month || 0, costs: data.costs || {}});
+        }
+      }else if(type === 'variable_workers'){
+        let data = {};
+        try{ data = JSON.parse(rw.querySelector('input[data-role="data"]').value || '{}'); }catch(e){ data = {}; }
+        if(data.resource && data.amount && data.max_workers != null){
+          res.push({type, resource: data.resource, amount: data.amount, max_workers: data.max_workers});
         }
       }else if(type === 'idh'){
         const amt = parseInt(rw.querySelector('input[data-role="qty"]').value,10);
