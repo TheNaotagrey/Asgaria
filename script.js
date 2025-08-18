@@ -146,6 +146,9 @@
   const editChurch = document.getElementById('editChurch');
   const editCathedral = document.getElementById('editCathedral');
   const editPlayer = document.getElementById('editPlayer');
+  const canonicalListDiv = document.getElementById('canonicalList');
+  const addCanonicalSelect = document.getElementById('addCanonicalSelect');
+  const addCanonicalBtn = document.getElementById('addCanonical');
   const updateBtn = document.getElementById('updateBarony');
   const filterSelect = document.getElementById('colorFilter');
   const legendDiv = document.getElementById('legend');
@@ -188,6 +191,9 @@
     }
     if (editCathedral) {
       editCathedral.innerHTML = blankOpt + religionOptions.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
+    }
+    if (addCanonicalSelect) {
+      addCanonicalSelect.innerHTML = blankOpt + religionOptions.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
     }
     if (editCulture) editCulture.innerHTML = cultureOptions.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
     if (editViscounty) editViscounty.innerHTML = blankOpt + viscountyOptions.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
@@ -246,6 +252,27 @@
       if (!baronyAdjacency[c.barony_id_2]) baronyAdjacency[c.barony_id_2] = [];
       baronyAdjacency[c.barony_id_1].push(c.barony_id_2);
       baronyAdjacency[c.barony_id_2].push(c.barony_id_1);
+    });
+  }
+
+  function refreshCanonicalList(baronyId) {
+    if (!canonicalListDiv) return;
+    canonicalListDiv.innerHTML = '';
+    const rIds = canonicalLandMap[baronyId] || [];
+    rIds.forEach(rid => {
+      const item = document.createElement('div');
+      item.textContent = religionMap[rid]?.name || String(rid);
+      const btn = document.createElement('button');
+      btn.textContent = 'Retirer';
+      btn.addEventListener('click', () => {
+        fetch(`${API_BASE}/api/canonical_lands?religion_id=${rid}&barony_id=${baronyId}`, { method: 'DELETE' }).then(() => {
+          canonicalLandMap[baronyId] = (canonicalLandMap[baronyId] || []).filter(id => id !== rid);
+          refreshCanonicalList(baronyId);
+          if (currentFilter === 'canonical') applyFilter('canonical'); else drawAll();
+        });
+      });
+      item.appendChild(btn);
+      canonicalListDiv.appendChild(item);
     });
   }
   // Outils
@@ -613,6 +640,7 @@
     }
     if (editIdInput) editIdInput.value = baronyMeta[id].id;
     if (editNameInput) editNameInput.value = baronyMeta[id].name || '';
+    refreshCanonicalList(id);
     fetch(`${API_BASE}/api/baronies?id=${id}`).then(r=>r.json()).then(list=>{
       const info = list.find(b=>String(b.id)===String(id));
       if(!info) return;
@@ -1206,6 +1234,20 @@
   if (selectBtn) selectBtn.addEventListener('click', () => {
     const id = prompt('ID de la baronnie à sélectionner ?');
     if (id) selectBarony(id.trim());
+  });
+  if (addCanonicalBtn) addCanonicalBtn.addEventListener('click', () => {
+    const rid = parseInt(addCanonicalSelect.value || '') || null;
+    if (!rid || !currentSelectedId) return;
+    fetch(API_BASE + '/api/canonical_lands', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ religion_id: rid, barony_id: currentSelectedId })
+    }).then(() => {
+      if (!canonicalLandMap[currentSelectedId]) canonicalLandMap[currentSelectedId] = [];
+      if (!canonicalLandMap[currentSelectedId].includes(rid)) canonicalLandMap[currentSelectedId].push(rid);
+      refreshCanonicalList(currentSelectedId);
+      if (currentFilter === 'canonical') applyFilter('canonical'); else drawAll();
+    });
   });
   if (updateBtn) updateBtn.addEventListener('click', updateBarony);
 
