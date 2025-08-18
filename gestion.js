@@ -101,7 +101,6 @@ async function loadAndRender() {
       <p><strong>Religion :</strong> ${barony.religion_name || 'Inconnue'}</p>
       <p><strong>Culture :</strong> ${barony.culture_name || 'Inconnue'}</p>
       <p><strong>IDH :</strong> À calculer</p>
-      <div id="taxRateControl"></div>
       <div id="resourceTables" class="resource-tables">
         <div class="resource-table-container">
           <h2>Ressources de base</h2>
@@ -125,6 +124,10 @@ async function loadAndRender() {
     if (employment.employed > s.population) {
       employedHtml = `<span style="color:red">${employedHtml}</span>`;
     }
+    const taxOptions = Array.from({ length: 13 }, (_, i) =>
+      `<option value="${i}" ${i === (s.tax_rate ?? 5) ? 'selected' : ''}>${i}</option>`
+    ).join('');
+
     popSummary.innerHTML = `
       <h2>Population</h2>
       <table class="admin-table">
@@ -132,22 +135,14 @@ async function loadAndRender() {
         <tr><td>Population totale</td><td>${s.population}</td></tr>
         <tr><td>Population employée</td><td>${employedHtml}</td></tr>
         <tr><td>Esclaves</td><td>${employment.slaves}</td></tr>
+        <tr><td>Taxes (écus)</td><td><select id="taxRate">${taxOptions}</select></td></tr>
       </table>
     `;
 
-    const taxControl = document.getElementById('taxRateControl');
-    if (taxControl) {
-      const select = document.createElement('select');
-      select.id = 'taxRate';
-      for (let i = 0; i <= 12; i++) {
-        const opt = document.createElement('option');
-        opt.value = i;
-        opt.textContent = i;
-        if (i === (s.tax_rate ?? 5)) opt.selected = true;
-        select.appendChild(opt);
-      }
-      select.addEventListener('change', async () => {
-        const rate = parseInt(select.value, 10);
+    const taxSelect = document.getElementById('taxRate');
+    if (taxSelect) {
+      taxSelect.addEventListener('change', async () => {
+        const rate = parseInt(taxSelect.value, 10);
         try {
           const res = await fetch('/api/tax_rate', {
             method: 'POST',
@@ -155,12 +150,11 @@ async function loadAndRender() {
             body: JSON.stringify({ tax_rate: rate })
           });
           if (!res.ok) throw new Error('Erreur');
+          await loadAndRender();
         } catch (err) {
           alert('Erreur lors de la mise à jour des taxes');
         }
       });
-      taxControl.innerHTML = '<h2>Taxes (écus par habitant)</h2>';
-      taxControl.appendChild(select);
     }
 
     const basicTable = document.getElementById('basicResourcesTable');
