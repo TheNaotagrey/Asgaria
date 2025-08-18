@@ -180,6 +180,7 @@ CREATE TABLE IF NOT EXISTS seigneuries (
   baronnie_id INTEGER,
   seigneur_id INTEGER,
   population INTEGER,
+  tax_rate INTEGER DEFAULT 5,
   inventaire_id INTEGER,
   buildings TEXT DEFAULT '{}',
   infrastructures TEXT DEFAULT '{}',
@@ -275,6 +276,9 @@ db.exec(initSql, () => {
       }
       if (!rows.some(r => r.name === 'infrastructures')) {
         db.run("ALTER TABLE seigneuries ADD COLUMN infrastructures TEXT DEFAULT '{}' ");
+      }
+      if (!rows.some(r => r.name === 'tax_rate')) {
+        db.run("ALTER TABLE seigneuries ADD COLUMN tax_rate INTEGER DEFAULT 5");
       }
     }
   });
@@ -706,10 +710,10 @@ app.get('/api/my_seigneurie', (req, res) => {
             db.run('INSERT INTO inventaire DEFAULT VALUES', function(err){
               if (err) return handleError(res, err);
               const invId = this.lastID;
-              db.run('INSERT INTO seigneuries (baronnie_id,seigneur_id,population,inventaire_id,buildings,infrastructures) VALUES (NULL,?,?,?,?,?,?)',
+              db.run('INSERT INTO seigneuries (baronnie_id,seigneur_id,population,inventaire_id,buildings,infrastructures) VALUES (NULL,?,?,?,?,?)',
                 [seig.id, 0, invId, '{}', '{}'], function(err){
                   if (err) return handleError(res, err);
-                  cb({ id: this.lastID, baronnie_id: null, seigneur_id: seig.id, population: 0, inventaire_id: invId, buildings: '{}', infrastructures: '{}' });
+                  cb({ id: this.lastID, baronnie_id: null, seigneur_id: seig.id, population: 0, inventaire_id: invId, buildings: '{}', infrastructures: '{}', tax_rate: 5 });
                 });
             });
           }
@@ -795,6 +799,13 @@ app.get('/api/my_seigneurie', (req, res) => {
                       productionDetails.vivres.push({ label: 'Esclaves', amount: -slaveCons, source: slaves });
                     }
                   }
+                  const taxRate = typeof s.tax_rate === 'number' ? s.tax_rate : parseInt(s.tax_rate, 10) || 0;
+                  const taxGold = Math.floor((s.population || 0) * taxRate / 100);
+                  if (taxGold) {
+                    production.or_ = (production.or_ || 0) + taxGold;
+                    if (!productionDetails.or_) productionDetails.or_ = [];
+                    productionDetails.or_.push({ label: 'Taxes', amount: taxGold, source: taxRate });
+                  }
                   const employment = { employed: Math.max(employed - slaves, 0), slaves };
                   function finalize(barony, baronyProps) {
                     res.json({ seigneurie: s, barony, inventaire, production, productionDetails, fields, baronyProps, employment, employmentDetails, buildings, infrastructures, capacities, buildingProductionBonus, buildingProductionBonusDetails });
@@ -831,6 +842,23 @@ app.get('/api/my_seigneurie', (req, res) => {
           });
         });
       });
+    });
+  });
+});
+
+app.post('/api/tax_rate', (req, res) => {
+  if (!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
+  const rate = parseInt(req.body.tax_rate, 10);
+  if (Number.isNaN(rate) || rate < 0 || rate > 12) {
+    return res.status(400).json({ error: 'Taux invalide' });
+  }
+  const userId = req.session.user.id;
+  db.get('SELECT seigneuries.id FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?', [userId], (err, row) => {
+    if (err) return handleError(res, err);
+    if (!row) return res.status(400).json({ error: 'Seigneurie introuvable' });
+    db.run('UPDATE seigneuries SET tax_rate=? WHERE id=?', [rate, row.id], err2 => {
+      if (err2) return handleError(res, err2);
+      res.json({ tax_rate: rate });
     });
   });
 });

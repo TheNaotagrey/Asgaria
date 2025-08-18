@@ -101,6 +101,7 @@ async function loadAndRender() {
       <p><strong>Religion :</strong> ${barony.religion_name || 'Inconnue'}</p>
       <p><strong>Culture :</strong> ${barony.culture_name || 'Inconnue'}</p>
       <p><strong>IDH :</strong> À calculer</p>
+      <div id="taxRateControl"></div>
       <div id="resourceTables" class="resource-tables">
         <div class="resource-table-container">
           <h2>Ressources de base</h2>
@@ -133,6 +134,34 @@ async function loadAndRender() {
         <tr><td>Esclaves</td><td>${employment.slaves}</td></tr>
       </table>
     `;
+
+    const taxControl = document.getElementById('taxRateControl');
+    if (taxControl) {
+      const select = document.createElement('select');
+      select.id = 'taxRate';
+      for (let i = 0; i <= 12; i++) {
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = i;
+        if (i === (s.tax_rate ?? 5)) opt.selected = true;
+        select.appendChild(opt);
+      }
+      select.addEventListener('change', async () => {
+        const rate = parseInt(select.value, 10);
+        try {
+          const res = await fetch('/api/tax_rate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tax_rate: rate })
+          });
+          if (!res.ok) throw new Error('Erreur');
+        } catch (err) {
+          alert('Erreur lors de la mise à jour des taxes');
+        }
+      });
+      taxControl.innerHTML = '<h2>Taxes (écus par habitant)</h2>';
+      taxControl.appendChild(select);
+    }
 
     const basicTable = document.getElementById('basicResourcesTable');
     const luxuryTable = document.getElementById('luxuryResourcesTable');
