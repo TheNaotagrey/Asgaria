@@ -17,7 +17,7 @@ const VALID_TABLES = new Set([
   'users','religions','cultures','seigneurs','empires','kingdoms','archduchies',
   'duchies','marquisates','counties','viscounties','baronies','barony_pixels',
   'canonical_lands','inventaire','seigneuries','transactions','barony_properties',
-  'building_properties','infrastructure_properties'
+  'building_properties','infrastructure_properties','barony_connections'
 ]);
 
 // create tables if they do not exist
@@ -135,6 +135,14 @@ CREATE TABLE IF NOT EXISTS canonical_lands (
   PRIMARY KEY(religion_id, barony_id),
   FOREIGN KEY(religion_id) REFERENCES religions(id),
   FOREIGN KEY(barony_id) REFERENCES baronies(id)
+);
+CREATE TABLE IF NOT EXISTS barony_connections (
+  barony_id_1 INTEGER NOT NULL,
+  barony_id_2 INTEGER NOT NULL,
+  CHECK (barony_id_1 < barony_id_2),
+  PRIMARY KEY(barony_id_1, barony_id_2),
+  FOREIGN KEY(barony_id_1) REFERENCES baronies(id),
+  FOREIGN KEY(barony_id_2) REFERENCES baronies(id)
 );
 CREATE TABLE IF NOT EXISTS inventaire (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1209,6 +1217,37 @@ app.post('/api/canonical_lands', create('canonical_lands',['religion_id','barony
 app.delete('/api/canonical_lands', (req, res) => {
   const { religion_id, barony_id } = req.query;
   db.run('DELETE FROM canonical_lands WHERE religion_id=? AND barony_id=?', [religion_id, barony_id], function(err){
+    if(err) return handleError(res, err);
+    res.json({deleted: this.changes});
+  });
+});
+
+// Barony adjacency API
+app.get('/api/barony_connections', (req,res)=>{
+  list('barony_connections')(req,res);
+});
+app.post('/api/barony_connections', requireAdmin, (req,res)=>{
+  let { barony_id_1, barony_id_2 } = req.body;
+  barony_id_1 = parseInt(barony_id_1);
+  barony_id_2 = parseInt(barony_id_2);
+  if(!barony_id_1 || !barony_id_2 || barony_id_1 === barony_id_2){
+    return res.status(400).json({error:'Invalid barony ids'});
+  }
+  const [id1,id2] = barony_id_1 < barony_id_2 ? [barony_id_1, barony_id_2] : [barony_id_2, barony_id_1];
+  db.run('INSERT OR IGNORE INTO barony_connections (barony_id_1, barony_id_2) VALUES (?,?)',[id1,id2],function(err){
+    if(err) return handleError(res, err);
+    res.json({added: this.changes});
+  });
+});
+app.delete('/api/barony_connections', requireAdmin, (req,res)=>{
+  let { barony_id_1, barony_id_2 } = req.body;
+  barony_id_1 = parseInt(barony_id_1);
+  barony_id_2 = parseInt(barony_id_2);
+  if(!barony_id_1 || !barony_id_2){
+    return res.status(400).json({error:'Invalid barony ids'});
+  }
+  const [id1,id2] = barony_id_1 < barony_id_2 ? [barony_id_1, barony_id_2] : [barony_id_2, barony_id_1];
+  db.run('DELETE FROM barony_connections WHERE barony_id_1=? AND barony_id_2=?',[id1,id2],function(err){
     if(err) return handleError(res, err);
     res.json({deleted: this.changes});
   });

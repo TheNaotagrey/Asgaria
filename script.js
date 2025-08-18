@@ -43,7 +43,19 @@
   let seigneurToCounty = {}, seigneurToDuchy = {}, seigneurToKingdom = {};
   let canonicalLandMap = {};
   let canonicalPatterns = {};
+  let baronyAdjacency = {};
   let currentFilter = '';
+
+  function addConnection(a,b){
+    if(!baronyAdjacency[a]) baronyAdjacency[a]=[];
+    if(!baronyAdjacency[b]) baronyAdjacency[b]=[];
+    if(!baronyAdjacency[a].includes(b)) baronyAdjacency[a].push(b);
+    if(!baronyAdjacency[b].includes(a)) baronyAdjacency[b].push(a);
+  }
+  function removeConnection(a,b){
+    if(baronyAdjacency[a]) baronyAdjacency[a]=baronyAdjacency[a].filter(x=>x!==b);
+    if(baronyAdjacency[b]) baronyAdjacency[b]=baronyAdjacency[b].filter(x=>x!==a);
+  }
 
   // Carte de correspondance pixel : pixelMap[y][x] = id (ou 0 si aucun)
   const pixelMap = Array.from({ length: originalHeight }, () => new Array(originalWidth).fill(0));
@@ -119,6 +131,8 @@
   const deleteBtn = document.getElementById('deleteBarony');
   const toggleMapBtn = document.getElementById('toggleMap');
   const selectBtn = document.getElementById('selectBarony');
+  const linkBtn = document.getElementById('linkBarony');
+  const unlinkBtn = document.getElementById('unlinkBarony');
   const infoPanel = document.getElementById('infoPanel');
   const editIdInput = document.getElementById('editId');
   const editNameInput = document.getElementById('editName');
@@ -141,6 +155,7 @@
   let cultureOptions = [];
   let countyOptions = [];
   let viscountyOptions = [];
+  let linkMode = null;
 
   async function loadOptions() {
     const [seigneurs, religions, cultures, counties, viscounties] = await Promise.all([
@@ -180,7 +195,7 @@
   }
 
   async function loadMetaData() {
-    const [baronies, seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires, canonicalLands] = await Promise.all([
+    const [baronies, seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires, canonicalLands, connections] = await Promise.all([
       fetch(API_BASE + '/api/baronies').then(r => r.json()),
       fetch(API_BASE + '/api/seigneurs').then(r => r.json()),
       fetch(API_BASE + '/api/religions').then(r => r.json()),
@@ -192,7 +207,8 @@
       fetch(API_BASE + '/api/marquisates').then(r => r.json()),
       fetch(API_BASE + '/api/archduchies').then(r => r.json()),
       fetch(API_BASE + '/api/empires').then(r => r.json()),
-      fetch(API_BASE + '/api/canonical_lands').then(r => r.json())
+      fetch(API_BASE + '/api/canonical_lands').then(r => r.json()),
+      fetch(API_BASE + '/api/barony_connections').then(r => r.json())
     ]);
     baronyMeta = {};
     baronies.forEach(b => { baronyMeta[b.id] = b; });
@@ -224,6 +240,13 @@
       if (!canonicalLandMap[cl.barony_id]) canonicalLandMap[cl.barony_id] = [];
       canonicalLandMap[cl.barony_id].push(cl.religion_id);
     });
+    baronyAdjacency = {};
+    connections.forEach(c => {
+      if (!baronyAdjacency[c.barony_id_1]) baronyAdjacency[c.barony_id_1] = [];
+      if (!baronyAdjacency[c.barony_id_2]) baronyAdjacency[c.barony_id_2] = [];
+      baronyAdjacency[c.barony_id_1].push(c.barony_id_2);
+      baronyAdjacency[c.barony_id_2].push(c.barony_id_1);
+    });
   }
   // Outils
   const brushToolBtn = document.getElementById('brushTool');
@@ -240,6 +263,12 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(pixelData)
     });
+  });
+  if (linkBtn) linkBtn.addEventListener('click', () => {
+    if (currentSelectedId) linkMode = 'link';
+  });
+  if (unlinkBtn) unlinkBtn.addEventListener('click', () => {
+    if (currentSelectedId) linkMode = 'unlink';
   });
 
   // Canvas context
@@ -362,6 +391,37 @@
       initColorMap();
       updateLegend(null);
       if (currentSelectedId && colorMap[currentSelectedId]) colorMap[currentSelectedId][3] = 180;
+      drawAll();
+      return;
+    }
+    if (type === 'distance') {
+      colorMap = {};
+      if (!currentSelectedId) {
+        drawAll();
+        return;
+      }
+      const distances = {};
+      const queue = [currentSelectedId];
+      distances[currentSelectedId] = 0;
+      while (queue.length > 0) {
+        const cur = queue.shift();
+        const next = baronyAdjacency[cur] || [];
+        next.forEach(n => {
+          if (distances[n] === undefined) {
+            distances[n] = distances[cur] + 1;
+            queue.push(n);
+          }
+        });
+      }
+      Object.keys(baronyMeta).forEach(id => {
+        const d = distances[id];
+        if (d === undefined) return;
+        const hue = (d * 40) % 360;
+        const [r, g, b] = hslToRgb(hue, 65, 65);
+        colorMap[id] = [r, g, b, 100];
+      });
+      if (currentSelectedId && colorMap[currentSelectedId]) colorMap[currentSelectedId][3] = 180;
+      updateLegend(null);
       drawAll();
       return;
     }
@@ -524,7 +584,7 @@
     currentSelectedId = id;
     if (!id) {
       if (infoPanel) infoPanel.style.display = 'none';
-      drawAll();
+      if (currentFilter) applyFilter(currentFilter); else drawAll();
       return;
     }
     if (!baronyMeta[id]) {
@@ -555,8 +615,9 @@
       if (editChurch) editChurch.value = info.church_religion_id || '';
       if (editCathedral) editCathedral.value = info.cathedral_religion_id || '';
       if (editPlayer) editPlayer.checked = !!info.player;
+    }).finally(()=>{
+      if (currentFilter) applyFilter(currentFilter); else drawAll();
     });
-    drawAll();
   }
 
   // Mettre à jour ID/nom de la baronnie sélectionnée
@@ -834,6 +895,26 @@
     const [x, y] = getMapCoordinates(e);
     if (x < 0 || y < 0 || x >= originalWidth || y >= originalHeight) return;
     const idAtPixel = pixelMap[y][x];
+    if (linkMode && currentSelectedId && idAtPixel && idAtPixel !== currentSelectedId) {
+      const body = JSON.stringify({ barony_id_1: currentSelectedId, barony_id_2: idAtPixel });
+      if (linkMode === 'link') {
+        fetch(API_BASE + '/api/barony_connections', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body })
+          .then(() => {
+            addConnection(currentSelectedId, idAtPixel);
+            if (currentFilter === 'distance') applyFilter('distance'); else drawAll();
+          });
+      } else if (linkMode === 'unlink') {
+        fetch(API_BASE + '/api/barony_connections', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body })
+          .then(() => {
+            removeConnection(currentSelectedId, idAtPixel);
+            if (currentFilter === 'distance') applyFilter('distance'); else drawAll();
+          });
+      }
+      linkMode = null;
+      return;
+    } else if (linkMode) {
+      linkMode = null;
+    }
     // Hors mode édition : simplement afficher la baronnie sous le curseur
     if (!editMode) {
       if (idAtPixel) {
