@@ -69,6 +69,14 @@ async function loadAndRender() {
     const s = data.seigneurie;
     const inv = data.inventaire || {};
     const barony = data.barony || {};
+    const idh = data.idh || 0;
+    let idhClass = '';
+    if (idh < 5) {
+      idhClass = 'prod-negative';
+    } else if (idh >= 10) {
+      idhClass = 'prod-positive';
+    }
+    const idhHtml = `<span class="${idhClass}">${idh}</span>`;
     const production = data.production || {};
     const productionDetails = data.productionDetails || {};
     const baronyProps = data.baronyProps || {};
@@ -128,7 +136,7 @@ async function loadAndRender() {
       <div id="populationSummary"></div>
       <p><strong>Religion :</strong> ${barony.religion_name || 'Inconnue'}</p>
       <p><strong>Culture :</strong> ${barony.culture_name || 'Inconnue'}</p>
-      <p><strong>IDH :</strong> À calculer</p>
+      <p><strong>IDH :</strong> ${idhHtml}</p>
       <div id="resourceTables" class="resource-tables">
         <div class="resource-table-container">
           <h2>Ressources de base</h2>
