@@ -768,7 +768,17 @@ app.get('/api/my_seigneurie', (req, res) => {
                   const capacities = { vivres: 500, points_magique: 2000 };
                   const buildingProductionBonus = {};
                   const buildingProductionBonusDetails = {};
-                  const effectCtx = { production, productionDetails, capacity: capacities, buildings, bpMap, buildingProductionBonus, buildingProductionBonusDetails, idh: 5, idhDetails: [] };
+                  const effectCtx = {
+                    production,
+                    productionDetails,
+                    capacity: capacities,
+                    buildings,
+                    bpMap,
+                    buildingProductionBonus,
+                    buildingProductionBonusDetails,
+                    idh: 5,
+                    idhDetails: [{ label: 'Base', amount: 5, source: 1 }]
+                  };
                   for (const ip of infraList) {
                     const entry = infrastructures[ip.id] || infrastructures[String(ip.id)] || 0;
                     const count = typeof entry === 'object' ? (entry.built || 0) : entry;
@@ -815,27 +825,46 @@ app.get('/api/my_seigneurie', (req, res) => {
                   }
                   const employment = { employed: Math.max(employed - slaves, 0), slaves };
                   function finalize(barony, baronyProps) {
+                    const idhDetails = effectCtx.idhDetails || [];
                     let idh = effectCtx.idh;
                     if (taxRate === 0) {
                       idh += 3;
+                      idhDetails.push({ label: 'Taxes', amount: 3, source: taxRate });
                     } else if (taxRate <= 2) {
                       idh += 2;
+                      idhDetails.push({ label: 'Taxes', amount: 2, source: taxRate });
                     } else if (taxRate <= 4) {
                       idh += 1;
+                      idhDetails.push({ label: 'Taxes', amount: 1, source: taxRate });
                     } else {
-                      idh -= (taxRate - 5);
+                      const malus = -(taxRate - 5);
+                      idh += malus;
+                      idhDetails.push({ label: 'Taxes', amount: malus, source: taxRate });
                     }
-                    idh -= Math.min(Math.floor(s.population / 1000), 5);
-                    if (!seig.religion_id) idh -= 1;
-                    if (barony && seig.religion_id !== barony.religion_pop_id) idh -= 1;
+                    const popPenalty = -Math.min(Math.floor(s.population / 1000), 5);
+                    if (popPenalty) {
+                      idh += popPenalty;
+                      idhDetails.push({ label: 'Population', amount: popPenalty, source: s.population });
+                    }
+                    if (!seig.religion_id) {
+                      idh -= 1;
+                      idhDetails.push({ label: 'Sans religion', amount: -1, source: 1 });
+                    }
+                    if (barony && seig.religion_id !== barony.religion_pop_id) {
+                      idh -= 1;
+                      idhDetails.push({ label: 'Religion différente', amount: -1, source: 1 });
+                    }
                     const totalPop = s.population + slaves;
                     if (totalPop > 0) {
                       let slavePenalty = Math.floor((20 * slaves) / totalPop) - 1;
                       if (slavePenalty < 0) slavePenalty = 0;
                       if (slavePenalty > 5) slavePenalty = 5;
-                      idh -= slavePenalty;
+                      if (slavePenalty) {
+                        idh -= slavePenalty;
+                        idhDetails.push({ label: 'Esclaves', amount: -slavePenalty, source: slaves });
+                      }
                     }
-                    res.json({ seigneurie: s, barony, inventaire, production, productionDetails, fields, baronyProps, employment, employmentDetails, buildings, infrastructures, capacities, buildingProductionBonus, buildingProductionBonusDetails, idh });
+                    res.json({ seigneurie: s, barony, inventaire, production, productionDetails, fields, baronyProps, employment, employmentDetails, buildings, infrastructures, capacities, buildingProductionBonus, buildingProductionBonusDetails, idh, idhDetails });
                   }
                   if (s.baronnie_id) {
                     db.get('SELECT * FROM barony_properties WHERE barony_id=?', [s.baronnie_id], (err3, props) => {
