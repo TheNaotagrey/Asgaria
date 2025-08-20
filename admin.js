@@ -616,6 +616,7 @@ function makeEffectsInput(val, allowedTypes){
       {id:'storage', name:'Stockage'},
       {id:'production', name:'Production ressource'},
       {id:'building_production', name:'Prod. bâtiment'},
+      {id:'infra_production', name:'Mult. infrastructure'},
       {id:'idh', name:'IDH'},
       {id:'instant_production', name:'Prod. instantanée'},
       {id:'variable_workers', name:'Travailleurs variables'},
@@ -718,6 +719,16 @@ function makeEffectsInput(val, allowedTypes){
           op.value = o.id;
           op.textContent = o.name;
           if(String(o.id) === String(data.building)) op.selected = true;
+          targetSel.appendChild(op);
+        });
+        targetSel.style.display = '';
+        qty.style.display = '';
+      }else if(typeSel.value === 'infra_production'){
+        infraPropsSelect.forEach(o=>{
+          const op = document.createElement('option');
+          op.value = o.id;
+          op.textContent = o.name;
+          if(String(o.id) === String(data.infrastructure)) op.selected = true;
           targetSel.appendChild(op);
         });
         targetSel.style.display = '';
@@ -849,6 +860,8 @@ function makeEffectsInput(val, allowedTypes){
         if(type && target && amt){
           if(type === 'building_production'){
             res.push({type, building: target, amount: amt});
+          }else if(type === 'infra_production'){
+            res.push({type, infrastructure: target, amount: amt});
           }else{
             res.push({type, resource: target, amount: amt});
           }

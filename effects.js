@@ -28,6 +28,11 @@ class ResourceProductionEffect extends Effect {
     ctx.production[this.resource] = (ctx.production[this.resource] || 0) + total;
     if (!ctx.productionDetails[this.resource]) ctx.productionDetails[this.resource] = [];
     ctx.productionDetails[this.resource].push({ label, amount: total, source: count });
+    if (ctx.currentInfraId) {
+      if (!ctx.infraProductionByInfra) ctx.infraProductionByInfra = {};
+      if (!ctx.infraProductionByInfra[ctx.currentInfraId]) ctx.infraProductionByInfra[ctx.currentInfraId] = [];
+      ctx.infraProductionByInfra[ctx.currentInfraId].push({ resource: this.resource, amount: total, label, source: count });
+    }
   }
 }
 
@@ -63,6 +68,25 @@ class BuildingProductionEffect extends Effect {
     } else {
       arr.push({ label: buildLabel, amount: added, source: active });
     }
+    if (ctx.currentInfraId) {
+      if (!ctx.infraProductionByInfra) ctx.infraProductionByInfra = {};
+      if (!ctx.infraProductionByInfra[ctx.currentInfraId]) ctx.infraProductionByInfra[ctx.currentInfraId] = [];
+      ctx.infraProductionByInfra[ctx.currentInfraId].push({ resource: res, amount: added, label: buildLabel, source: active });
+    }
+  }
+}
+
+class InfraProductionEffect extends Effect {
+  constructor(infrastructure, multiplier) {
+    super();
+    this.infrastructure = infrastructure;
+    this.multiplier = multiplier;
+  }
+  apply(ctx, count) {
+    if (!ctx.infrastructureProductionMultipliers) ctx.infrastructureProductionMultipliers = {};
+    const current = ctx.infrastructureProductionMultipliers[this.infrastructure] || 1;
+    const total = Math.pow(this.multiplier, count);
+    ctx.infrastructureProductionMultipliers[this.infrastructure] = current * total;
   }
 }
 
@@ -115,6 +139,11 @@ class VariableWorkersEffect extends Effect {
     ctx.production[this.resource] = (ctx.production[this.resource] || 0) + total;
     if (!ctx.productionDetails[this.resource]) ctx.productionDetails[this.resource] = [];
     ctx.productionDetails[this.resource].push({ label, amount: total, source: workers });
+    if (ctx.currentInfraId) {
+      if (!ctx.infraProductionByInfra) ctx.infraProductionByInfra = {};
+      if (!ctx.infraProductionByInfra[ctx.currentInfraId]) ctx.infraProductionByInfra[ctx.currentInfraId] = [];
+      ctx.infraProductionByInfra[ctx.currentInfraId].push({ resource: this.resource, amount: total, label, source: workers });
+    }
   }
 }
 
@@ -189,4 +218,4 @@ class SpellMaxPerMonthEffect extends Effect {
   }
 }
 
-module.exports = { Effect, StorageEffect, ResourceProductionEffect, BuildingProductionEffect, InstantProductionEffect, IDHEffect, VariableWorkersEffect, UnlockPageEffect, SpellSuccessEffect, SpellBasicDiscountEffect, SpellAdvancedDiscountEffect, SpellRangeEffect, SpellMaxPerMonthEffect };
+module.exports = { Effect, StorageEffect, ResourceProductionEffect, BuildingProductionEffect, InfraProductionEffect, InstantProductionEffect, IDHEffect, VariableWorkersEffect, UnlockPageEffect, SpellSuccessEffect, SpellBasicDiscountEffect, SpellAdvancedDiscountEffect, SpellRangeEffect, SpellMaxPerMonthEffect };
