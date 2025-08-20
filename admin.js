@@ -78,6 +78,7 @@ const infraPropLabels = {
 };
 const typeSelect = [{id:'civil',name:'Civil'},{id:'militaire',name:'Militaire'}];
 const resourceSelect = Object.entries(inventaireLabels).map(([id, name]) => ({ id, name }));
+const pageSelect = [{id:'magie', name:'Magie'}];
 let buildingPropsSelect = [];
 let infraPropsSelect = [];
 let tagsSelect = [];
@@ -628,9 +629,17 @@ function makeEffectsInput(val){
     });
     const targetSel = document.createElement('select');
     targetSel.dataset.role = 'target';
-    const pageInput = document.createElement('input');
-    pageInput.type = 'text';
-    pageInput.dataset.role = 'page';
+    const pageSel = document.createElement('select');
+    pageSel.dataset.role = 'page';
+    const blankPage = document.createElement('option');
+    blankPage.value = '';
+    pageSel.appendChild(blankPage);
+    pageSelect.forEach(o=>{
+      const op = document.createElement('option');
+      op.value = o.id;
+      op.textContent = o.name;
+      pageSel.appendChild(op);
+    });
     const qty = document.createElement('input');
     qty.type = 'number';
     qty.min = '0';
@@ -682,7 +691,7 @@ function makeEffectsInput(val){
       blankRes.value = '';
       targetSel.appendChild(blankRes);
       targetSel.style.display = 'none';
-      pageInput.style.display = 'none';
+      pageSel.style.display = 'none';
       qty.style.display = 'none';
       summarySpan.style.display = 'none';
       editBtn.style.display = 'none';
@@ -709,8 +718,8 @@ function makeEffectsInput(val){
       }else if(typeSel.value === 'idh'){
         qty.style.display = '';
       }else if(typeSel.value === 'unlock_page'){
-        pageInput.style.display = '';
-        pageInput.value = data.page || '';
+        pageSel.style.display = '';
+        pageSel.value = data.page || '';
       }else{
         resourceSelect.forEach(o=>{
           const op = document.createElement('option');
@@ -736,7 +745,7 @@ function makeEffectsInput(val){
     removeBtn.addEventListener('click', ()=> row.remove());
     row.appendChild(typeSel);
     row.appendChild(targetSel);
-    row.appendChild(pageInput);
+    row.appendChild(pageSel);
     row.appendChild(qty);
     row.appendChild(summarySpan);
     row.appendChild(editBtn);
@@ -777,7 +786,7 @@ function makeEffectsInput(val){
           res.push({ type, amount: amt });
         }
       }else if(type === 'unlock_page'){
-        const page = rw.querySelector('input[data-role="page"]').value;
+        const page = rw.querySelector('select[data-role="page"]').value;
         if(page){
           res.push({type, page});
         }
