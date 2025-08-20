@@ -619,7 +619,12 @@ function makeEffectsInput(val){
       {id:'idh', name:'IDH'},
       {id:'instant_production', name:'Prod. instantanée'},
       {id:'variable_workers', name:'Travailleurs variables'},
-      {id:'unlock_page', name:'Débloque page'}
+      {id:'unlock_page', name:'Débloque page'},
+      {id:'spell_success', name:'Réussite de sort'},
+      {id:'spell_basic_discount', name:'Réduc. sort basique'},
+      {id:'spell_advanced_discount', name:'Réduc. sort avancé'},
+      {id:'spell_range', name:'Portée des sorts'},
+      {id:'spell_max_per_month', name:'Sorts max/mois'}
     ];
     typeOptions.forEach(o=>{
       const op = document.createElement('option');
@@ -716,7 +721,7 @@ function makeEffectsInput(val){
         editBtn.style.display = '';
         if(data.resource){ dataInput.value = JSON.stringify(data); updateSummary(); }
         else { dataInput.value = ''; updateSummary(); }
-      }else if(typeSel.value === 'idh'){
+      }else if(['idh','spell_success','spell_basic_discount','spell_advanced_discount','spell_range','spell_max_per_month'].includes(typeSel.value)){
         qty.style.display = '';
       }else if(typeSel.value === 'unlock_page'){
         pageSel.style.display = '';
@@ -781,7 +786,7 @@ function makeEffectsInput(val){
         if(data.resource && data.amount && data.max_workers != null){
           res.push({type, resource: data.resource, amount: data.amount, max_workers: data.max_workers});
         }
-      }else if(type === 'idh'){
+      }else if(['idh','spell_success','spell_basic_discount','spell_advanced_discount','spell_range','spell_max_per_month'].includes(type)){
         const amt = parseInt(rw.querySelector('input[data-role="qty"]').value,10);
         if(type && !isNaN(amt)){
           res.push({ type, amount: amt });
