@@ -33,7 +33,7 @@
         <option value="distance">Distance</option>
         <option value="occupation">Occupation</option>
       </select>
-      <button id="saveToFile" class="control-btn">Enregistrer</button>
+      <button id="saveToFile" class="control-btn">Enregistrer les pixels</button>
       <button id="deleteBarony" class="control-btn">Supprimer</button>
       <button id="toggleMap" class="control-btn">Changer fond</button>
       <button id="selectBarony" class="control-btn">Sélectionner</button>
@@ -81,11 +81,11 @@
       <select id="editSeigneur"></select>
       <label for="editReligionPop">Religion population&nbsp;:</label>
       <select id="editReligionPop"></select>
-      <label><input type="checkbox" id="editSanctuary"> Sanctuaire</label>
-      <label><input type="checkbox" id="editPriory"> Prieuré</label>
-      <label><input type="checkbox" id="editChurch"> Église</label>
-      <label><input type="checkbox" id="editCathedral"> Cathédrale</label>
-      <label><input type="checkbox" id="editPlayer"> Joueur</label>
+      <label class="checkbox-label"><input type="checkbox" id="editSanctuary"> Sanctuaire</label>
+      <label class="checkbox-label"><input type="checkbox" id="editPriory"> Prieuré</label>
+      <label class="checkbox-label"><input type="checkbox" id="editChurch"> Église</label>
+      <label class="checkbox-label"><input type="checkbox" id="editCathedral"> Cathédrale</label>
+      <label class="checkbox-label"><input type="checkbox" id="editPlayer"> Joueur</label>
       <label for="editCulture">Culture&nbsp;:</label>
       <select id="editCulture"></select>
       <label for="editViscounty">Vicomté de jure&nbsp;:</label>
@@ -96,7 +96,6 @@
       <div id="canonicalList"></div>
       <select id="addCanonicalSelect"></select>
       <button id="addCanonical" class="control-btn">Ajouter</button>
-      <button id="updateBarony" class="control-btn">Mettre à jour</button>
     </aside>
     <div id="legend" class="legend" style="display:none;"></div>
   </main>
