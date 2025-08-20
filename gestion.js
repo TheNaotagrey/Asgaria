@@ -12,7 +12,15 @@ const luxuryResources = [
   ['encens', 'Encens'], ['vin', 'Vin'], ['pierre_precieuse', 'Pierres précieuses']
 ];
 
-const resourceLabels = Object.fromEntries([...basicResources, ...luxuryResources]);
+const extraResources = [
+  ['esclaves', 'Esclaves'], ['prestige', 'Prestige'], ['renommee', 'Renommée'],
+];
+const resourceLabels = Object.fromEntries([...basicResources, ...luxuryResources, ...extraResources]);
+const resourceSelect = Object.entries(resourceLabels).map(([id, name]) => ({ id, name }));
+const pageSelect = [{ id: 'magie', name: 'Magie' }];
+
+let buildingPropsSelect = [];
+let infraPropsSelect = [];
 
 let currentSpells = [];
 
@@ -81,6 +89,25 @@ async function adminUpdate(fields){
       body: JSON.stringify(payload)
     });
     if(res.ok){
+      await loadAndRender(currentSeigneurieId);
+    } else {
+      alert('Mise à jour impossible');
+    }
+  } catch {
+    alert('Mise à jour impossible');
+  }
+}
+
+async function adminUpdateBaronyProps(fields) {
+  const current = { ...gameState.baronyProps, ...fields };
+  if (!current.id) return;
+  try {
+    const res = await fetch(`/api/barony_properties/${current.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(current)
+    });
+    if (res.ok) {
       await loadAndRender(currentSeigneurieId);
     } else {
       alert('Mise à jour impossible');
@@ -160,7 +187,8 @@ async function loadAndRender(seigneurieId) {
       }
     });
     const bpMap = Object.fromEntries(allBuildingProps.map(b => [String(b.id), b]));
-      const infraProps = allInfraProps.filter(ip => {
+    buildingPropsSelect = allBuildingProps.map(b => ({ id: b.id, name: b.label || b.type }));
+    const infraProps = allInfraProps.filter(ip => {
         try {
           const arr = ip.absolute_restrictions ? JSON.parse(ip.absolute_restrictions) : [];
           if (Array.isArray(arr)) {
@@ -172,6 +200,7 @@ async function loadAndRender(seigneurieId) {
         }
       });
     const ipMap = Object.fromEntries(allInfraProps.map(b => [String(b.id), b]));
+    infraPropsSelect = allInfraProps.map(i => ({ id: i.id, name: i.label || i.type }));
 
     tagCounts = {};
     Object.entries(buildings).forEach(([bid, info]) => {
@@ -203,7 +232,7 @@ async function loadAndRender(seigneurieId) {
     const advancedSpellDiscountDetails = data.advancedSpellDiscountDetails || [];
     const spellRangeDetails = data.spellRangeDetails || [];
     const spellMaxDetails = data.spellMaxDetails || [];
-    gameState = { s, employment, buildings, infrastructures, bpMap, ipMap, buildingBonuses, buildingBonusDetails, spellSuccess, basicSpellDiscount, advancedSpellDiscount, spellRange, spellMax, spellsCast, spellSuccessDetails, basicSpellDiscountDetails, advancedSpellDiscountDetails, spellRangeDetails, spellMaxDetails, inv, capacities };
+    gameState = { s, employment, buildings, infrastructures, bpMap, ipMap, buildingBonuses, buildingBonusDetails, spellSuccess, basicSpellDiscount, advancedSpellDiscount, spellRange, spellMax, spellsCast, spellSuccessDetails, basicSpellDiscountDetails, advancedSpellDiscountDetails, spellRangeDetails, spellMaxDetails, inv, capacities, isAdmin, baronyProps };
 
     const summary = document.getElementById('summary');
     summary.innerHTML = `
@@ -526,7 +555,12 @@ async function loadAndRender(seigneurieId) {
 
     const propsDiv = document.getElementById('baronyProps');
     if (propsDiv) {
-      propsDiv.innerHTML = buildPropsTable(baronyProps);
+      propsDiv.innerHTML = buildPropsTable(baronyProps, isAdmin);
+      if (isAdmin) {
+        propsDiv.querySelectorAll('.prop-input').forEach(inp => inp.addEventListener('change', handlePropChange));
+        const btn = propsDiv.querySelector('#editEffectsBtn');
+        if (btn) btn.addEventListener('click', openEffectsEditor);
+      }
     }
   } catch (e) {
     document.getElementById('summary').textContent = 'Erreur de chargement';
@@ -913,6 +947,542 @@ function updateVarWorkers(el){
   prodCell.textContent = `${nb*per} ${res}`;
 }
 
+function handlePropChange(e) {
+  const field = e.target.dataset.field;
+  if (!field) return;
+  let value;
+  if (baronyPropBoolFields.includes(field)) {
+    value = e.target.value === '1' ? 1 : 0;
+  } else {
+    value = e.target.value;
+    value = value === '' ? null : parseInt(value, 10);
+  }
+  gameState.baronyProps[field] = value;
+  adminUpdateBaronyProps({ [field]: value });
+}
+
+function openEffectsEditor() {
+  const overlay = document.createElement('div');
+  overlay.className = 'popup-overlay';
+  const popup = document.createElement('div');
+  popup.className = 'popup';
+  const editor = makeEffectsInput(gameState.baronyProps.effects || '[]');
+  popup.appendChild(editor);
+  const btnRow = document.createElement('div');
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.textContent = 'Valider';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.textContent = 'Annuler';
+  btnRow.appendChild(saveBtn);
+  btnRow.appendChild(cancelBtn);
+  popup.appendChild(btnRow);
+  overlay.appendChild(popup);
+  document.body.appendChild(overlay);
+  cancelBtn.addEventListener('click', () => overlay.remove());
+  saveBtn.addEventListener('click', () => {
+    const val = editor.getValue();
+    gameState.baronyProps.effects = val;
+    adminUpdateBaronyProps({ effects: val });
+    overlay.remove();
+  });
+}
+
+function createCostEditor(val) {
+  const container = document.createElement('div');
+  const list = document.createElement('div');
+  container.appendChild(list);
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.textContent = '+';
+  container.appendChild(addBtn);
+  function addRow(res = '', qty = '') {
+    const row = document.createElement('div');
+    row.className = 'cost-row';
+    const sel = document.createElement('select');
+    const blank = document.createElement('option');
+    blank.value = '';
+    sel.appendChild(blank);
+    resourceSelect.forEach(o => {
+      const op = document.createElement('option');
+      op.value = o.id;
+      op.textContent = o.name;
+      if (o.id === res) op.selected = true;
+      sel.appendChild(op);
+    });
+    const qtyInput = document.createElement('input');
+    qtyInput.type = 'number';
+    qtyInput.min = '0';
+    qtyInput.value = qty;
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.textContent = '-';
+    removeBtn.addEventListener('click', () => row.remove());
+    row.appendChild(sel);
+    row.appendChild(qtyInput);
+    row.appendChild(removeBtn);
+    list.appendChild(row);
+  }
+  addBtn.addEventListener('click', () => addRow());
+  try {
+    const obj = JSON.parse(val || '{}');
+    const entries = Object.entries(obj);
+    if (entries.length) {
+      entries.forEach(([r, q]) => addRow(r, q));
+    } else {
+      addRow();
+    }
+  } catch (e) {
+    addRow();
+  }
+  container.getValue = () => {
+    const res = {};
+    list.querySelectorAll('.cost-row').forEach(rw => {
+      const k = rw.querySelector('select').value;
+      const q = parseInt(rw.querySelector('input[type="number"]').value, 10);
+      if (k && q) {
+        res[k] = q;
+      }
+    });
+    return JSON.stringify(res);
+  };
+  return container;
+}
+
+function openInstantProductionPopup(initial, onSave) {
+  const overlay = document.createElement('div');
+  overlay.className = 'popup-overlay';
+  const popup = document.createElement('div');
+  popup.className = 'popup';
+
+  const resDiv = document.createElement('div');
+  const resLabel = document.createElement('label');
+  resLabel.textContent = 'Ressource';
+  const resSel = document.createElement('select');
+  const blank = document.createElement('option');
+  blank.value = '';
+  resSel.appendChild(blank);
+  resourceSelect.forEach(o => {
+    const op = document.createElement('option');
+    op.value = o.id;
+    op.textContent = o.name;
+    if (initial.resource === o.id) op.selected = true;
+    resSel.appendChild(op);
+  });
+  resDiv.appendChild(resLabel);
+  resDiv.appendChild(resSel);
+
+  const amtDiv = document.createElement('div');
+  const amtLabel = document.createElement('label');
+  amtLabel.textContent = 'Quantité';
+  const amtInput = document.createElement('input');
+  amtInput.type = 'number';
+  amtInput.min = '0';
+  amtInput.value = initial.amount ?? '';
+  amtDiv.appendChild(amtLabel);
+  amtDiv.appendChild(amtInput);
+
+  const usesDiv = document.createElement('div');
+  const usesLabel = document.createElement('label');
+  usesLabel.textContent = 'Utilisations/mois';
+  const usesInput = document.createElement('input');
+  usesInput.type = 'number';
+  usesInput.min = '0';
+  usesInput.value = initial.uses_per_month ?? '';
+  usesDiv.appendChild(usesLabel);
+  usesDiv.appendChild(usesInput);
+
+  const costDiv = document.createElement('div');
+  const costLabel = document.createElement('label');
+  costLabel.textContent = 'Coûts';
+  const costEditor = createCostEditor(initial.costs ? JSON.stringify(initial.costs) : '{}');
+  costDiv.appendChild(costLabel);
+  costDiv.appendChild(costEditor);
+
+  popup.appendChild(resDiv);
+  popup.appendChild(amtDiv);
+  popup.appendChild(usesDiv);
+  popup.appendChild(costDiv);
+
+  const btnRow = document.createElement('div');
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.textContent = 'Valider';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.textContent = 'Annuler';
+  btnRow.appendChild(saveBtn);
+  btnRow.appendChild(cancelBtn);
+  popup.appendChild(btnRow);
+
+  overlay.appendChild(popup);
+  document.body.appendChild(overlay);
+
+  cancelBtn.addEventListener('click', () => overlay.remove());
+  saveBtn.addEventListener('click', () => {
+    let costs = {};
+    try {
+      costs = JSON.parse(costEditor.getValue() || '{}');
+    } catch (e) {
+      costs = {};
+    }
+    onSave({
+      resource: resSel.value,
+      amount: parseInt(amtInput.value, 10) || 0,
+      uses_per_month: parseInt(usesInput.value, 10) || 0,
+      costs,
+    });
+    overlay.remove();
+  });
+}
+
+function openVariableWorkersPopup(initial, onSave) {
+  const overlay = document.createElement('div');
+  overlay.className = 'popup-overlay';
+  const popup = document.createElement('div');
+  popup.className = 'popup';
+
+  const resDiv = document.createElement('div');
+  const resLabel = document.createElement('label');
+  resLabel.textContent = 'Ressource';
+  const resSel = document.createElement('select');
+  const blank = document.createElement('option');
+  blank.value = '';
+  resSel.appendChild(blank);
+  resourceSelect.forEach(o => {
+    const op = document.createElement('option');
+    op.value = o.id;
+    op.textContent = o.name;
+    if (initial.resource === o.id) op.selected = true;
+    resSel.appendChild(op);
+  });
+  resDiv.appendChild(resLabel);
+  resDiv.appendChild(resSel);
+
+  const amtDiv = document.createElement('div');
+  const amtLabel = document.createElement('label');
+  amtLabel.textContent = 'Production / travailleur';
+  const amtInput = document.createElement('input');
+  amtInput.type = 'number';
+  amtInput.min = '0';
+  amtInput.value = initial.amount ?? '';
+  amtDiv.appendChild(amtLabel);
+  amtDiv.appendChild(amtInput);
+
+  const maxDiv = document.createElement('div');
+  const maxLabel = document.createElement('label');
+  maxLabel.textContent = 'Max travailleurs';
+  const maxInput = document.createElement('input');
+  maxInput.type = 'number';
+  maxInput.min = '0';
+  maxInput.value = initial.max_workers ?? '';
+  maxDiv.appendChild(maxLabel);
+  maxDiv.appendChild(maxInput);
+
+  popup.appendChild(resDiv);
+  popup.appendChild(amtDiv);
+  popup.appendChild(maxDiv);
+
+  const btnRow = document.createElement('div');
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.textContent = 'Valider';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.textContent = 'Annuler';
+  btnRow.appendChild(saveBtn);
+  btnRow.appendChild(cancelBtn);
+  popup.appendChild(btnRow);
+
+  overlay.appendChild(popup);
+  document.body.appendChild(overlay);
+
+  cancelBtn.addEventListener('click', () => overlay.remove());
+  saveBtn.addEventListener('click', () => {
+    onSave({
+      resource: resSel.value,
+      amount: parseInt(amtInput.value, 10) || 0,
+      max_workers: parseInt(maxInput.value, 10) || 0,
+    });
+    overlay.remove();
+  });
+}
+
+function makeEffectsInput(val) {
+  const container = document.createElement('div');
+  const list = document.createElement('div');
+  container.appendChild(list);
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.textContent = '+';
+  container.appendChild(addBtn);
+  function addRow(type = '', data = {}) {
+    const row = document.createElement('div');
+    row.className = 'effect-row';
+    const typeSel = document.createElement('select');
+    typeSel.dataset.role = 'type';
+    const blank = document.createElement('option');
+    blank.value = '';
+    typeSel.appendChild(blank);
+    let typeOptions = [
+      {id:'storage', name:'Stockage'},
+      {id:'production', name:'Production ressource'},
+      {id:'building_production', name:'Prod. bâtiment'},
+      {id:'infra_production', name:'Mult. infrastructure'},
+      {id:'idh', name:'IDH'},
+      {id:'instant_production', name:'Prod. instantanée'},
+      {id:'variable_workers', name:'Travailleurs variables'},
+      {id:'unlock_page', name:'Débloque page'},
+      {id:'spell_success', name:'Réussite de sort'},
+      {id:'spell_basic_discount', name:'Réduc. sort basique'},
+      {id:'spell_advanced_discount', name:'Réduc. sort avancé'},
+      {id:'spell_range', name:'Portée des sorts'},
+      {id:'spell_max_per_month', name:'Sorts max/mois'},
+      {id:'variable_production', name:'Production ressource variable'},
+      {id:'random_luxury', name:'Ressource de luxe aléatoire'}
+    ];
+    typeOptions.forEach(o=>{
+      const op = document.createElement('option');
+      op.value = o.id;
+      op.textContent = o.name;
+      if(o.id === type) op.selected = true;
+      typeSel.appendChild(op);
+    });
+    const targetSel = document.createElement('select');
+    targetSel.dataset.role = 'target';
+    const pageSel = document.createElement('select');
+    pageSel.dataset.role = 'page';
+    const blankPage = document.createElement('option');
+    blankPage.value = '';
+    pageSel.appendChild(blankPage);
+    pageSelect.forEach(o=>{
+      const op = document.createElement('option');
+      op.value = o.id;
+      op.textContent = o.name;
+      pageSel.appendChild(op);
+    });
+    const qty = document.createElement('input');
+    qty.type = 'number';
+    qty.min = '0';
+    qty.step = 'any';
+    qty.dataset.role = 'qty';
+    const maxInput = document.createElement('input');
+    maxInput.type = 'number';
+    maxInput.min = '0';
+    maxInput.dataset.role = 'max';
+    const dataInput = document.createElement('input');
+    dataInput.type = 'hidden';
+    dataInput.dataset.role = 'data';
+    const summarySpan = document.createElement('span');
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.textContent = 'Définir';
+
+    function updateSummary(){
+      summarySpan.textContent = '';
+      try{
+        const d = JSON.parse(dataInput.value || '{}');
+        if(typeSel.value === 'instant_production'){
+          if(d.resource && d.amount){
+            const resObj = resourceSelect.find(r=>r.id === d.resource);
+            const costCount = d.costs ? Object.keys(d.costs).length : 0;
+            summarySpan.textContent = `${d.amount} ${resObj ? resObj.name : d.resource}` +
+              (d.uses_per_month ? `, ${d.uses_per_month}/mois` : '') +
+              (costCount ? `, coûts: ${costCount}` : '');
+          }
+        }else if(typeSel.value === 'variable_workers'){
+          if(d.resource && d.amount && d.max_workers != null){
+            const resObj = resourceSelect.find(r=>r.id === d.resource);
+            summarySpan.textContent = `${d.amount} ${resObj ? resObj.name : d.resource} /travailleur, max ${d.max_workers}`;
+          }
+        }
+      }catch(e){
+        summarySpan.textContent = '';
+      }
+    }
+
+    editBtn.addEventListener('click', ()=>{
+      let init = {};
+      try{ init = JSON.parse(dataInput.value || '{}'); }catch(e){ init = {}; }
+      if(typeSel.value === 'instant_production'){
+        openInstantProductionPopup(init, d=>{ dataInput.value = JSON.stringify(d); updateSummary(); });
+      }else if(typeSel.value === 'variable_workers'){
+        openVariableWorkersPopup(init, d=>{ dataInput.value = JSON.stringify(d); updateSummary(); });
+      }
+    });
+
+    function populateFields(){
+      targetSel.innerHTML = '';
+      const blankRes = document.createElement('option');
+      blankRes.value = '';
+      targetSel.appendChild(blankRes);
+      targetSel.style.display = 'none';
+      pageSel.style.display = 'none';
+      qty.style.display = 'none';
+      maxInput.style.display = 'none';
+      summarySpan.style.display = 'none';
+      editBtn.style.display = 'none';
+      if(typeSel.value === 'building_production'){
+        buildingPropsSelect.forEach(o=>{
+          const op = document.createElement('option');
+          op.value = o.id;
+          op.textContent = o.name;
+          if(String(o.id) === String(data.building)) op.selected = true;
+          targetSel.appendChild(op);
+        });
+        targetSel.style.display = '';
+        qty.style.display = '';
+      }else if(typeSel.value === 'infra_production'){
+        infraPropsSelect.forEach(o=>{
+          const op = document.createElement('option');
+          op.value = o.id;
+          op.textContent = o.name;
+          if(String(o.id) === String(data.infrastructure)) op.selected = true;
+          targetSel.appendChild(op);
+        });
+        targetSel.style.display = '';
+        qty.style.display = '';
+      }else if(typeSel.value === 'instant_production'){
+        summarySpan.style.display = '';
+        editBtn.style.display = '';
+        if(data.resource){ dataInput.value = JSON.stringify(data); updateSummary(); }
+        else { dataInput.value = ''; updateSummary(); }
+      }else if(typeSel.value === 'variable_workers'){
+        summarySpan.style.display = '';
+        editBtn.style.display = '';
+        if(data.resource){ dataInput.value = JSON.stringify(data); updateSummary(); }
+        else { dataInput.value = ''; updateSummary(); }
+      }else if(typeSel.value === 'variable_production'){
+        resourceSelect.forEach(o=>{
+          const op = document.createElement('option');
+          op.value = o.id;
+          op.textContent = o.name;
+          if(String(o.id) === String(data.resource)) op.selected = true;
+          targetSel.appendChild(op);
+        });
+        targetSel.style.display = '';
+        qty.style.display = '';
+        maxInput.style.display = '';
+        qty.placeholder = 'Ratio';
+        maxInput.placeholder = 'Max';
+        qty.value = data.ratio ?? '';
+        maxInput.value = data.max ?? '';
+        return;
+      }else if(typeSel.value === 'random_luxury'){
+        qty.style.display = '';
+        qty.placeholder = 'Quantité';
+        qty.value = data.amount ?? '';
+        return;
+      }else if(['idh','spell_success','spell_basic_discount','spell_advanced_discount','spell_range','spell_max_per_month'].includes(typeSel.value)){
+        qty.style.display = '';
+      }else if(typeSel.value === 'unlock_page'){
+        pageSel.style.display = '';
+        pageSel.value = data.page || '';
+      }else{
+        resourceSelect.forEach(o=>{
+          const op = document.createElement('option');
+          op.value = o.id;
+          op.textContent = o.name;
+          if(String(o.id) === String(data.resource)) op.selected = true;
+          targetSel.appendChild(op);
+        });
+        targetSel.style.display = '';
+        qty.style.display = '';
+      }
+      qty.placeholder = '';
+      maxInput.placeholder = '';
+      qty.value = data.amount ?? '';
+    }
+    populateFields();
+    typeSel.addEventListener('change', ()=>{
+      data = {};
+      populateFields();
+      if(typeSel.value === 'instant_production' || typeSel.value === 'variable_workers') editBtn.click();
+    });
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.textContent = '-';
+    removeBtn.addEventListener('click', ()=> row.remove());
+    row.appendChild(typeSel);
+    row.appendChild(targetSel);
+    row.appendChild(pageSel);
+    row.appendChild(qty);
+    row.appendChild(maxInput);
+    row.appendChild(summarySpan);
+    row.appendChild(editBtn);
+    row.appendChild(dataInput);
+    row.appendChild(removeBtn);
+    list.appendChild(row);
+  }
+  addBtn.addEventListener('click', ()=> addRow());
+  try{
+    const arr = JSON.parse(val || '[]');
+    if(Array.isArray(arr) && arr.length){
+      arr.forEach(e=> addRow(e.type, e));
+    }else{
+      addRow();
+    }
+  }catch(e){
+    addRow();
+  }
+  container.getValue = ()=>{
+    const res = [];
+    list.querySelectorAll('.effect-row').forEach(rw=>{
+      const type = rw.querySelector('select[data-role="type"]').value;
+      if(type === 'instant_production'){
+        let data = {};
+        try{ data = JSON.parse(rw.querySelector('input[data-role="data"]').value || '{}'); }catch(e){ data = {}; }
+        if(data.resource && data.amount){
+          res.push({type, resource: data.resource, amount: data.amount, uses_per_month: data.uses_per_month || 0, costs: data.costs || {}});
+        }
+      }else if(type === 'variable_workers'){
+        let data = {};
+        try{ data = JSON.parse(rw.querySelector('input[data-role="data"]').value || '{}'); }catch(e){ data = {}; }
+        if(data.resource && data.amount && data.max_workers != null){
+          res.push({type, resource: data.resource, amount: data.amount, max_workers: data.max_workers});
+        }
+      }else if(type === 'variable_production'){
+        const resource = rw.querySelector('select[data-role="target"]').value;
+        const ratio = parseFloat(rw.querySelector('input[data-role="qty"]').value);
+        const max = parseInt(rw.querySelector('input[data-role="max"]').value,10);
+        if(resource && !isNaN(ratio) && !isNaN(max)){
+          res.push({type, resource, ratio, max});
+        }
+      }else if(type === 'random_luxury'){
+        const amt = parseInt(rw.querySelector('input[data-role="qty"]').value,10);
+        if(!isNaN(amt)){
+          res.push({type, amount: amt});
+        }
+      }else if(['idh','spell_success','spell_basic_discount','spell_advanced_discount','spell_range','spell_max_per_month'].includes(type)){
+        const amt = parseInt(rw.querySelector('input[data-role="qty"]').value,10);
+        if(type && !isNaN(amt)){
+          res.push({ type, amount: amt });
+        }
+      }else if(type === 'unlock_page'){
+        const page = rw.querySelector('select[data-role="page"]').value;
+        if(page){
+          res.push({type, page});
+        }
+      }else{
+        const target = rw.querySelector('select[data-role="target"]').value;
+        const amt = parseInt(rw.querySelector('input[data-role="qty"]').value,10);
+        if(type && target && amt){
+          if(type === 'building_production'){
+            res.push({type, building: target, amount: amt});
+          }else if(type === 'infra_production'){
+            res.push({type, infrastructure: target, amount: amt});
+          }else{
+            res.push({type, resource: target, amount: amt});
+          }
+        }
+      }
+    });
+    return JSON.stringify(res);
+  };
+  return container;
+}
+
 function buildTable(list, showMax = false, inv = {}, production = {}, productionDetails = {}, capacity = {}, editable = false) {
   const {
     buildings = {},
@@ -999,16 +1569,79 @@ function formatRestriction(name, qty) {
   return `Avoir au moins ${qty} ${name}`;
 }
 
-function buildPropsTable(props) {
+function formatEffectText(e) {
+  if (!e || typeof e !== 'object') return '';
+  switch (e.type) {
+    case 'storage':
+      return `Stockage +${e.amount} ${resourceLabels[e.resource] || e.resource}`;
+    case 'production':
+      return `+${e.amount} ${resourceLabels[e.resource] || e.resource}`;
+    case 'building_production': {
+      const bp = gameState.bpMap ? gameState.bpMap[String(e.building)] : null;
+      const lbl = bp ? (bp.label || bp.type) : e.building;
+      return `+${e.amount} ${lbl}`;
+    }
+    case 'infra_production': {
+      const ip = gameState.ipMap ? gameState.ipMap[String(e.infrastructure)] : null;
+      const lbl = ip ? (ip.label || ip.type) : e.infrastructure;
+      return `x${e.multiplier || e.amount} ${lbl}`;
+    }
+    case 'idh':
+      return `IDH +${e.amount}`;
+    case 'instant_production':
+      return `${e.amount} ${resourceLabels[e.resource] || e.resource}`;
+    case 'variable_workers':
+      return `${e.amount} ${resourceLabels[e.resource] || e.resource}/travailleur`;
+    case 'unlock_page':
+      return `Débloque ${e.page}`;
+    case 'spell_success':
+      return `Réussite sort +${e.amount}%`;
+    case 'spell_basic_discount':
+      return `Réduc. sort basique +${e.amount}%`;
+    case 'spell_advanced_discount':
+      return `Réduc. sort avancé +${e.amount}%`;
+    case 'spell_range':
+      return `Portée sort +${e.amount}`;
+    case 'spell_max_per_month':
+      return `Sorts max +${e.amount}/mois`;
+    case 'variable_production':
+      return `Production ${resourceLabels[e.resource] || e.resource} ratio ${e.ratio} max ${e.max}`;
+    case 'random_luxury':
+      return `+${e.amount} ressource de luxe aléatoire`;
+    default:
+      return e.type || '';
+  }
+}
+
+function buildPropsTable(props, isAdmin) {
+  const effects = safeParse(props.effects, []);
+  const effectText = effects.map(formatEffectText).filter(Boolean).join(', ');
   let html = '<table class="admin-table"><tr><th>Propriété</th><th>Valeur</th></tr>';
   for (const [key, label] of Object.entries(baronyPropLabels)) {
+    if (key === 'effects') continue;
     let val = props[key];
-    if (baronyPropBoolFields.includes(key)) {
-      val = val ? 'Oui' : 'Non';
-    } else if (val === undefined || val === null) {
-      val = '';
+    if (isAdmin) {
+      if (baronyPropBoolFields.includes(key)) {
+        const yesSel = val ? 'selected' : '';
+        const noSel = !val ? 'selected' : '';
+        html += `<tr><td>${label}</td><td><select class="prop-input" data-field="${key}"><option value="1" ${yesSel}>Oui</option><option value="0" ${noSel}>Non</option></select></td></tr>`;
+      } else {
+        const v = val !== undefined && val !== null ? val : '';
+        html += `<tr><td>${label}</td><td><input type="number" class="prop-input" data-field="${key}" value="${v}"></td></tr>`;
+      }
+    } else {
+      if (baronyPropBoolFields.includes(key)) {
+        val = val ? 'Oui' : 'Non';
+      } else if (val === undefined || val === null) {
+        val = '';
+      }
+      html += `<tr><td>${label}</td><td>${val}</td></tr>`;
     }
-    html += `<tr><td>${label}</td><td>${val}</td></tr>`;
+  }
+  if (isAdmin) {
+    html += `<tr><td>Autres bonus</td><td><span id="effectsSummary">${effectText}</span> <button id="editEffectsBtn">Modifier</button></td></tr>`;
+  } else {
+    html += `<tr><td>Autres bonus</td><td>${effectText}</td></tr>`;
   }
   html += '</table>';
   return html;
