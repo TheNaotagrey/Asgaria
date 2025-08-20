@@ -14,6 +14,8 @@ const luxuryResources = [
 
 const resourceLabels = Object.fromEntries([...basicResources, ...luxuryResources]);
 
+let currentSpells = [];
+
 const baronyPropBoolFields = ['water_access','sea_access','has_or','has_argent','has_fer','has_pierre','has_epices','has_perle','has_encens','has_huiles','has_pierre_precieuses','has_soie','has_sel','has_fourrure','has_teinture','has_ivoire','has_vin'];
 const baronyPropLabels = {
   water_access:"Accès à l'eau",
@@ -878,10 +880,12 @@ function buildPropsTable(props) {
 
 async function castSpell(id) {
   try {
+    const qtyInput = document.querySelector(`input.spell-qty[data-id="${id}"]`);
+    const amount = qtyInput ? parseInt(qtyInput.value, 10) || 0 : 0;
     const resp = await fetch('/api/cast_spell', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id })
+      body: JSON.stringify({ id, amount })
     });
     if (resp.ok) {
       const data = await resp.json();
@@ -911,6 +915,7 @@ function renderSpellInfo() {
 }
 
 function renderSpells(spells) {
+  currentSpells = spells;
   const container = document.getElementById('spellList');
   if (!container) return;
   const rows = spells.filter(s => s.type === 'base').map(s => {
@@ -924,6 +929,7 @@ function renderSpells(spells) {
       }).join(', ');
     } catch {}
     let effStr = '';
+    let qtyField = '';
     try {
       const effs = JSON.parse(s.effects || '[]');
       effStr = effs.map(e => {
@@ -936,12 +942,19 @@ function renderSpells(spells) {
         if (e.type === 'idh') {
           return `IDH ${e.amount}`;
         }
+        if (e.type === 'variable_production') {
+          qtyField = `<input type="number" class="spell-qty" data-id="${s.id}" min="1" ${e.max ? `max="${e.max}"` : ''}>`;
+          return `Jusqu'à ${e.max} ${resourceLabels[e.resource] || e.resource} (${e.ratio} / PM)`;
+        }
+        if (e.type === 'random_luxury') {
+          return `${e.amount} ressource de luxe aléatoire`;
+        }
         return e.type;
       }).join(', ');
     } catch {}
-    return `<tr><td>${s.label}</td><td>${costStr}</td><td>${effStr}</td><td><button class="cast-spell" data-id="${s.id}">Lancer</button></td></tr>`;
+    return `<tr><td>${s.label}</td><td>${costStr}</td><td>${effStr}</td><td>${qtyField}</td><td><button class="cast-spell" data-id="${s.id}">Lancer</button></td></tr>`;
   }).join('');
-  container.innerHTML = `<table class="admin-table"><tr><th>Nom</th><th>Coût</th><th>Effets</th><th></th></tr>${rows}</table>`;
+  container.innerHTML = `<table class="admin-table"><tr><th>Nom</th><th>Coût</th><th>Effets</th><th>Quantité</th><th></th></tr>${rows}</table>`;
   container.querySelectorAll('button.cast-spell').forEach(btn => {
     btn.addEventListener('click', () => castSpell(btn.dataset.id));
   });

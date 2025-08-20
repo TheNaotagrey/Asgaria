@@ -6,6 +6,7 @@ const session = require('express-session');
 const SQLiteStore = require('connect-sqlite3')(session);
 const bcrypt = require('bcryptjs');
 const { inventaireFields, performTransaction } = require('./transactions');
+const luxuryResources = ['fourrure','ivoire','soie','huile','teinture','epices','sel','perle','encens','vin','pierre_precieuse'];
 const logger = require('./logger');
 const handleError = require('./handleError');
 const { consumeResources } = require('./services/buildingService');
@@ -1091,6 +1092,7 @@ app.post('/api/cast_spell', (req,res)=>{
   if (!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
   const spellId = parseInt(req.body.id, 10);
   if (!spellId) return res.status(400).json({ error: 'ID invalide' });
+  const requestedAmount = parseInt(req.body.amount, 10) || 0;
   const userId = req.session.user.id;
   db.get('SELECT seigneuries.id, seigneuries.baronnie_id, seigneuries.buildings, seigneuries.infrastructures, seigneuries.spells_cast, seigneuries.spell_month FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?', [userId], (err, srow) => {
     if (err) return handleError(res, err);
@@ -1159,17 +1161,39 @@ app.post('/api/cast_spell', (req,res)=>{
           if (discount) {
             costs = Object.fromEntries(Object.entries(costs).map(([r,a]) => [r, Math.round(a * (100 - discount) / 100)]));
           }
+          const effDefs = safeParse(spell.effects, []);
+          let chosenAmount = 0;
+          const varEff = effDefs.find(e => e.type === 'variable_production');
+          if (varEff && requestedAmount > 0) {
+            const ratio = varEff.ratio || 1;
+            const max = varEff.max || 0;
+            chosenAmount = Math.min(requestedAmount, max || requestedAmount);
+            const pmCost = Math.ceil(chosenAmount / ratio);
+            costs.points_magique = (costs.points_magique || 0) + pmCost;
+          }
           consumeResources(db, seigneurieId, costs, err5 => {
             if (err5) return handleError(res, err5);
             const successChance = 75 + (effectCtx.spellSuccessBonus || 0);
             const success = Math.random() * 100 < successChance;
-            const effects = success ? safeParse(spell.effects, []) : [];
+            const effects = success ? effDefs : [];
             let idx = 0;
             function applyNext() {
               if (idx >= effects.length) return finish();
               const e = effects[idx++];
               if (e.type === 'production') {
                 performTransaction(db, seigneurieId, e.resource, e.amount || 0, err6 => {
+                  if (err6) return handleError(res, err6);
+                  applyNext();
+                });
+              } else if (e.type === 'variable_production') {
+                if (!chosenAmount) return applyNext();
+                performTransaction(db, seigneurieId, e.resource, chosenAmount, err6 => {
+                  if (err6) return handleError(res, err6);
+                  applyNext();
+                });
+              } else if (e.type === 'random_luxury') {
+                const resName = luxuryResources[Math.floor(Math.random()*luxuryResources.length)];
+                performTransaction(db, seigneurieId, resName, e.amount || 0, err6 => {
                   if (err6) return handleError(res, err6);
                   applyNext();
                 });
