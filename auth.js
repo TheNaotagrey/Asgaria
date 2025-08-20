@@ -54,7 +54,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   if (user && controls && authArea) {
-    if (user.is_admin && current !== 'admin.html') {
+    const adminActive = user.is_admin && user.act_as_admin !== false;
+    if (adminActive && current !== 'admin.html') {
       const adminBtn = document.createElement('button');
       adminBtn.className = 'control-btn';
       adminBtn.textContent = 'Admin';
@@ -68,7 +69,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       gestionBtn.onclick = () => location.href = 'gestion.html';
       controls.insertBefore(gestionBtn, authArea);
     }
-    if (current !== 'mapEditor.html') {
+    if (adminActive && current !== 'mapEditor.html') {
       const editorBtn = document.createElement('button');
       editorBtn.className = 'control-btn';
       editorBtn.textContent = 'Éditeur';
