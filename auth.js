@@ -11,7 +11,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   const user = await getCurrentUser();
   const params = new URLSearchParams(window.location.search);
   const authArea = document.getElementById('authArea');
-  const controls = document.getElementById('controls');
   const authDialog = document.getElementById('authDialog');
   const current = location.pathname.split('/').pop();
 
@@ -45,36 +44,44 @@ document.addEventListener('DOMContentLoaded', async () => {
     authArea.appendChild(logoutBtn);
   }
 
-  if (controls && authArea && current !== 'index.html') {
+  const navButtons = [];
+
+  if (authArea && current !== 'index.html') {
     const mapBtn = document.createElement('button');
     mapBtn.className = 'control-btn';
     mapBtn.textContent = 'Carte';
     mapBtn.onclick = () => location.href = 'index.html';
-    controls.insertBefore(mapBtn, authArea);
+    navButtons.push(mapBtn);
   }
 
-  if (user && controls && authArea) {
+  if (user && authArea) {
     if (user.is_admin && current !== 'admin.html') {
       const adminBtn = document.createElement('button');
       adminBtn.className = 'control-btn';
       adminBtn.textContent = 'Admin';
       adminBtn.onclick = () => location.href = 'admin.html';
-      controls.insertBefore(adminBtn, authArea);
+      navButtons.push(adminBtn);
     }
     if (current !== 'gestion.html') {
       const gestionBtn = document.createElement('button');
       gestionBtn.className = 'control-btn';
       gestionBtn.textContent = 'Gestion';
       gestionBtn.onclick = () => location.href = 'gestion.html';
-      controls.insertBefore(gestionBtn, authArea);
+      navButtons.push(gestionBtn);
     }
     if (current !== 'mapEditor.html') {
       const editorBtn = document.createElement('button');
       editorBtn.className = 'control-btn';
       editorBtn.textContent = 'Éditeur';
       editorBtn.onclick = () => location.href = 'mapEditor.html';
-      controls.insertBefore(editorBtn, authArea);
+      navButtons.push(editorBtn);
     }
+  }
+
+  if (authArea && navButtons.length) {
+    const fragment = document.createDocumentFragment();
+    navButtons.forEach(btn => fragment.appendChild(btn));
+    authArea.insertBefore(fragment, authArea.firstChild);
   }
 
   const loginForm = document.getElementById('loginForm');
