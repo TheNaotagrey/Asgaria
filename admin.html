@@ -34,51 +34,66 @@
       </div>
       <div class="tab-panels">
         <div id="tab-seigneurs" class="tab-panel active">
+          <div class="tab-loading" style="display:none">Chargement...</div>
           <div id="tableSeigneurs"></div>
         </div>
         <div id="tab-religions" class="tab-panel">
+          <div class="tab-loading" style="display:none">Chargement...</div>
           <div id="tableReligions"></div>
         </div>
         <div id="tab-cultures" class="tab-panel">
+          <div class="tab-loading" style="display:none">Chargement...</div>
           <div id="tableCultures"></div>
         </div>
         <div id="tab-empires" class="tab-panel">
+          <div class="tab-loading" style="display:none">Chargement...</div>
           <div id="tableEmpires"></div>
         </div>
         <div id="tab-kingdoms" class="tab-panel">
+          <div class="tab-loading" style="display:none">Chargement...</div>
           <div id="tableKingdoms"></div>
         </div>
         <div id="tab-archduchies" class="tab-panel">
+          <div class="tab-loading" style="display:none">Chargement...</div>
           <div id="tableArchduchies"></div>
         </div>
         <div id="tab-duchies" class="tab-panel">
+          <div class="tab-loading" style="display:none">Chargement...</div>
           <div id="tableDuchies"></div>
         </div>
         <div id="tab-marquisates" class="tab-panel">
+          <div class="tab-loading" style="display:none">Chargement...</div>
           <div id="tableMarquisates"></div>
         </div>
         <div id="tab-counties" class="tab-panel">
+          <div class="tab-loading" style="display:none">Chargement...</div>
           <div id="tableCounties"></div>
         </div>
         <div id="tab-viscounties" class="tab-panel">
+          <div class="tab-loading" style="display:none">Chargement...</div>
           <div id="tableViscounties"></div>
         </div>
         <div id="tab-seigneuries" class="tab-panel">
+          <div class="tab-loading" style="display:none">Chargement...</div>
           <div id="tableSeigneuries"></div>
         </div>
         <div id="tab-batiments" class="tab-panel">
+          <div class="tab-loading" style="display:none">Chargement...</div>
           <h2>Production</h2>
           <div id="tableBuildingProps"></div>
           <h2>Infrastructures Civiles</h2>
           <div id="tableInfraProps"></div>
         </div>
         <div id="tab-spells" class="tab-panel">
+          <div class="tab-loading" style="display:none">Chargement...</div>
           <div id="tableSpells"></div>
         </div>
         <div id="tab-tags" class="tab-panel">
+          <div class="tab-loading" style="display:none">Chargement...</div>
           <div id="tableTags"></div>
         </div>
         <div id="tab-baronyprops" class="tab-panel">
+          <div class="tab-loading" style="display:none">Chargement...</div>
           <div id="tableBaronyProps"></div>
         </div>
       </div>
@@ -86,19 +101,5 @@
   </main>
   <script src="auth.js"></script>
   <script src="admin.js"></script>
-  <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      const buttons = document.querySelectorAll('.tab-btn');
-      const panels = document.querySelectorAll('.tab-panel');
-      buttons.forEach(btn => {
-        btn.addEventListener('click', () => {
-          buttons.forEach(b => b.classList.remove('active'));
-          panels.forEach(p => p.classList.remove('active'));
-          btn.classList.add('active');
-          document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
-        });
-      });
-    });
-  </script>
 </body>
 </html>
