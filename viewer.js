@@ -598,7 +598,13 @@
           const hue = Math.floor(Math.random() * 360);
           col = hslToRgb(hue, 65, 65);
         } else {
-          if (type === 'religion') {
+          if (
+            type === 'religion' ||
+            type === 'sanctuary' ||
+            type === 'priory' ||
+            type === 'church' ||
+            type === 'cathedral'
+          ) {
             col = hexToRgb(religionMap[groupId]?.color);
           } else if (type === 'culture') {
             col = hexToRgb(cultureMapInfo[groupId]?.color);
