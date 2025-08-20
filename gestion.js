@@ -48,6 +48,7 @@ let gameState = {};
 let tagLabels = {};
 let tagCounts = {};
 let currentUser = null;
+let currentSeigneurieId = null;
 
 function showConfirm(message){
   return new Promise(resolve => {
@@ -80,7 +81,7 @@ async function adminUpdate(fields){
       body: JSON.stringify(payload)
     });
     if(res.ok){
-      await loadAndRender();
+      await loadAndRender(currentSeigneurieId);
     } else {
       alert('Mise à jour impossible');
     }
@@ -98,13 +99,17 @@ async function init() {
   } catch {
     currentUser = null;
   }
-  await loadAndRender();
+  const params = new URLSearchParams(location.search);
+  const sid = params.get('seigneurie_id');
+  await loadAndRender(sid);
+  await setupAdminSelector(sid);
 }
 
-async function loadAndRender() {
+async function loadAndRender(seigneurieId) {
+  currentSeigneurieId = seigneurieId || null;
   try {
     const [res, bRes, iRes, tRes] = await Promise.all([
-      fetch('/api/my_seigneurie'),
+      fetch(`/api/my_seigneurie${seigneurieId ? `?seigneurie_id=${seigneurieId}` : ''}`),
       fetch('/api/building_properties'),
       fetch('/api/infrastructure_properties'),
       fetch('/api/tags')
@@ -287,7 +292,7 @@ async function loadAndRender() {
             body: JSON.stringify({ tax_rate: rate })
           });
           if (!res.ok) throw new Error('Erreur');
-          await loadAndRender();
+          await loadAndRender(currentSeigneurieId);
         } catch (err) {
           alert('Erreur lors de la mise à jour des taxes');
         }
@@ -543,7 +548,7 @@ async function handleBuildingTableClick(e) {
       console.log('[build] Réponse du serveur', resp.status);
       if (resp.ok) {
         console.log('[build] Construction réussie');
-        await loadAndRender();
+        await loadAndRender(currentSeigneurieId);
       } else {
         const msg = await resp.text().catch(() => '');
         console.warn('[build] Construction refusée', resp.status, msg);
@@ -564,7 +569,7 @@ async function handleBuildingTableClick(e) {
         body: JSON.stringify({ id })
       });
       if (resp.ok) {
-        await loadAndRender();
+        await loadAndRender(currentSeigneurieId);
       } else {
         const msg = await resp.text().catch(() => '');
         alert('Destruction impossible');
@@ -598,7 +603,7 @@ async function handleBuildingActivationChange(e) {
       });
       console.log('[build] Activation réponse', resp.status);
       if (resp.ok) {
-        await loadAndRender();
+        await loadAndRender(currentSeigneurieId);
       } else {
         const msg = await resp.text().catch(() => '');
         console.warn('[build] Activation refusée', resp.status, msg);
@@ -627,7 +632,7 @@ async function handleInfraTableClick(e) {
       });
       console.log('[infra] Réponse du serveur', resp.status);
       if (resp.ok) {
-        await loadAndRender();
+        await loadAndRender(currentSeigneurieId);
       } else {
         const msg = await resp.text().catch(() => '');
         console.warn('[infra] Construction refusée', resp.status, msg);
@@ -651,7 +656,7 @@ async function handleInfraTableClick(e) {
       });
       console.log('[infra] Conversion instantanée réponse', resp.status);
       if(resp.ok){
-        await loadAndRender();
+        await loadAndRender(currentSeigneurieId);
       }else{
         const msg = await resp.text().catch(() => '');
         console.warn('[infra] Conversion refusée', resp.status, msg);
@@ -672,7 +677,7 @@ async function handleInfraTableClick(e) {
         body: JSON.stringify({ id })
       });
       if(resp.ok){
-        await loadAndRender();
+        await loadAndRender(currentSeigneurieId);
       } else {
         const msg = await resp.text().catch(()=> '');
         console.warn('[infra] Destruction refusée', resp.status, msg);
@@ -718,7 +723,7 @@ async function handleInfraTableChange(e) {
         body: JSON.stringify({ id, index: idx, quantity: qty })
       });
       if(resp.ok){
-        await loadAndRender();
+        await loadAndRender(currentSeigneurieId);
       }else{
         const msg = await resp.text().catch(()=> '');
         console.warn('[infra] Assignation refusée', resp.status, msg);
@@ -1022,7 +1027,7 @@ async function castSpell(id) {
     if (resp.ok) {
       const data = await resp.json();
       showSpellResult(data.success, spell, amount, null, data.randomLuxury);
-      await loadAndRender();
+      await loadAndRender(currentSeigneurieId);
     } else {
       const data = await resp.json().catch(() => ({}));
       showSpellResult(false, spell, amount, data.error || 'Impossible de lancer le sort');
@@ -1152,6 +1157,45 @@ function showSpellResult(success, spell, amount, error, randomLuxury) {
   popup.appendChild(btn);
   overlay.appendChild(popup);
   document.body.appendChild(overlay);
+}
+
+async function setupAdminSelector(selectedId){
+  const isAdmin = currentUser && currentUser.is_admin && currentUser.act_as_admin !== false;
+  if(!isAdmin) return;
+  const container = document.getElementById('adminSeigneurieSelect');
+  if(!container) return;
+  container.innerHTML = '';
+  container.style.display = 'block';
+  const select = document.createElement('select');
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = 'Sélectionner une seigneurie';
+  select.appendChild(placeholder);
+  try{
+    const [seigneursRes, seigneuriesRes] = await Promise.all([
+      fetch('/api/seigneurs'),
+      fetch('/api/seigneuries')
+    ]);
+    const seigneurs = seigneursRes.ok ? await seigneursRes.json() : [];
+    const seigneuries = seigneuriesRes.ok ? await seigneuriesRes.json() : [];
+    seigneuries.forEach(s => {
+      const seigneur = seigneurs.find(p => p.id === s.seigneur_id);
+      if(!seigneur) return;
+      const opt = document.createElement('option');
+      opt.value = s.id;
+      opt.textContent = `${seigneur.name} - ${s.baronnie_id}`;
+      select.appendChild(opt);
+    });
+    if(selectedId) select.value = selectedId;
+  } catch{}
+  select.addEventListener('change', () => {
+    const id = select.value || null;
+    const params = new URLSearchParams(location.search);
+    if(id) params.set('seigneurie_id', id); else params.delete('seigneurie_id');
+    history.replaceState(null, '', `gestion.html${params.toString()?`?${params.toString()}`:''}`);
+    loadAndRender(id);
+  });
+  container.appendChild(select);
 }
 
 function buildTooltipValue(val, details) {
