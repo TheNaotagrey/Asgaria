@@ -330,10 +330,10 @@
       infoKingdom.textContent = kingdom ? kingdom.name : '';
       const empire = kingdom ? empireMap[kingdom.empire_id] : null;
       infoEmpire.textContent = empire ? empire.name : '';
-      infoSanctuary.textContent = religionMap[info.sanctuary_religion_id]?.name || '';
-      infoPriory.textContent = religionMap[info.priory_religion_id]?.name || '';
-      infoChurch.textContent = religionMap[info.church_religion_id]?.name || '';
-      infoCathedral.textContent = religionMap[info.cathedral_religion_id]?.name || '';
+      infoSanctuary.textContent = info.has_sanctuary ? religionMap[info.religion_pop_id]?.name || '' : '';
+      infoPriory.textContent = info.has_priory ? religionMap[info.religion_pop_id]?.name || '' : '';
+      infoChurch.textContent = info.has_church ? religionMap[info.religion_pop_id]?.name || '' : '';
+      infoCathedral.textContent = info.has_cathedral ? religionMap[info.religion_pop_id]?.name || '' : '';
       infoPlayer.textContent = info.player ? 'Oui' : 'Non';
       const canon = canonicalLandMap[info.id] || [];
       infoCanonical.textContent = canon.map(rid => religionMap[rid]?.name || '').filter(Boolean).join(', ');
@@ -553,17 +553,25 @@
           sid = seigneurMap[sid]?.overlord_id;
         }
       } else if (type === 'sanctuary') {
-        groupId = info.sanctuary_religion_id;
-        groupName = religionMap[groupId]?.name || '';
+        if (info.has_sanctuary) {
+          groupId = info.religion_pop_id;
+          groupName = religionMap[groupId]?.name || '';
+        }
       } else if (type === 'priory') {
-        groupId = info.priory_religion_id;
-        groupName = religionMap[groupId]?.name || '';
+        if (info.has_priory) {
+          groupId = info.religion_pop_id;
+          groupName = religionMap[groupId]?.name || '';
+        }
       } else if (type === 'church') {
-        groupId = info.church_religion_id;
-        groupName = religionMap[groupId]?.name || '';
+        if (info.has_church) {
+          groupId = info.religion_pop_id;
+          groupName = religionMap[groupId]?.name || '';
+        }
       } else if (type === 'cathedral') {
-        groupId = info.cathedral_religion_id;
-        groupName = religionMap[groupId]?.name || '';
+        if (info.has_cathedral) {
+          groupId = info.religion_pop_id;
+          groupName = religionMap[groupId]?.name || '';
+        }
       } else if (type === 'occupation') {
         if (!info.seigneur_id) {
           groupId = 'unoccupied';
