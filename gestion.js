@@ -315,10 +315,12 @@ async function loadAndRender(seigneurieId) {
       taxSelect.addEventListener('change', async () => {
         const rate = parseInt(taxSelect.value, 10);
         try {
+          const payload = { tax_rate: rate };
+          if (currentSeigneurieId) payload.seigneurie_id = currentSeigneurieId;
           const res = await fetch('/api/tax_rate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ tax_rate: rate })
+            body: JSON.stringify(payload)
           });
           if (!res.ok) throw new Error('Erreur');
           await loadAndRender(currentSeigneurieId);
@@ -574,6 +576,7 @@ async function handleBuildingTableClick(e) {
     console.log('[build] Bouton de construction cliqué pour', id);
     let payload = { id, quantity: 1 };
     try {
+      if (currentSeigneurieId) payload.seigneurie_id = currentSeigneurieId;
       const resp = await fetch('/api/building', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -597,10 +600,12 @@ async function handleBuildingTableClick(e) {
     const ok = await showConfirm('Détruire ce bâtiment ? Les ressources dépensées ne seront pas récupérées. Êtes-vous sûr ?');
     if (!ok) return;
     try {
+      const payload = { id };
+      if (currentSeigneurieId) payload.seigneurie_id = currentSeigneurieId;
       const resp = await fetch('/api/building/destroy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id })
+        body: JSON.stringify(payload)
       });
       if (resp.ok) {
         await loadAndRender(currentSeigneurieId);
@@ -630,10 +635,12 @@ async function handleBuildingActivationChange(e) {
     }
 
     try {
+      const payload = { id, quantity };
+      if (currentSeigneurieId) payload.seigneurie_id = currentSeigneurieId;
       const resp = await fetch('/api/building/activate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, quantity })
+        body: JSON.stringify(payload)
       });
       console.log('[build] Activation réponse', resp.status);
       if (resp.ok) {
@@ -659,10 +666,12 @@ async function handleInfraTableClick(e) {
     const id = e.target.dataset.id;
     console.log('[infra] Bouton de construction infrastructure cliqué pour', id);
     try {
+      const payload = { id, quantity: 1 };
+      if (currentSeigneurieId) payload.seigneurie_id = currentSeigneurieId;
       const resp = await fetch('/api/infrastructure', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, quantity: 1 })
+        body: JSON.stringify(payload)
       });
       console.log('[infra] Réponse du serveur', resp.status);
       if (resp.ok) {
@@ -683,10 +692,12 @@ async function handleInfraTableClick(e) {
     const nb = parseInt(row.querySelector('.inst-nb').value,10) || 0;
     if(nb <= 0) return;
     try {
+      const payload = { id, index: idx, quantity: nb };
+      if (currentSeigneurieId) payload.seigneurie_id = currentSeigneurieId;
       const resp = await fetch('/api/infrastructure/instant_production', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, index: idx, quantity: nb })
+        body: JSON.stringify(payload)
       });
       console.log('[infra] Conversion instantanée réponse', resp.status);
       if(resp.ok){
@@ -705,10 +716,12 @@ async function handleInfraTableClick(e) {
     const ok = await showConfirm('Détruire cette infrastructure ? Les ressources dépensées ne seront pas récupérées. Êtes-vous sûr ?');
     if(!ok) return;
     try {
+      const payload = { id };
+      if (currentSeigneurieId) payload.seigneurie_id = currentSeigneurieId;
       const resp = await fetch('/api/infrastructure/destroy', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ id })
+        body: JSON.stringify(payload)
       });
       if(resp.ok){
         await loadAndRender(currentSeigneurieId);
@@ -751,10 +764,12 @@ async function handleInfraTableChange(e) {
       return;
     }
     try {
+      const payload = { id, index: idx, quantity: qty };
+      if (currentSeigneurieId) payload.seigneurie_id = currentSeigneurieId;
       const resp = await fetch('/api/infrastructure/assign_workers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, index: idx, quantity: qty })
+        body: JSON.stringify(payload)
       });
       if(resp.ok){
         await loadAndRender(currentSeigneurieId);
@@ -1651,10 +1666,12 @@ async function castSpell(id) {
   try {
     const qtyInput = document.querySelector(`input.spell-qty[data-id="${id}"]`);
     const amount = qtyInput ? parseInt(qtyInput.value, 10) || 0 : 0;
+    const payload = { id, amount };
+    if (currentSeigneurieId) payload.seigneurie_id = currentSeigneurieId;
     const resp = await fetch('/api/cast_spell', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, amount })
+      body: JSON.stringify(payload)
     });
     const spell = currentSpells.find(s => String(s.id) === String(id));
     if (resp.ok) {

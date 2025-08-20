@@ -488,6 +488,17 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+function getSeigneurie(req, select, cb) {
+  const user = req.session.user;
+  const overrideRaw = isAdminActive(user) ? (req.query.seigneurie_id || (req.body && req.body.seigneurie_id)) : null;
+  const overrideId = overrideRaw ? parseInt(overrideRaw, 10) : null;
+  const sql = overrideId
+    ? `SELECT ${select} FROM seigneuries WHERE id=?`
+    : `SELECT ${select} FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?`;
+  const param = overrideId ? [overrideId] : [user.id];
+  db.get(sql, param, cb);
+}
+
 function create(table, fields) {
   return (req, res) => {
     if (!VALID_TABLES.has(table)) {
@@ -1062,8 +1073,7 @@ app.post('/api/tax_rate', (req, res) => {
   if (Number.isNaN(rate) || rate < 0 || rate > 12) {
     return res.status(400).json({ error: 'Taux invalide' });
   }
-  const userId = req.session.user.id;
-  db.get('SELECT seigneuries.id FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?', [userId], (err, row) => {
+  getSeigneurie(req, 'seigneuries.id', (err, row) => {
     if (err) return handleError(res, err);
     if (!row) return res.status(400).json({ error: 'Seigneurie introuvable' });
     db.run('UPDATE seigneuries SET tax_rate=? WHERE id=?', [rate, row.id], err2 => {
@@ -1220,8 +1230,7 @@ app.post('/api/cast_spell', (req,res)=>{
   const spellId = parseInt(req.body.id, 10);
   if (!spellId) return res.status(400).json({ error: 'ID invalide' });
   const requestedAmount = parseInt(req.body.amount, 10) || 0;
-  const userId = req.session.user.id;
-  db.get('SELECT seigneuries.id, seigneuries.baronnie_id, seigneuries.buildings, seigneuries.infrastructures, seigneuries.spells_cast, seigneuries.spell_month FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?', [userId], (err, srow) => {
+  getSeigneurie(req, 'seigneuries.id, seigneuries.baronnie_id, seigneuries.buildings, seigneuries.infrastructures, seigneuries.spells_cast, seigneuries.spell_month', (err, srow) => {
     if (err) return handleError(res, err);
     if (!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
     const seigneurieId = srow.id;
@@ -1555,8 +1564,7 @@ app.post('/api/building', (req,res)=>{
   const bId = parseInt(id,10);
   const qty = parseInt(quantity,10) || 0;
   if(!bId || qty <= 0) return res.status(400).json({ error: 'Quantité invalide' });
-  const userId = req.session.user.id;
-  db.get('SELECT seigneuries.id as id, seigneuries.baronnie_id, seigneuries.population, seigneuries.inventaire_id, seigneuries.buildings, seigneuries.infrastructures FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?', [userId], (err, srow)=>{
+  getSeigneurie(req, 'seigneuries.id as id, seigneuries.baronnie_id, seigneuries.population, seigneuries.inventaire_id, seigneuries.buildings, seigneuries.infrastructures', (err, srow)=>{
     if(err) return handleError(res, err);
     if(!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
     canConstruct(db, srow, bId, qty, (err2, info)=>{
@@ -1593,8 +1601,7 @@ app.post('/api/infrastructure', (req,res)=>{
   const iId = Number.parseInt(id, 10);
   const qty = Number.parseInt(quantity, 10) || 0;
   if (Number.isNaN(iId) || qty <= 0) return res.status(400).json({ error: 'Quantité invalide' });
-  const userId = req.session.user.id;
-  db.get('SELECT seigneuries.id as id, seigneuries.baronnie_id, seigneuries.population, seigneuries.inventaire_id, seigneuries.infrastructures, seigneuries.buildings FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?', [userId], (err, srow)=>{
+  getSeigneurie(req, 'seigneuries.id as id, seigneuries.baronnie_id, seigneuries.population, seigneuries.inventaire_id, seigneuries.infrastructures, seigneuries.buildings', (err, srow)=>{
     if(err) return handleError(res, err);
     if(!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
     canConstructInfra(db, srow, iId, qty, (err2, info)=>{
@@ -1629,8 +1636,7 @@ app.post('/api/building/activate', (req,res)=>{
   const id = parseInt(req.body.id,10);
   const qty = parseInt(req.body.quantity,10);
   if(!id || isNaN(qty) || qty < 0) return res.status(400).json({ error: 'Quantité invalide' });
-  const userId = req.session.user.id;
-  db.get('SELECT seigneuries.id as id, seigneuries.population, seigneuries.inventaire_id, seigneuries.buildings, seigneuries.infrastructures FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?', [userId], (err, srow)=>{
+  getSeigneurie(req, 'seigneuries.id as id, seigneuries.population, seigneuries.inventaire_id, seigneuries.buildings, seigneuries.infrastructures', (err, srow)=>{
     if(err) return handleError(res, err);
     if(!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
     const buildings = safeParse(srow.buildings, {});
@@ -1697,8 +1703,7 @@ app.post('/api/building/destroy', (req,res)=>{
   if(!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
   const id = parseInt(req.body.id,10);
   if(!id) return res.status(400).json({ error: 'ID invalide' });
-  const userId = req.session.user.id;
-  db.get('SELECT seigneuries.id as id, seigneuries.population, seigneuries.inventaire_id, seigneuries.buildings, seigneuries.infrastructures FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?', [userId], (err, srow)=>{
+  getSeigneurie(req, 'seigneuries.id as id, seigneuries.population, seigneuries.inventaire_id, seigneuries.buildings, seigneuries.infrastructures', (err, srow)=>{
     if(err) return handleError(res, err);
     if(!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
     const buildings = safeParse(srow.buildings, {});
@@ -1780,8 +1785,7 @@ app.post('/api/infrastructure/destroy', (req,res)=>{
   if(!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
   const id = parseInt(req.body.id,10);
   if(!id) return res.status(400).json({ error: 'ID invalide' });
-  const userId = req.session.user.id;
-  db.get('SELECT seigneuries.id as id, seigneuries.population, seigneuries.inventaire_id, seigneuries.infrastructures, seigneuries.buildings FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?', [userId], (err, srow)=>{
+  getSeigneurie(req, 'seigneuries.id as id, seigneuries.population, seigneuries.inventaire_id, seigneuries.infrastructures, seigneuries.buildings', (err, srow)=>{
     if(err) return handleError(res, err);
     if(!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
     const infrastructures = safeParse(srow.infrastructures, {});
@@ -1872,8 +1876,7 @@ app.post('/api/infrastructure/instant_production', (req,res)=>{
   const idx = Number.parseInt(index, 10);
   const qty = Number.parseInt(quantity, 10) || 0;
   if (Number.isNaN(iId) || Number.isNaN(idx) || qty <= 0) return res.status(400).json({ error: 'Quantité invalide' });
-  const userId = req.session.user.id;
-  db.get('SELECT seigneuries.id as id, seigneuries.inventaire_id, seigneuries.infrastructures FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?', [userId], (err, srow) => {
+  getSeigneurie(req, 'seigneuries.id as id, seigneuries.inventaire_id, seigneuries.infrastructures', (err, srow) => {
     if(err) return handleError(res, err);
     if(!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
     db.get('SELECT effects FROM infrastructure_properties WHERE id=?', [iId], (err2, iprop) => {
@@ -1924,8 +1927,7 @@ app.post('/api/infrastructure/assign_workers', (req,res) => {
   const idx = Number.parseInt(index, 10);
   const qty = Number.parseInt(quantity, 10) || 0;
   if (Number.isNaN(iId) || Number.isNaN(idx) || qty < 0) return res.status(400).json({ error: 'Quantité invalide' });
-  const userId = req.session.user.id;
-  db.get('SELECT seigneuries.id as id, seigneuries.population, seigneuries.inventaire_id, seigneuries.infrastructures, seigneuries.buildings FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?', [userId], (err, srow) => {
+  getSeigneurie(req, 'seigneuries.id as id, seigneuries.population, seigneuries.inventaire_id, seigneuries.infrastructures, seigneuries.buildings', (err, srow) => {
     if(err) return handleError(res, err);
     if(!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
     const infrastructures = safeParse(srow.infrastructures, {});
