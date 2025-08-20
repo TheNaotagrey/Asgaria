@@ -596,7 +596,7 @@ function makeRestrictionsInput(val){
   return container;
 }
 
-function makeEffectsInput(val){
+function makeEffectsInput(val, allowedTypes){
   const container = document.createElement('div');
   const list = document.createElement('div');
   container.appendChild(list);
@@ -612,7 +612,7 @@ function makeEffectsInput(val){
     const blank = document.createElement('option');
     blank.value = '';
     typeSel.appendChild(blank);
-    const typeOptions = [
+    let typeOptions = [
       {id:'storage', name:'Stockage'},
       {id:'production', name:'Production ressource'},
       {id:'building_production', name:'Prod. bâtiment'},
@@ -624,8 +624,13 @@ function makeEffectsInput(val){
       {id:'spell_basic_discount', name:'Réduc. sort basique'},
       {id:'spell_advanced_discount', name:'Réduc. sort avancé'},
       {id:'spell_range', name:'Portée des sorts'},
-      {id:'spell_max_per_month', name:'Sorts max/mois'}
+      {id:'spell_max_per_month', name:'Sorts max/mois'},
+      {id:'variable_production', name:'Production ressource variable'},
+      {id:'random_luxury', name:'Ressource de luxe aléatoire'}
     ];
+    if(Array.isArray(allowedTypes)){
+      typeOptions = typeOptions.filter(o=>allowedTypes.includes(o.id));
+    }
     typeOptions.forEach(o=>{
       const op = document.createElement('option');
       op.value = o.id;
@@ -649,7 +654,12 @@ function makeEffectsInput(val){
     const qty = document.createElement('input');
     qty.type = 'number';
     qty.min = '0';
+    qty.step = 'any';
     qty.dataset.role = 'qty';
+    const maxInput = document.createElement('input');
+    maxInput.type = 'number';
+    maxInput.min = '0';
+    maxInput.dataset.role = 'max';
     const dataInput = document.createElement('input');
     dataInput.type = 'hidden';
     dataInput.dataset.role = 'data';
@@ -699,6 +709,7 @@ function makeEffectsInput(val){
       targetSel.style.display = 'none';
       pageSel.style.display = 'none';
       qty.style.display = 'none';
+      maxInput.style.display = 'none';
       summarySpan.style.display = 'none';
       editBtn.style.display = 'none';
       if(typeSel.value === 'building_production'){
@@ -721,6 +732,27 @@ function makeEffectsInput(val){
         editBtn.style.display = '';
         if(data.resource){ dataInput.value = JSON.stringify(data); updateSummary(); }
         else { dataInput.value = ''; updateSummary(); }
+      }else if(typeSel.value === 'variable_production'){
+        resourceSelect.forEach(o=>{
+          const op = document.createElement('option');
+          op.value = o.id;
+          op.textContent = o.name;
+          if(String(o.id) === String(data.resource)) op.selected = true;
+          targetSel.appendChild(op);
+        });
+        targetSel.style.display = '';
+        qty.style.display = '';
+        maxInput.style.display = '';
+        qty.placeholder = 'Ratio';
+        maxInput.placeholder = 'Max';
+        qty.value = data.ratio ?? '';
+        maxInput.value = data.max ?? '';
+        return;
+      }else if(typeSel.value === 'random_luxury'){
+        qty.style.display = '';
+        qty.placeholder = 'Quantité';
+        qty.value = data.amount ?? '';
+        return;
       }else if(['idh','spell_success','spell_basic_discount','spell_advanced_discount','spell_range','spell_max_per_month'].includes(typeSel.value)){
         qty.style.display = '';
       }else if(typeSel.value === 'unlock_page'){
@@ -737,6 +769,8 @@ function makeEffectsInput(val){
         targetSel.style.display = '';
         qty.style.display = '';
       }
+      qty.placeholder = '';
+      maxInput.placeholder = '';
       qty.value = data.amount ?? '';
     }
     populateFields();
@@ -753,6 +787,7 @@ function makeEffectsInput(val){
     row.appendChild(targetSel);
     row.appendChild(pageSel);
     row.appendChild(qty);
+    row.appendChild(maxInput);
     row.appendChild(summarySpan);
     row.appendChild(editBtn);
     row.appendChild(dataInput);
@@ -785,6 +820,18 @@ function makeEffectsInput(val){
         try{ data = JSON.parse(rw.querySelector('input[data-role="data"]').value || '{}'); }catch(e){ data = {}; }
         if(data.resource && data.amount && data.max_workers != null){
           res.push({type, resource: data.resource, amount: data.amount, max_workers: data.max_workers});
+        }
+      }else if(type === 'variable_production'){
+        const resource = rw.querySelector('select[data-role="target"]').value;
+        const ratio = parseFloat(rw.querySelector('input[data-role="qty"]').value);
+        const max = parseInt(rw.querySelector('input[data-role="max"]').value,10);
+        if(resource && !isNaN(ratio) && !isNaN(max)){
+          res.push({type, resource, ratio, max});
+        }
+      }else if(type === 'random_luxury'){
+        const amt = parseInt(rw.querySelector('input[data-role="qty"]').value,10);
+        if(!isNaN(amt)){
+          res.push({type, amount: amt});
         }
       }else if(['idh','spell_success','spell_basic_discount','spell_advanced_discount','spell_range','spell_max_per_month'].includes(type)){
         const amt = parseInt(rw.querySelector('input[data-role="qty"]').value,10);
@@ -983,7 +1030,7 @@ function renderTable(container, rows, opts){
       return container;
     }
     if(field === 'effects'){
-      return makeEffectsInput(val);
+      return makeEffectsInput(val, opts && opts.allowedEffectTypes);
     }
     if(field === 'tags'){
       const container = document.createElement('div');
@@ -1325,7 +1372,8 @@ async function loadAll(){
     endpoint:'spells',
     fields:spellFields,
     labels:spellLabels,
-    selects:{ type:[{id:'base',name:'Base'},{id:'advanced',name:'Avancé'}] }
+    selects:{ type:[{id:'base',name:'Base'},{id:'advanced',name:'Avancé'}] },
+    allowedEffectTypes:['variable_production','random_luxury']
   });
 }
 
