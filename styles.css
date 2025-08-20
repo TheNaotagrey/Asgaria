@@ -374,6 +374,9 @@ th.multi-col {
   padding-left: 15px;
   margin-bottom: 10px;
 }
+.tab-buttons .push-right {
+  margin-left: auto;
+}
 .tab-btn {
   background-color: #e6ebf3;
   border: 1px solid #c4d0e3;
