@@ -18,7 +18,7 @@ const VALID_TABLES = new Set([
   'users','religions','cultures','seigneurs','empires','kingdoms','archduchies',
   'duchies','marquisates','counties','viscounties','baronies','barony_pixels',
   'canonical_lands','inventaire','seigneuries','transactions','barony_properties',
-  'building_properties','infrastructure_properties','barony_connections','tags','spells'
+  'building_properties','infrastructure_properties','barony_connections','trade_routes','tags','spells'
 ]);
 
 // create tables if they do not exist
@@ -134,6 +134,14 @@ CREATE TABLE IF NOT EXISTS canonical_lands (
   FOREIGN KEY(barony_id) REFERENCES baronies(id)
 );
 CREATE TABLE IF NOT EXISTS barony_connections (
+  barony_id_1 INTEGER NOT NULL,
+  barony_id_2 INTEGER NOT NULL,
+  CHECK (barony_id_1 < barony_id_2),
+  PRIMARY KEY(barony_id_1, barony_id_2),
+  FOREIGN KEY(barony_id_1) REFERENCES baronies(id),
+  FOREIGN KEY(barony_id_2) REFERENCES baronies(id)
+);
+CREATE TABLE IF NOT EXISTS trade_routes (
   barony_id_1 INTEGER NOT NULL,
   barony_id_2 INTEGER NOT NULL,
   CHECK (barony_id_1 < barony_id_2),
@@ -2069,6 +2077,60 @@ app.delete('/api/barony_connections', requireAdmin, (req,res)=>{
   db.run('DELETE FROM barony_connections WHERE barony_id_1=? AND barony_id_2=?',[id1,id2],function(err){
     if(err) return handleError(res, err);
     res.json({deleted: this.changes});
+  });
+});
+
+// Trade routes API
+app.get('/api/trade_routes', (req,res)=>{
+  list('trade_routes')(req,res);
+});
+app.post('/api/trade_routes', requireAdmin, (req,res)=>{
+  let { barony_id_1, barony_id_2 } = req.body;
+  barony_id_1 = parseInt(barony_id_1);
+  barony_id_2 = parseInt(barony_id_2);
+  if(!barony_id_1 || !barony_id_2 || barony_id_1 === barony_id_2){
+    return res.status(400).json({error:'Invalid barony ids'});
+  }
+  const [id1,id2] = barony_id_1 < barony_id_2 ? [barony_id_1, barony_id_2] : [barony_id_2, barony_id_1];
+  db.run('INSERT OR IGNORE INTO trade_routes (barony_id_1, barony_id_2) VALUES (?,?)',[id1,id2],function(err){
+    if(err) return handleError(res, err);
+    res.json({added: this.changes});
+  });
+});
+app.delete('/api/trade_routes', requireAdmin, (req,res)=>{
+  let { barony_id_1, barony_id_2 } = req.body;
+  barony_id_1 = parseInt(barony_id_1);
+  barony_id_2 = parseInt(barony_id_2);
+  if(!barony_id_1 || !barony_id_2){
+    return res.status(400).json({error:'Invalid barony ids'});
+  }
+  const [id1,id2] = barony_id_1 < barony_id_2 ? [barony_id_1, barony_id_2] : [barony_id_2, barony_id_1];
+  db.run('DELETE FROM trade_routes WHERE barony_id_1=? AND barony_id_2=?',[id1,id2],function(err){
+    if(err) return handleError(res, err);
+    res.json({deleted: this.changes});
+  });
+});
+
+// Trade partners API
+app.get('/api/trade_partners', (req, res) => {
+  const baronyId = parseInt(req.query.barony_id, 10);
+  if (!baronyId) return res.json([]);
+  const sql = `
+    SELECT b.id, b.name, s.name AS seigneur_name, d.name AS duchy_name
+    FROM baronies b
+    LEFT JOIN seigneurs s ON b.seigneur_id=s.id
+    LEFT JOIN counties c ON b.county_id=c.id
+    LEFT JOIN duchies d ON c.duchy_id=d.id
+    WHERE b.id IN (
+      SELECT CASE WHEN barony_id_1=? THEN barony_id_2 ELSE barony_id_1 END FROM barony_connections WHERE barony_id_1=? OR barony_id_2=?
+      UNION
+      SELECT CASE WHEN barony_id_1=? THEN barony_id_2 ELSE barony_id_1 END FROM trade_routes WHERE barony_id_1=? OR barony_id_2=?
+    )
+    ORDER BY b.id
+  `;
+  db.all(sql, [baronyId, baronyId, baronyId, baronyId, baronyId, baronyId], (err, rows) => {
+    if (err) return handleError(res, err);
+    res.json(rows || []);
   });
 });
 
