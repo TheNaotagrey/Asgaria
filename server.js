@@ -10,7 +10,7 @@ const luxuryResources = ['fourrure','ivoire','soie','huile','teinture','epices',
 const logger = require('./logger');
 const handleError = require('./handleError');
 const { consumeResources } = require('./services/buildingService');
-const { StorageEffect, ResourceProductionEffect, BuildingProductionEffect, IDHEffect, VariableWorkersEffect, UnlockPageEffect, SpellSuccessEffect, SpellBasicDiscountEffect, SpellAdvancedDiscountEffect, SpellRangeEffect, SpellMaxPerMonthEffect } = require('./effects');
+const { StorageEffect, ResourceProductionEffect, BuildingProductionEffect, InfraProductionEffect, IDHEffect, VariableWorkersEffect, UnlockPageEffect, SpellSuccessEffect, SpellBasicDiscountEffect, SpellAdvancedDiscountEffect, SpellRangeEffect, SpellMaxPerMonthEffect } = require('./effects');
 const app = express();
 const db = new sqlite3.Database('asgaria.db');
 
@@ -802,6 +802,8 @@ app.get('/api/my_seigneurie', (req, res) => {
                     bpMap,
                     buildingProductionBonus,
                     buildingProductionBonusDetails,
+                    infraProductionMultipliers: {},
+                    infraProductionByInfra: {},
                     idh: 5,
                     idhDetails: [{ label: 'Base', amount: 5, source: 1 }],
                     unlockedPages: {},
@@ -812,9 +814,10 @@ app.get('/api/my_seigneurie', (req, res) => {
                     spellMax: 0
                   };
                   for (const ip of infraList) {
+                    effectCtx.currentInfraId = ip.id;
                     const entry = infrastructures[ip.id] || infrastructures[String(ip.id)] || 0;
                     const count = typeof entry === 'object' ? (entry.built || 0) : entry;
-                    if (!count) continue;
+                    if (!count) { delete effectCtx.currentInfraId; continue; }
                     const workers = count * (ip.workers_per_building || 0);
                     if (workers) {
                       employed += workers;
@@ -832,6 +835,9 @@ app.get('/api/my_seigneurie', (req, res) => {
                         if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
                       } else if (def.type === 'building_production') {
                         effObj = new BuildingProductionEffect(def.building, def.amount || 0);
+                        if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
+                      } else if (def.type === 'infra_production') {
+                        effObj = new InfraProductionEffect(def.infrastructure, def.amount || 1);
                         if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
                       } else if (def.type === 'idh') {
                         effObj = new IDHEffect(def.amount || 0);
@@ -866,6 +872,7 @@ app.get('/api/my_seigneurie', (req, res) => {
                         if (effObj) effObj.apply(effectCtx, assigned, ip.label || ip.type);
                       }
                     });
+                    delete effectCtx.currentInfraId;
                   }
                   const slaves = inventaire.esclaves || 0;
                   if (slaves) {
@@ -892,6 +899,24 @@ app.get('/api/my_seigneurie', (req, res) => {
                   }
                   const employment = { employed: Math.max(employed - slaves, 0), slaves };
                   function finalize(barony, baronyProps) {
+                    if (effectCtx.infrastructureProductionMultipliers && effectCtx.infraProductionByInfra) {
+                      Object.entries(effectCtx.infrastructureProductionMultipliers).forEach(([iid, mult]) => {
+                        if (mult === 1) return;
+                        const arr = effectCtx.infraProductionByInfra[iid];
+                        if (!arr) return;
+                        arr.forEach(entry => {
+                          const added = entry.amount * (mult - 1);
+                          production[entry.resource] = (production[entry.resource] || 0) + added;
+                          if (!productionDetails[entry.resource]) productionDetails[entry.resource] = [];
+                          const detail = productionDetails[entry.resource].find(d => d.label === entry.label);
+                          if (detail) {
+                            detail.amount += added;
+                          } else {
+                            productionDetails[entry.resource].push({ label: entry.label, amount: entry.amount * mult, source: entry.source });
+                          }
+                        });
+                      });
+                    }
                     const idhDetails = effectCtx.idhDetails || [];
                     let idh = effectCtx.idh;
                     if (taxRate === 0) {
@@ -951,6 +976,8 @@ app.get('/api/my_seigneurie', (req, res) => {
                           effObj = new ResourceProductionEffect(def.resource, def.amount || 0);
                         } else if (def.type === 'building_production') {
                           effObj = new BuildingProductionEffect(def.building, def.amount || 0);
+                        } else if (def.type === 'infra_production') {
+                          effObj = new InfraProductionEffect(def.infrastructure, def.amount || 1);
                         } else if (def.type === 'idh') {
                           effObj = new IDHEffect(def.amount || 0);
                         } else if (def.type === 'unlock_page') {
