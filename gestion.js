@@ -239,11 +239,9 @@ async function loadAndRender(seigneurieId) {
     summary.innerHTML = `
       <div id="infoTables" class="resource-tables">
         <div class="resource-table-container">
-          <h2>Informations générales</h2>
           <table id="generalInfoTable" class="admin-table"></table>
         </div>
         <div class="resource-table-container">
-          <h2>Localisation de Jure</h2>
           <table id="deJureTable" class="admin-table"></table>
         </div>
       </div>
@@ -262,7 +260,7 @@ async function loadAndRender(seigneurieId) {
 
     const genTable = document.getElementById('generalInfoTable');
     genTable.innerHTML = `
-      <tr><th>Info</th><th>Valeur</th></tr>
+      <tr><th colspan="2">Informations générales</th></tr>
       <tr><td>Nom du joueur</td><td>${currentUser ? `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim() : ''}</td></tr>
       <tr><td>Nom du personnage</td><td>${seigneur.name || currentUser?.character_name || ''}</td></tr>
       <tr><td>Religion</td><td>${seigneur.religion_name || 'Inconnue'}</td></tr>
@@ -271,7 +269,7 @@ async function loadAndRender(seigneurieId) {
 
     const deJureTable = document.getElementById('deJureTable');
     deJureTable.innerHTML = `
-      <tr><th>Niveau</th><th>Nom</th></tr>
+      <tr><th colspan="2">Localisation de Jure</th></tr>
       <tr><td>Royaume</td><td>${barony.kingdom_name || 'Aucun'}</td></tr>
       <tr><td>Duché</td><td>${barony.duchy_name || 'Aucun'}</td></tr>
       <tr><td>Comté</td><td>${barony.county_name || 'Aucun'}</td></tr>
