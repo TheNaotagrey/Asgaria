@@ -150,6 +150,7 @@ async function loadAndRender(seigneurieId) {
     const s = data.seigneurie;
     const inv = data.inventaire || {};
     const barony = data.barony || {};
+    const seigneur = data.seigneur || {};
     const isAdmin = currentUser && currentUser.is_admin && currentUser.act_as_admin !== false;
     const idh = data.idh || 0;
     const idhDetails = data.idhDetails || [];
@@ -236,7 +237,16 @@ async function loadAndRender(seigneurieId) {
 
     const summary = document.getElementById('summary');
     summary.innerHTML = `
-      <p><strong>Baronnie :</strong> ${barony.name || 'Aucune'}</p>
+      <div id="infoTables" class="resource-tables">
+        <div class="resource-table-container">
+          <h2>Localisation de Jure</h2>
+          <table id="deJureTable" class="admin-table"></table>
+        </div>
+        <div class="resource-table-container">
+          <h2>Informations générales</h2>
+          <table id="generalInfoTable" class="admin-table"></table>
+        </div>
+      </div>
       <div id="populationSummary"></div>
       <div id="resourceTables" class="resource-tables">
         <div class="resource-table-container">
@@ -248,6 +258,24 @@ async function loadAndRender(seigneurieId) {
           <table id="luxuryResourcesTable" class="admin-table"></table>
         </div>
       </div>
+    `;
+
+    const genTable = document.getElementById('generalInfoTable');
+    genTable.innerHTML = `
+      <tr><th>Info</th><th>Valeur</th></tr>
+      <tr><td>Nom du joueur</td><td>${currentUser ? `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim() : ''}</td></tr>
+      <tr><td>Nom du personnage</td><td>${seigneur.name || currentUser?.character_name || ''}</td></tr>
+      <tr><td>Religion</td><td>${seigneur.religion_name || 'Inconnue'}</td></tr>
+      <tr><td>Nom du Suzerain</td><td>${seigneur.overlord_name || 'Aucun'}</td></tr>
+    `;
+
+    const deJureTable = document.getElementById('deJureTable');
+    deJureTable.innerHTML = `
+      <tr><th>Niveau</th><th>Nom</th></tr>
+      <tr><td>Royaume</td><td>${barony.kingdom_name || 'Aucun'}</td></tr>
+      <tr><td>Duché</td><td>${barony.duchy_name || 'Aucun'}</td></tr>
+      <tr><td>Comté</td><td>${barony.county_name || 'Aucun'}</td></tr>
+      <tr><td>Baronnie</td><td>${barony.name || 'Aucune'}</td></tr>
     `;
 
     const popSummary = document.getElementById('populationSummary');

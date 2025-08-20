@@ -967,6 +967,7 @@ app.get('/api/my_seigneurie', (req, res) => {
               const spellRange = 5 + (effectCtx.spellRangeBonus || 0);
               const spellMax = effectCtx.spellMax || 0;
               res.json({
+                seigneur: seig,
                 seigneurie: s,
                 barony,
                 inventaire,
@@ -1031,7 +1032,7 @@ app.get('/api/my_seigneurie', (req, res) => {
                     effObj.apply(effectCtx, 1, 'Baronnie');
                   }
                 }
-                db.get(`SELECT b.*, r.name as religion_name, c.name as culture_name FROM baronies b LEFT JOIN religions r ON b.religion_pop_id=r.id LEFT JOIN cultures c ON b.culture_id=c.id WHERE b.id=?`, [s.baronnie_id], (err4, barony) => {
+                db.get(`SELECT b.*, r.name as religion_name, c.name as culture_name, ct.name as county_name, d.name as duchy_name, k.name as kingdom_name FROM baronies b LEFT JOIN religions r ON b.religion_pop_id=r.id LEFT JOIN cultures c ON b.culture_id=c.id LEFT JOIN counties ct ON b.county_id=ct.id LEFT JOIN duchies d ON ct.duchy_id=d.id LEFT JOIN kingdoms k ON d.kingdom_id=k.id WHERE b.id=?`, [s.baronnie_id], (err4, barony) => {
                   if (err4) return handleError(res, err4);
                   finalize(barony, baronyProps);
                 });
@@ -1045,10 +1046,10 @@ app.get('/api/my_seigneurie', (req, res) => {
     }
 
     if (overrideId) {
-      db.get('SELECT seigneuries.*, seigneurs.name as seigneur_name, seigneurs.religion_id as religion_id FROM seigneuries JOIN seigneurs ON seigneurs.id=seigneuries.seigneur_id WHERE seigneuries.id=?', [overrideId], (err, row) => {
+      db.get('SELECT seigneuries.*, seigneurs.name as seigneur_name, seigneurs.religion_id as religion_id, r.name as religion_name, ov.name as overlord_name FROM seigneuries JOIN seigneurs ON seigneurs.id=seigneuries.seigneur_id LEFT JOIN religions r ON seigneurs.religion_id=r.id LEFT JOIN seigneurs ov ON seigneurs.overlord_id=ov.id WHERE seigneuries.id=?', [overrideId], (err, row) => {
         if (err) return handleError(res, err);
         if (!row) return res.status(404).json({ error: 'Introuvable' });
-        const seig = { id: row.seigneur_id, name: row.seigneur_name, religion_id: row.religion_id };
+        const seig = { id: row.seigneur_id, name: row.seigneur_name, religion_id: row.religion_id, religion_name: row.religion_name, overlord_name: row.overlord_name };
         const s = {
           id: row.id,
           baronnie_id: row.baronnie_id,
@@ -1075,8 +1076,11 @@ app.get('/api/my_seigneurie', (req, res) => {
           });
         }
         ensureSeigneur(seig => {
-          db.get('SELECT * FROM seigneuries WHERE seigneur_id=?', [seig.id], (err, seigneurie) => {
-            if (err) return handleError(res, err);
+          db.get('SELECT s.id, s.name, s.religion_id, r.name as religion_name, o.name as overlord_name FROM seigneurs s LEFT JOIN religions r ON s.religion_id=r.id LEFT JOIN seigneurs o ON s.overlord_id=o.id WHERE s.id=?', [seig.id], (err2, seigRow) => {
+            if (err2) return handleError(res, err2);
+            const fullSeig = seigRow || seig;
+            db.get('SELECT * FROM seigneuries WHERE seigneur_id=?', [seig.id], (err, seigneurie) => {
+              if (err) return handleError(res, err);
             function ensureSeigneurie(cb) {
               if (seigneurie) return cb(seigneurie);
               db.run('INSERT INTO inventaire DEFAULT VALUES', function(err){
@@ -1089,7 +1093,8 @@ app.get('/api/my_seigneurie', (req, res) => {
                   });
               });
             }
-            ensureSeigneurie(s => respond(seig, s));
+            ensureSeigneurie(s => respond(fullSeig, s));
+          });
           });
         });
       });
