@@ -12,27 +12,32 @@
       <span id="authArea" class="auth-area"></span>
     </div>
   </header>
-  <main>
+  <main class="profile-main">
     <form id="profileForm" class="profile-form">
-      <label for="email">Courriel</label>
-      <input type="email" id="email" name="email" disabled>
-
-      <label for="first_name">Prénom</label>
-      <input type="text" id="first_name" name="first_name" required>
-
-      <label for="last_name">Nom</label>
-      <input type="text" id="last_name" name="last_name" required>
-
-      <fieldset class="password-group">
-        <legend>Changer le mot de passe</legend>
+      <div class="tabs">
+        <button type="button" class="tab-btn active" data-tab="info">Informations</button>
+        <button type="button" class="tab-btn" data-tab="password">Mot de passe</button>
+      </div>
+      <div id="tab-info" class="tab-content active">
+        <label for="email">Courriel</label>
+        <input type="email" id="email" name="email" disabled>
+        <label for="first_name">Prénom</label>
+        <input type="text" id="first_name" name="first_name" required>
+        <label for="last_name">Nom</label>
+        <input type="text" id="last_name" name="last_name" required>
+        <div id="characterField" style="display:none; flex-direction: column; gap:8px;">
+          <label for="character_name">Personnage</label>
+          <input type="text" id="character_name" name="character_name" disabled>
+        </div>
+      </div>
+      <div id="tab-password" class="tab-content">
         <label for="current_password">Mot de passe actuel</label>
         <input type="password" id="current_password" name="current_password">
         <label for="new_password">Nouveau mot de passe</label>
         <input type="password" id="new_password" name="password">
         <label for="confirm_password">Confirmer le mot de passe</label>
         <input type="password" id="confirm_password" name="confirm_password">
-      </fieldset>
-
+      </div>
       <button type="submit" class="control-btn">Mettre à jour</button>
     </form>
     <div id="adminModeContainer" style="display:none" class="admin-mode">

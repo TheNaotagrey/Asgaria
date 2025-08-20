@@ -76,28 +76,56 @@ main {
   padding: 6px;
 }
 
+.profile-main {
+  flex-direction: column;
+  align-items: center;
+  padding: 20px;
+}
+
 .profile-form {
   display: flex;
   flex-direction: column;
-  max-width: 320px;
+  max-width: 400px;
+  width: 100%;
   margin: 20px auto;
-  gap: 8px;
-}
-
-.profile-form fieldset {
-  border: 1px solid #ccc;
-  padding: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.profile-form legend {
-  padding: 0 4px;
+  gap: 20px;
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
 }
 
 .profile-form input {
-  padding: 6px;
+  padding: 8px;
+}
+
+.tabs {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.tab-btn {
+  padding: 8px 16px;
+  border: none;
+  background-color: #e6ebf3;
+  cursor: pointer;
+  border-radius: 4px 4px 0 0;
+}
+
+.tab-btn.active {
+  background-color: #fff;
+  border-bottom: 2px solid white;
+}
+
+.tab-content {
+  display: none;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tab-content.active {
+  display: flex;
 }
 
 /* Boutons généraux */

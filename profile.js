@@ -9,6 +9,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   form.email.value = user.email || '';
   form.first_name.value = user.first_name || '';
   form.last_name.value = user.last_name || '';
+  if(user.character_name){
+    const charField = document.getElementById('characterField');
+    const charInput = document.getElementById('character_name');
+    charInput.value = user.character_name;
+    charField.style.display = 'flex';
+  }
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+    });
+  });
   if(user.is_admin){
     const container = document.getElementById('adminModeContainer');
     const checkbox = document.getElementById('adminMode');
