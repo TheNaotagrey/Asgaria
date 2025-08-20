@@ -86,6 +86,14 @@ const maxOptions = [
   ...baronyPropIntFields.map(f=>({ id:f, name:baronyPropLabels[f] || f }))
 ];
 
+const spellFields = ['label','costs','effects','description'];
+const spellLabels = {
+  label:'Nom',
+  costs:'Coûts',
+  effects:'Effets',
+  description:'Description'
+};
+
 async function fetchJSON(url, options){
   const resp = await fetch(API_BASE + url, options);
   return resp.json();
@@ -608,7 +616,8 @@ function makeEffectsInput(val){
       {id:'building_production', name:'Prod. bâtiment'},
       {id:'idh', name:'IDH'},
       {id:'instant_production', name:'Prod. instantanée'},
-      {id:'variable_workers', name:'Travailleurs variables'}
+      {id:'variable_workers', name:'Travailleurs variables'},
+      {id:'unlock_page', name:'Débloque page'}
     ];
     typeOptions.forEach(o=>{
       const op = document.createElement('option');
@@ -619,6 +628,9 @@ function makeEffectsInput(val){
     });
     const targetSel = document.createElement('select');
     targetSel.dataset.role = 'target';
+    const pageInput = document.createElement('input');
+    pageInput.type = 'text';
+    pageInput.dataset.role = 'page';
     const qty = document.createElement('input');
     qty.type = 'number';
     qty.min = '0';
@@ -670,6 +682,7 @@ function makeEffectsInput(val){
       blankRes.value = '';
       targetSel.appendChild(blankRes);
       targetSel.style.display = 'none';
+      pageInput.style.display = 'none';
       qty.style.display = 'none';
       summarySpan.style.display = 'none';
       editBtn.style.display = 'none';
@@ -695,6 +708,9 @@ function makeEffectsInput(val){
         else { dataInput.value = ''; updateSummary(); }
       }else if(typeSel.value === 'idh'){
         qty.style.display = '';
+      }else if(typeSel.value === 'unlock_page'){
+        pageInput.style.display = '';
+        pageInput.value = data.page || '';
       }else{
         resourceSelect.forEach(o=>{
           const op = document.createElement('option');
@@ -720,6 +736,7 @@ function makeEffectsInput(val){
     removeBtn.addEventListener('click', ()=> row.remove());
     row.appendChild(typeSel);
     row.appendChild(targetSel);
+    row.appendChild(pageInput);
     row.appendChild(qty);
     row.appendChild(summarySpan);
     row.appendChild(editBtn);
@@ -758,6 +775,11 @@ function makeEffectsInput(val){
         const amt = parseInt(rw.querySelector('input[data-role="qty"]').value,10);
         if(type && !isNaN(amt)){
           res.push({ type, amount: amt });
+        }
+      }else if(type === 'unlock_page'){
+        const page = rw.querySelector('input[data-role="page"]').value;
+        if(page){
+          res.push({type, page});
         }
       }else{
         const target = rw.querySelector('select[data-role="target"]').value;
@@ -1120,7 +1142,7 @@ function renderTable(container, rows, opts){
 }
 
 async function loadAll(){
-  const [seigneurs, religions, cultures, kingdoms, counties, duchies, viscounties, marquisates, archduchies, empires, users, seigneuries, baronies, baronyProps, buildingProps, infraProps, tags] = await Promise.all([
+  const [seigneurs, religions, cultures, kingdoms, counties, duchies, viscounties, marquisates, archduchies, empires, users, seigneuries, baronies, baronyProps, buildingProps, infraProps, spells, tags] = await Promise.all([
     fetchJSON('/api/seigneurs'),
     fetchJSON('/api/religions'),
     fetchJSON('/api/cultures'),
@@ -1137,6 +1159,7 @@ async function loadAll(){
     fetchJSON('/api/barony_properties'),
     fetchJSON('/api/building_properties'),
     fetchJSON('/api/infrastructure_properties'),
+    fetchJSON('/api/spells'),
     fetchJSON('/api/tags'),
   ]);
 
@@ -1280,6 +1303,13 @@ async function loadAll(){
     fields:infraPropFields,
     labels:infraPropLabels,
     selects:{type:typeSelect}
+  });
+
+  const spellsById = spells.slice().sort((a,b)=>a.id - b.id);
+  renderTable(document.getElementById('tableSpells'), spellsById, {
+    endpoint:'spells',
+    fields:spellFields,
+    labels:spellLabels
   });
 }
 

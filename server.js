@@ -9,7 +9,7 @@ const { inventaireFields, performTransaction } = require('./transactions');
 const logger = require('./logger');
 const handleError = require('./handleError');
 const { consumeResources } = require('./services/buildingService');
-const { StorageEffect, ResourceProductionEffect, BuildingProductionEffect, IDHEffect, VariableWorkersEffect } = require('./effects');
+const { StorageEffect, ResourceProductionEffect, BuildingProductionEffect, IDHEffect, VariableWorkersEffect, UnlockPageEffect } = require('./effects');
 const app = express();
 const db = new sqlite3.Database('asgaria.db');
 
@@ -17,7 +17,7 @@ const VALID_TABLES = new Set([
   'users','religions','cultures','seigneurs','empires','kingdoms','archduchies',
   'duchies','marquisates','counties','viscounties','baronies','barony_pixels',
   'canonical_lands','inventaire','seigneuries','transactions','barony_properties',
-  'building_properties','infrastructure_properties','barony_connections','tags'
+  'building_properties','infrastructure_properties','barony_connections','tags','spells'
 ]);
 
 // create tables if they do not exist
@@ -247,6 +247,13 @@ CREATE TABLE IF NOT EXISTS infrastructure_properties (
   absolute_restrictions TEXT,
   restrictions TEXT,
   tags TEXT,
+  description TEXT
+);
+CREATE TABLE IF NOT EXISTS spells (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  label TEXT,
+  costs TEXT,
+  effects TEXT,
   description TEXT
 );
 CREATE TABLE IF NOT EXISTS tags (
@@ -777,7 +784,8 @@ app.get('/api/my_seigneurie', (req, res) => {
                     buildingProductionBonus,
                     buildingProductionBonusDetails,
                     idh: 5,
-                    idhDetails: [{ label: 'Base', amount: 5, source: 1 }]
+                    idhDetails: [{ label: 'Base', amount: 5, source: 1 }],
+                    unlockedPages: {}
                   };
                   for (const ip of infraList) {
                     const entry = infrastructures[ip.id] || infrastructures[String(ip.id)] || 0;
@@ -798,6 +806,9 @@ app.get('/api/my_seigneurie', (req, res) => {
                         if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
                       } else if (def.type === 'idh') {
                         effObj = new IDHEffect(def.amount || 0);
+                        if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
+                      } else if (def.type === 'unlock_page') {
+                        effObj = new UnlockPageEffect(def.page);
                         if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
                       } else if (def.type === 'variable_workers') {
                         const max = (def.max_workers || 0) * count;
@@ -876,7 +887,7 @@ app.get('/api/my_seigneurie', (req, res) => {
                         idhDetails.push({ label: 'Esclaves', amount: -slavePenalty, source: slaves });
                       }
                     }
-                    res.json({ seigneurie: s, barony, inventaire, production, productionDetails, fields, baronyProps, employment, employmentDetails, buildings, infrastructures, capacities, buildingProductionBonus, buildingProductionBonusDetails, idh, idhDetails });
+                    res.json({ seigneurie: s, barony, inventaire, production, productionDetails, fields, baronyProps, employment, employmentDetails, buildings, infrastructures, capacities, buildingProductionBonus, buildingProductionBonusDetails, idh, idhDetails, unlockedPages: effectCtx.unlockedPages });
                   }
                   if (s.baronnie_id) {
                     db.get('SELECT * FROM barony_properties WHERE barony_id=?', [s.baronnie_id], (err3, props) => {
@@ -893,6 +904,8 @@ app.get('/api/my_seigneurie', (req, res) => {
                           effObj = new BuildingProductionEffect(def.building, def.amount || 0);
                         } else if (def.type === 'idh') {
                           effObj = new IDHEffect(def.amount || 0);
+                        } else if (def.type === 'unlock_page') {
+                          effObj = new UnlockPageEffect(def.page);
                         }
                         if (effObj) {
                           effObj.apply(effectCtx, 1, 'Baronnie');
@@ -1008,6 +1021,52 @@ app.post('/api/infrastructure_properties', requireAdmin, (req,res)=>{
 });
 app.put('/api/infrastructure_properties/:id', requireAdmin, (req,res)=>{
   update('infrastructure_properties', infraPropFields)(req,res);
+});
+
+const spellFields = ['label','costs','effects','description'];
+app.get('/api/spells', (req,res)=>{
+  list('spells')(req,res);
+});
+app.post('/api/spells', requireAdmin, (req,res)=>{
+  create('spells', spellFields)(req,res);
+});
+app.put('/api/spells/:id', requireAdmin, (req,res)=>{
+  update('spells', spellFields)(req,res);
+});
+
+app.post('/api/cast_spell', (req,res)=>{
+  if (!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
+  const spellId = parseInt(req.body.id, 10);
+  if (!spellId) return res.status(400).json({ error: 'ID invalide' });
+  const userId = req.session.user.id;
+  db.get('SELECT seigneuries.id FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?', [userId], (err, row) => {
+    if (err) return handleError(res, err);
+    if (!row) return res.status(400).json({ error: 'Seigneurie introuvable' });
+    const seigneurieId = row.id;
+    db.get('SELECT * FROM spells WHERE id=?', [spellId], (err2, spell) => {
+      if (err2) return handleError(res, err2);
+      if (!spell) return res.status(404).json({ error: 'Sort introuvable' });
+      const costs = safeParse(spell.costs, {});
+      consumeResources(db, seigneurieId, costs, err3 => {
+        if (err3) return handleError(res, err3);
+        const effects = safeParse(spell.effects, []);
+        let idx = 0;
+        function applyNext() {
+          if (idx >= effects.length) return res.json({ ok: true });
+          const e = effects[idx++];
+          if (e.type === 'production') {
+            performTransaction(db, seigneurieId, e.resource, e.amount || 0, err4 => {
+              if (err4) return handleError(res, err4);
+              applyNext();
+            });
+          } else {
+            applyNext();
+          }
+        }
+        applyNext();
+      });
+    });
+  });
 });
 
 function safeParse(json, fallback){

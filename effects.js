@@ -118,4 +118,15 @@ class VariableWorkersEffect extends Effect {
   }
 }
 
-module.exports = { Effect, StorageEffect, ResourceProductionEffect, BuildingProductionEffect, InstantProductionEffect, IDHEffect, VariableWorkersEffect };
+class UnlockPageEffect extends Effect {
+  constructor(page) {
+    super();
+    this.page = page;
+  }
+  apply(ctx) {
+    if (!ctx.unlockedPages) ctx.unlockedPages = {};
+    ctx.unlockedPages[this.page] = true;
+  }
+}
+
+module.exports = { Effect, StorageEffect, ResourceProductionEffect, BuildingProductionEffect, InstantProductionEffect, IDHEffect, VariableWorkersEffect, UnlockPageEffect };

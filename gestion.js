@@ -208,6 +208,25 @@ async function loadAndRender() {
     basicTable.innerHTML = buildTable(basicResources, true, inv, production, productionDetails, capacities);
     luxuryTable.innerHTML = buildTable(luxuryResources, false, inv, production, productionDetails, capacities);
 
+    if (data.unlockedPages && data.unlockedPages.magie) {
+      const magieBtn = document.querySelector('.tab-btn[data-tab="magie"]');
+      const magiePanel = document.getElementById('tab-magie');
+      if (magieBtn && magiePanel) {
+        magieBtn.style.display = '';
+        magiePanel.style.display = '';
+        try {
+          const spellsRes = await fetch('/api/spells');
+          const spells = spellsRes.ok ? await spellsRes.json() : [];
+          renderSpells(spells);
+          if (localStorage.getItem('gestionActiveTab') === 'magie') {
+            magieBtn.click();
+          }
+        } catch (e) {
+          console.error('Erreur chargement sorts', e);
+        }
+      }
+    }
+
     const prodDiv = document.getElementById('productionInfra');
     const civilDiv = document.getElementById('civilInfra');
     const miliDiv = document.getElementById('militaryInfra');
@@ -848,5 +867,56 @@ function buildPropsTable(props) {
   }
   html += '</table>';
   return html;
+}
+
+async function castSpell(id) {
+  try {
+    const resp = await fetch('/api/cast_spell', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    });
+    if (resp.ok) {
+      await loadAndRender();
+    } else {
+      alert('Impossible de lancer le sort');
+    }
+  } catch (e) {
+    console.error('Erreur lancement sort', e);
+    alert('Impossible de lancer le sort');
+  }
+}
+
+function renderSpells(spells) {
+  const container = document.getElementById('spellList');
+  if (!container) return;
+  const rows = spells.map(s => {
+    let costStr = '';
+    try {
+      const costs = JSON.parse(s.costs || '{}');
+      costStr = Object.entries(costs).map(([r,a]) => `${a} ${resourceLabels[r] || r}`).join(', ');
+    } catch {}
+    let effStr = '';
+    try {
+      const effs = JSON.parse(s.effects || '[]');
+      effStr = effs.map(e => {
+        if (e.type === 'production') {
+          return `${e.amount} ${resourceLabels[e.resource] || e.resource}`;
+        }
+        if (e.type === 'unlock_page') {
+          return `Débloque ${e.page}`;
+        }
+        if (e.type === 'idh') {
+          return `IDH ${e.amount}`;
+        }
+        return e.type;
+      }).join(', ');
+    } catch {}
+    return `<tr><td>${s.label}</td><td>${costStr}</td><td>${effStr}</td><td><button class="cast-spell" data-id="${s.id}">Lancer</button></td></tr>`;
+  }).join('');
+  container.innerHTML = `<table class="admin-table"><tr><th>Nom</th><th>Coût</th><th>Effets</th><th></th></tr>${rows}</table>`;
+  container.querySelectorAll('button.cast-spell').forEach(btn => {
+    btn.addEventListener('click', () => castSpell(btn.dataset.id));
+  });
 }
 
