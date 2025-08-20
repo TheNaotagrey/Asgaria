@@ -82,6 +82,8 @@ const pageSelect = [{id:'magie', name:'Magie'}];
 let buildingPropsSelect = [];
 let infraPropsSelect = [];
 let tagsSelect = [];
+const dataCache = {};
+const tabLoaded = {};
 const maxOptions = [
   ...Array.from({length:10}, (_,i)=>({ id:String(i+1), name:String(i+1) })),
   ...baronyPropIntFields.map(f=>({ id:f, name:baronyPropLabels[f] || f }))
@@ -99,6 +101,13 @@ const spellLabels = {
 async function fetchJSON(url, options){
   const resp = await fetch(API_BASE + url, options);
   return resp.json();
+}
+
+async function getData(key, url){
+  if(!dataCache[key]){
+    dataCache[key] = await fetchJSON(url);
+  }
+  return dataCache[key];
 }
 
 function showSaveIndicator(target) {
@@ -1231,120 +1240,173 @@ async function refreshTable(container, rows, opts){
   renderTable(container, rows, opts);
 }
 
-async function loadAll(){
-  const [seigneurs, religions, cultures, kingdoms, counties, duchies, viscounties, marquisates, archduchies, empires, users, seigneuries, baronies, baronyProps, buildingProps, infraProps, spells, tags] = await Promise.all([
-    fetchJSON('/api/seigneurs'),
-    fetchJSON('/api/religions'),
-    fetchJSON('/api/cultures'),
-    fetchJSON('/api/kingdoms'),
-    fetchJSON('/api/counties'),
-    fetchJSON('/api/duchies'),
-    fetchJSON('/api/viscounties'),
-    fetchJSON('/api/marquisates'),
-    fetchJSON('/api/archduchies'),
-    fetchJSON('/api/empires'),
-    fetchJSON('/api/users'),
-    fetchJSON('/api/seigneuries'),
-    fetchJSON('/api/baronies'),
-    fetchJSON('/api/barony_properties'),
-    fetchJSON('/api/building_properties'),
-    fetchJSON('/api/infrastructure_properties'),
-    fetchJSON('/api/spells'),
-    fetchJSON('/api/tags'),
-  ]);
-
-  const seigneursSelect = seigneurs.slice().sort((a, b) => a.name.localeCompare(b.name));
-  const religionsSelect = religions.slice().sort((a, b) => a.name.localeCompare(b.name));
-  const culturesSelect = cultures.slice().sort((a, b) => a.name.localeCompare(b.name));
-  const kingdomsSelect = kingdoms.slice().sort((a, b) => a.name.localeCompare(b.name));
-  const countiesSelect = counties.slice().sort((a, b) => a.name.localeCompare(b.name));
-  const duchiesSelect = duchies.slice().sort((a, b) => a.name.localeCompare(b.name));
-  const viscountiesSelect = viscounties.slice().sort((a,b)=>a.name.localeCompare(b.name));
-  const marquisatesSelect = marquisates.slice().sort((a,b)=>a.name.localeCompare(b.name));
-  const archduchiesSelect = archduchies.slice().sort((a,b)=>a.name.localeCompare(b.name));
-  const empiresSelect = empires.slice().sort((a,b)=>a.name.localeCompare(b.name));
-  const usersSelectRaw = users.slice().sort((a,b)=> (a.email || '').localeCompare(b.email || ''));
-  const usersSelect = usersSelectRaw.map(u => ({ id: u.id, name: u.email }));
-  const assignedUserIds = new Set(seigneurs.filter(s => s.user_id).map(s => s.user_id));
-  const userSelectFn = (item) => usersSelect.filter(u => !assignedUserIds.has(u.id) || (item && u.id === item.user_id));
-
-  const baroniesSelect = baronies.slice().sort((a,b)=>a.name.localeCompare(b.name));
-
-  const seigneursById = seigneurs.slice().sort((a,b)=>a.id - b.id);
+async function loadReligions(){
+  const religions = await getData('religions','/api/religions');
   const religionsById = religions.slice().sort((a,b)=>a.id - b.id);
-  const culturesById = cultures.slice().sort((a,b)=>a.id - b.id);
-  const kingdomsById = kingdoms.slice().sort((a,b)=>a.id - b.id);
-  const countiesById = counties.slice().sort((a,b)=>a.id - b.id);
-  const duchiesById = duchies.slice().sort((a,b)=>a.id - b.id);
-  const viscountiesById = viscounties.slice().sort((a,b)=>a.id - b.id);
-  const marquisatesById = marquisates.slice().sort((a,b)=>a.id - b.id);
-  const archduchiesById = archduchies.slice().sort((a,b)=>a.id - b.id);
-  const empiresById = empires.slice().sort((a,b)=>a.id - b.id);
-  const seigneuriesById = seigneuries.slice().sort((a,b)=>a.id - b.id);
-
   renderTable(document.getElementById('tableReligions'), religionsById, {
     endpoint:'religions',
     fields:['name','color'],
     labels:{name:'Nom', color:'Couleur'},
     colorFields:['color']
   });
+}
 
+async function loadCultures(){
+  const cultures = await getData('cultures','/api/cultures');
+  const culturesById = cultures.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableCultures'), culturesById, {
     endpoint:'cultures',
     fields:['name','color'],
     labels:{name:'Nom', color:'Couleur'},
     colorFields:['color']
   });
+}
 
+async function loadSeigneurs(){
+  const [seigneurs, religions, users] = await Promise.all([
+    getData('seigneurs','/api/seigneurs'),
+    getData('religions','/api/religions'),
+    getData('users','/api/users'),
+  ]);
+  const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const religionsSelect = religions.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const usersSelectRaw = users.slice().sort((a,b)=>(a.email||'').localeCompare(b.email||''));
+  const usersSelect = usersSelectRaw.map(u=>({ id:u.id, name:u.email }));
+  const assignedUserIds = new Set(seigneurs.filter(s=>s.user_id).map(s=>s.user_id));
+  const userSelectFn = (item) => usersSelect.filter(u=>!assignedUserIds.has(u.id) || (item && u.id===item.user_id));
+  const seigneursById = seigneurs.slice().sort((a,b)=>a.id - b.id);
+  renderTable(document.getElementById('tableSeigneurs'), seigneursById, {
+    endpoint:'seigneurs',
+    fields:['name','user_id','religion_id','overlord_id'],
+    selects:{user_id:userSelectFn, religion_id:religionsSelect, overlord_id:seigneursSelect},
+    labels:{name:'Nom', user_id:'Utilisateur', religion_id:'Religion', overlord_id:'Suzerain'}
+  });
+}
+
+async function loadEmpires(){
+  const [empires,seigneurs] = await Promise.all([
+    getData('empires','/api/empires'),
+    getData('seigneurs','/api/seigneurs')
+  ]);
+  const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const empiresById = empires.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableEmpires'), empiresById, {
     endpoint:'empires',
     fields:['name','seigneur_id'],
     selects:{seigneur_id:seigneursSelect},
     labels:{name:'Nom', seigneur_id:'Détenteur du titre'}
   });
+}
 
+async function loadKingdoms(){
+  const [kingdoms,seigneurs,empires] = await Promise.all([
+    getData('kingdoms','/api/kingdoms'),
+    getData('seigneurs','/api/seigneurs'),
+    getData('empires','/api/empires'),
+  ]);
+  const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const empiresSelect = empires.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const kingdomsById = kingdoms.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableKingdoms'), kingdomsById, {
     endpoint:'kingdoms',
     fields:['name','seigneur_id','empire_id'],
     selects:{seigneur_id:seigneursSelect, empire_id:empiresSelect},
     labels:{name:'Nom', seigneur_id:'Détenteur du titre', empire_id:'Empire'}
   });
+}
 
+async function loadArchduchies(){
+  const [archduchies,seigneurs] = await Promise.all([
+    getData('archduchies','/api/archduchies'),
+    getData('seigneurs','/api/seigneurs'),
+  ]);
+  const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const archduchiesById = archduchies.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableArchduchies'), archduchiesById, {
     endpoint:'archduchies',
     fields:['name','seigneur_id'],
     selects:{seigneur_id:seigneursSelect},
     labels:{name:'Nom', seigneur_id:'Détenteur du titre'}
   });
+}
 
+async function loadDuchies(){
+  const [duchies,seigneurs,kingdoms,archduchies] = await Promise.all([
+    getData('duchies','/api/duchies'),
+    getData('seigneurs','/api/seigneurs'),
+    getData('kingdoms','/api/kingdoms'),
+    getData('archduchies','/api/archduchies'),
+  ]);
+  const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const kingdomsSelect = kingdoms.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const archduchiesSelect = archduchies.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const duchiesById = duchies.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableDuchies'), duchiesById, {
     endpoint:'duchies',
     fields:['name','seigneur_id','kingdom_id','archduchy_id'],
     selects:{seigneur_id:seigneursSelect, kingdom_id:kingdomsSelect, archduchy_id:archduchiesSelect},
     labels:{name:'Nom', seigneur_id:'Détenteur du titre', kingdom_id:'Royaume', archduchy_id:'Archiduché'}
   });
+}
 
+async function loadMarquisates(){
+  const [marquisates,seigneurs] = await Promise.all([
+    getData('marquisates','/api/marquisates'),
+    getData('seigneurs','/api/seigneurs'),
+  ]);
+  const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const marquisatesById = marquisates.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableMarquisates'), marquisatesById, {
     endpoint:'marquisates',
     fields:['name','seigneur_id'],
     selects:{seigneur_id:seigneursSelect},
     labels:{name:'Nom', seigneur_id:'Détenteur du titre'}
   });
+}
 
+async function loadCounties(){
+  const [counties,seigneurs,duchies,marquisates] = await Promise.all([
+    getData('counties','/api/counties'),
+    getData('seigneurs','/api/seigneurs'),
+    getData('duchies','/api/duchies'),
+    getData('marquisates','/api/marquisates'),
+  ]);
+  const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const duchiesSelect = duchies.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const marquisatesSelect = marquisates.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const countiesById = counties.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableCounties'), countiesById, {
     endpoint:'counties',
     fields:['name','seigneur_id','duchy_id','marquisate_id'],
     selects:{seigneur_id:seigneursSelect, duchy_id:duchiesSelect, marquisate_id:marquisatesSelect},
     labels:{name:'Nom', seigneur_id:'Détenteur du titre', duchy_id:'Duché', marquisate_id:'Marquisat'}
   });
+}
 
+async function loadViscounties(){
+  const [viscounties,seigneurs] = await Promise.all([
+    getData('viscounties','/api/viscounties'),
+    getData('seigneurs','/api/seigneurs'),
+  ]);
+  const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const viscountiesById = viscounties.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableViscounties'), viscountiesById, {
     endpoint:'viscounties',
     fields:['name','seigneur_id'],
     selects:{seigneur_id:seigneursSelect},
     labels:{name:'Nom', seigneur_id:'Détenteur du titre'}
   });
+}
 
+async function loadSeigneuries(){
+  const [seigneuries,baronies,seigneurs] = await Promise.all([
+    getData('seigneuries','/api/seigneuries'),
+    getData('baronies','/api/baronies'),
+    getData('seigneurs','/api/seigneurs'),
+  ]);
+  const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const baroniesSelect = baronies.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const seigneuriesById = seigneuries.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableSeigneuries'), seigneuriesById, {
     endpoint:'seigneuries',
     fields:['baronnie_id','seigneur_id','population',...inventaireFields],
@@ -1352,34 +1414,51 @@ async function loadAll(){
     labels:{baronnie_id:'Baronnie', seigneur_id:'Seigneur', population:'Population',...inventaireLabels},
     beforeSave:(payload,item)=>{ if(item && item.inventaire_id) payload.inventaire_id = item.inventaire_id; }
   });
+}
 
-  renderTable(document.getElementById('tableSeigneurs'), seigneursById, {
-    endpoint:'seigneurs',
-    fields:['name','user_id','religion_id','overlord_id'],
-    selects:{user_id:userSelectFn, religion_id:religionsSelect, overlord_id:seigneursSelect},
-    labels:{name:'Nom', user_id:'Utilisateur', religion_id:'Religion', overlord_id:'Suzerain'}
-  });
-
+async function ensureTags(){
+  const tags = await getData('tags','/api/tags');
   tagsSelect = tags.slice().sort((a,b)=>a.label.localeCompare(b.label)).map(t=>({ id:t.id, name:t.label }));
-  const tagsById = tags.slice().sort((a,b)=>a.id - b.id);
-  renderTable(document.getElementById('tableTags'), tagsById, {
-    endpoint:'tags',
-    fields:['label'],
-    labels:{label:'Nom'}
-  });
+  return tags;
+}
 
-  buildingPropsSelect = buildingProps.map(b => ({ id: b.id, name: b.label || b.type }));
-  infraPropsSelect = infraProps.map(i => ({ id: i.id, name: i.label || i.type }));
+async function ensureBatimentSelects(){
+  const [buildingProps, infraProps] = await Promise.all([
+    getData('building_properties','/api/building_properties'),
+    getData('infrastructure_properties','/api/infrastructure_properties'),
+  ]);
+  buildingPropsSelect = buildingProps.map(b=>({ id:b.id, name:b.label || b.type }));
+  infraPropsSelect = infraProps.map(i=>({ id:i.id, name:i.label || i.type }));
+}
 
+async function ensureEffectsData(){
+  await Promise.all([ensureBatimentSelects(), ensureTags()]);
+}
+
+async function loadBaronyProps(){
+  await ensureEffectsData();
+  const [baronyProps, baronies] = await Promise.all([
+    getData('barony_properties','/api/barony_properties'),
+    getData('baronies','/api/baronies'),
+  ]);
+  const baroniesSelect = baronies.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const baronyPropsById = baronyProps.slice().sort((a,b)=>a.id - b.id);
   const boolSelects = {};
-  baronyPropBoolFields.forEach(f => { boolSelects[f] = yesNoSelect; });
+  baronyPropBoolFields.forEach(f=>{ boolSelects[f] = yesNoSelect; });
   renderTable(document.getElementById('tableBaronyProps'), baronyPropsById, {
     endpoint:'barony_properties',
     fields:baronyPropFields,
     selects:{barony_id:baroniesSelect, ...boolSelects},
     labels:baronyPropLabels
   });
+}
+
+async function loadBatiments(){
+  await ensureEffectsData();
+  const [buildingProps, infraProps] = await Promise.all([
+    getData('building_properties','/api/building_properties'),
+    getData('infrastructure_properties','/api/infrastructure_properties'),
+  ]);
   const buildingPropsById = buildingProps.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableBuildingProps'), buildingPropsById, {
     endpoint:'building_properties',
@@ -1394,7 +1473,11 @@ async function loadAll(){
     labels:infraPropLabels,
     selects:{type:typeSelect}
   });
+}
 
+async function loadSpells(){
+  await ensureEffectsData();
+  const spells = await getData('spells','/api/spells');
   const spellsById = spells.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableSpells'), spellsById, {
     endpoint:'spells',
@@ -1405,4 +1488,61 @@ async function loadAll(){
   });
 }
 
-loadAll();
+async function loadTags(){
+  const tags = await ensureTags();
+  const tagsById = tags.slice().sort((a,b)=>a.id - b.id);
+  renderTable(document.getElementById('tableTags'), tagsById, {
+    endpoint:'tags',
+    fields:['label'],
+    labels:{label:'Nom'}
+  });
+}
+
+function showLoading(panel, show){
+  const el = panel.querySelector('.tab-loading');
+  if(el) el.style.display = show ? '' : 'none';
+}
+
+const tabLoaders = {
+  seigneurs: loadSeigneurs,
+  religions: loadReligions,
+  cultures: loadCultures,
+  empires: loadEmpires,
+  kingdoms: loadKingdoms,
+  archduchies: loadArchduchies,
+  duchies: loadDuchies,
+  marquisates: loadMarquisates,
+  counties: loadCounties,
+  viscounties: loadViscounties,
+  seigneuries: loadSeigneuries,
+  batiments: loadBatiments,
+  spells: loadSpells,
+  tags: loadTags,
+  baronyprops: loadBaronyProps,
+};
+
+document.addEventListener('DOMContentLoaded', ()=>{
+  const buttons = document.querySelectorAll('.tab-btn');
+  const panels = document.querySelectorAll('.tab-panel');
+  buttons.forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      buttons.forEach(b=>b.classList.remove('active'));
+      panels.forEach(p=>p.classList.remove('active'));
+      btn.classList.add('active');
+      const panel = document.getElementById('tab-'+btn.dataset.tab);
+      panel.classList.add('active');
+      if(!tabLoaded[btn.dataset.tab] && tabLoaders[btn.dataset.tab]){
+        tabLoaded[btn.dataset.tab] = true;
+        showLoading(panel, true);
+        tabLoaders[btn.dataset.tab]().finally(()=>showLoading(panel,false));
+      }
+    });
+  });
+  const first = document.querySelector('.tab-btn.active');
+  if(first){
+    const panel = document.getElementById('tab-'+first.dataset.tab);
+    tabLoaded[first.dataset.tab] = true;
+    showLoading(panel,true);
+    tabLoaders[first.dataset.tab]().finally(()=>showLoading(panel,false));
+  }
+});
