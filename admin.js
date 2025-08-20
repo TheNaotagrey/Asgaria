@@ -1184,48 +1184,71 @@ function renderTable(container, rows, opts){
 
   const renderBody = ()=>{
     tbody.innerHTML = '';
+    const sorted = rows.slice().sort(compareRows);
 
-    rows.slice().sort(compareRows).forEach(item=>{
-      const tr = renderRow(item);
-      tbody.appendChild(tr);
-    });
-
-    const addRow = document.createElement('tr');
-    addRow.appendChild(document.createElement('td'));
-    const addInputs = {};
-    opts.fields.forEach(f=>{
-      const td = document.createElement('td');
-      const inp = makeInput('', f, null);
-      addInputs[f]=inp;
-      td.appendChild(inp);
-      addRow.appendChild(td);
-    });
-    const addTd = document.createElement('td');
-    const addBtn = document.createElement('button');
-    addBtn.textContent = 'Ajouter';
-    addBtn.addEventListener('click', async ()=>{
-      const payload = {};
+    const appendAddRow = ()=>{
+      const addRow = document.createElement('tr');
+      addRow.appendChild(document.createElement('td'));
+      const addInputs = {};
       opts.fields.forEach(f=>{
-        const el = addInputs[f];
-        if(el.getValue){
-          payload[f] = el.getValue();
-        } else if(opts.selects && opts.selects[f]){
-          payload[f] = el.value ? (isNaN(el.value) ? el.value : parseInt(el.value,10)) : null;
-        } else if(f === 'description'){
-          payload[f] = el.value;
-        } else {
-          payload[f] = el.value.trim();
-        }
+        const td = document.createElement('td');
+        const inp = makeInput('', f, null);
+        addInputs[f]=inp;
+        td.appendChild(inp);
+        addRow.appendChild(td);
       });
-      if (opts.beforeSave) opts.beforeSave(payload, null);
-      const created = await fetchJSON(`/api/${opts.endpoint}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-      showSaveIndicator(addBtn.parentElement);
-      rows.push(created);
-      renderBody();
-    });
-    addTd.appendChild(addBtn);
-    addRow.appendChild(addTd);
-    tbody.appendChild(addRow);
+      const addTd = document.createElement('td');
+      const addBtn = document.createElement('button');
+      addBtn.textContent = 'Ajouter';
+      addBtn.addEventListener('click', async ()=>{
+        const payload = {};
+        opts.fields.forEach(f=>{
+          const el = addInputs[f];
+          if(el.getValue){
+            payload[f] = el.getValue();
+          } else if(opts.selects && opts.selects[f]){
+            payload[f] = el.value ? (isNaN(el.value) ? el.value : parseInt(el.value,10)) : null;
+          } else if(f === 'description'){
+            payload[f] = el.value;
+          } else {
+            payload[f] = el.value.trim();
+          }
+        });
+        if (opts.beforeSave) opts.beforeSave(payload, null);
+        const created = await fetchJSON(`/api/${opts.endpoint}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+        showSaveIndicator(addBtn.parentElement);
+        rows.push(created);
+        renderBody();
+      });
+      addTd.appendChild(addBtn);
+      addRow.appendChild(addTd);
+      tbody.appendChild(addRow);
+    };
+
+    const batchSize = 500;
+    if(sorted.length > batchSize){
+      let idx = 0;
+      const renderChunk = () => {
+        const frag = document.createDocumentFragment();
+        for(let i=0;i<batchSize && idx < sorted.length;i++,idx++){
+          frag.appendChild(renderRow(sorted[idx]));
+        }
+        tbody.appendChild(frag);
+        if(idx < sorted.length){
+          requestAnimationFrame(renderChunk);
+        }else{
+          appendAddRow();
+        }
+      };
+      requestAnimationFrame(renderChunk);
+    }else{
+      const frag = document.createDocumentFragment();
+      sorted.forEach(item=>{
+        frag.appendChild(renderRow(item));
+      });
+      tbody.appendChild(frag);
+      appendAddRow();
+    }
   };
 
   table.appendChild(tbody);
