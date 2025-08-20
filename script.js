@@ -149,7 +149,6 @@
   const canonicalListDiv = document.getElementById('canonicalList');
   const addCanonicalSelect = document.getElementById('addCanonicalSelect');
   const addCanonicalBtn = document.getElementById('addCanonical');
-  const updateBtn = document.getElementById('updateBarony');
   const filterSelect = document.getElementById('colorFilter');
   const legendDiv = document.getElementById('legend');
 
@@ -1246,7 +1245,24 @@
       if (currentFilter === 'canonical') applyFilter('canonical'); else drawAll();
     });
   });
-  if (updateBtn) updateBtn.addEventListener('click', updateBarony);
+
+  const autoUpdateElems = [
+    editIdInput,
+    editNameInput,
+    editSeigneur,
+    editReligionPop,
+    editCulture,
+    editViscounty,
+    editCounty,
+    editSanctuary,
+    editPriory,
+    editChurch,
+    editCathedral,
+    editPlayer
+  ];
+  autoUpdateElems.forEach(el => {
+    if (el) el.addEventListener('change', updateBarony);
+  });
 
   // Outils
   if (brushToolBtn)
