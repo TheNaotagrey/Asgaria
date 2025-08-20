@@ -9,6 +9,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   form.email.value = user.email || '';
   form.first_name.value = user.first_name || '';
   form.last_name.value = user.last_name || '';
+  if(user.is_admin){
+    const container = document.getElementById('adminModeContainer');
+    const checkbox = document.getElementById('adminMode');
+    container.style.display = 'block';
+    checkbox.checked = user.act_as_admin !== false;
+    checkbox.addEventListener('change', async () => {
+      await fetch('/api/admin_mode', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ admin_mode: checkbox.checked })
+      });
+      location.reload();
+    });
+  }
   form.addEventListener('submit', async e => {
     e.preventDefault();
     if (form.password.value && form.password.value !== form.confirm_password.value) {

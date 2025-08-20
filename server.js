@@ -436,9 +436,13 @@ app.use(session({
     sameSite: 'strict'
   }
 }));
+function isAdminActive(user){
+  return user && user.is_admin && user.act_as_admin !== false;
+}
+
 app.use((req,res,next)=>{
   const adminPages = ['/admin.html','/mapEditor.html'];
-  if (adminPages.includes(req.path) && (!req.session.user || !req.session.user.is_admin)) {
+  if (adminPages.includes(req.path) && !isAdminActive(req.session.user)) {
     return res.redirect('/');
   }
   if (req.path === '/profile.html' && !req.session.user) {
@@ -454,7 +458,7 @@ app.use((req, res, next) => {
     if (!req.session.user) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
-    if (!req.session.user.is_admin) {
+    if (!isAdminActive(req.session.user)) {
       return res.status(403).json({ error: 'Forbidden' });
     }
   }
@@ -478,7 +482,7 @@ function sanitize(val){
 }
 
 function requireAdmin(req, res, next) {
-  if (!req.session.user || !req.session.user.is_admin) {
+  if (!isAdminActive(req.session.user)) {
     return res.status(403).json({ error: 'Forbidden' });
   }
   next();
@@ -557,7 +561,8 @@ app.post('/api/login', async (req, res) => {
           email: user.email,
           first_name: user.first_name,
           last_name: user.last_name,
-          is_admin: !!user.is_admin
+          is_admin: !!user.is_admin,
+          act_as_admin: true
         };
         res.json({ ok: true });
       } catch (error) {
@@ -586,6 +591,14 @@ app.get('/api/me', async (req, res) => {
   } catch (error) {
     handleError(res, error);
   }
+});
+
+app.post('/api/admin_mode', (req,res) => {
+  if(!req.session.user || !req.session.user.is_admin){
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  req.session.user.act_as_admin = !!req.body.admin_mode;
+  res.json({ ok: true });
 });
 
 app.get('/api/users', (req, res) => {
@@ -1029,6 +1042,60 @@ app.post('/api/tax_rate', (req, res) => {
       if (err2) return handleError(res, err2);
       res.json({ tax_rate: rate });
     });
+  });
+});
+
+app.post('/api/admin/seigneurie_update', requireAdmin, (req,res) => {
+  const { id, population, esclaves, religion_id, culture_id, inventaire, buildings, infrastructures } = req.body;
+  db.get('SELECT inventaire_id, baronnie_id, buildings as bjson, infrastructures as ijson FROM seigneuries WHERE id=?', [id], (err, row) => {
+    if(err) return handleError(res, err);
+    if(!row) return res.status(404).json({ error: 'Introuvable' });
+    const tasks = [];
+    if(population !== undefined){
+      tasks.push(cb => db.run('UPDATE seigneuries SET population=? WHERE id=?',[population,id], cb));
+    }
+    if(buildings){
+      const current = safeParse(row.bjson, {});
+      for(const [bid, val] of Object.entries(buildings)){
+        const info = current[bid] || { built: 0, active: 0 };
+        info.built = val;
+        current[bid] = info;
+      }
+      tasks.push(cb => db.run('UPDATE seigneuries SET buildings=? WHERE id=?',[JSON.stringify(current), id], cb));
+    }
+    if(infrastructures){
+      const curr = safeParse(row.ijson, {});
+      for(const [iid, val] of Object.entries(infrastructures)){
+        const entry = curr[iid] || {};
+        entry.built = val;
+        curr[iid] = entry;
+      }
+      tasks.push(cb => db.run('UPDATE seigneuries SET infrastructures=? WHERE id=?',[JSON.stringify(curr), id], cb));
+    }
+    const invUpdates = { ...(inventaire || {}) };
+    if(esclaves !== undefined) invUpdates.esclaves = esclaves;
+    if(Object.keys(invUpdates).length){
+      const set = Object.keys(invUpdates).map(k=>`${k}=?`).join(',');
+      const vals = Object.values(invUpdates);
+      vals.push(row.inventaire_id);
+      tasks.push(cb => db.run(`UPDATE inventaire SET ${set} WHERE id=?`, vals, cb));
+    }
+    if(religion_id !== undefined || culture_id !== undefined){
+      const set = [];
+      const vals = [];
+      if(religion_id !== undefined){ set.push('religion_pop_id=?'); vals.push(religion_id); }
+      if(culture_id !== undefined){ set.push('culture_id=?'); vals.push(culture_id); }
+      vals.push(row.baronnie_id);
+      tasks.push(cb => db.run(`UPDATE baronies SET ${set.join(',')} WHERE id=?`, vals, cb));
+    }
+    let i = 0;
+    const next = (err2) => {
+      if(err2) return handleError(res, err2);
+      const task = tasks[i++];
+      if(!task) return res.json({ ok: true });
+      task(next);
+    };
+    next();
   });
 });
 
@@ -1674,6 +1741,95 @@ app.post('/api/building/destroy', (req,res)=>{
           db.run('UPDATE seigneuries SET buildings=? WHERE id=?', [JSON.stringify(buildings), srow.id], function(err4){
             if(err4) return handleError(res, err4);
             res.json({ building: { id, built, active }, employment, employmentDetails });
+          });
+        });
+      });
+    });
+  });
+});
+
+app.post('/api/infrastructure/destroy', (req,res)=>{
+  if(!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
+  const id = parseInt(req.body.id,10);
+  if(!id) return res.status(400).json({ error: 'ID invalide' });
+  const userId = req.session.user.id;
+  db.get('SELECT seigneuries.id as id, seigneuries.population, seigneuries.inventaire_id, seigneuries.infrastructures, seigneuries.buildings FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?', [userId], (err, srow)=>{
+    if(err) return handleError(res, err);
+    if(!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
+    const infrastructures = safeParse(srow.infrastructures, {});
+    const entry = infrastructures[id];
+    const built = typeof entry === 'object' ? (entry.built || 0) : (entry || 0);
+    if(!built) return res.status(400).json({ error: 'Aucune infrastructure à détruire' });
+    db.all('SELECT id, label, workers_per_building, effects FROM infrastructure_properties', [], (err2, iprops)=>{
+      if(err2) return handleError(res, err2);
+      const iprop = iprops.find(ip => ip.id === id);
+      if(!iprop) return res.status(400).json({ error: 'Infrastructure introuvable' });
+      let updated = typeof entry === 'object' ? { ...entry } : { built };
+      updated.built = built - 1;
+      try {
+        const effects = iprop.effects ? JSON.parse(iprop.effects) : [];
+        effects.forEach((eff, idx) => {
+          if (eff.type === 'instant_production' && eff.uses_per_month != null) {
+            const key = `effect_${idx}_remaining`;
+            const rem = (entry[key] || 0) - (eff.uses_per_month || 0);
+            if (rem > 0) updated[key] = rem; else delete updated[key];
+          }
+          if (eff.type === 'variable_workers') {
+            const key = `effect_${idx}_workers`;
+            const max = (eff.max_workers || 0) * (updated.built || 0);
+            let assigned = entry[key] || 0;
+            if (assigned > max) assigned = max;
+            if (assigned) updated[key] = assigned; else delete updated[key];
+          }
+        });
+      } catch {}
+      if(updated.built <= 0) {
+        delete infrastructures[id];
+      } else {
+        infrastructures[id] = updated;
+      }
+      db.all('SELECT id, label, workers_per_building, effects FROM building_properties', [], (errB, bprops)=>{
+        if(errB) return handleError(res, errB);
+        const buildings = safeParse(srow.buildings, {});
+        db.get('SELECT esclaves FROM inventaire WHERE id=?', [srow.inventaire_id], (err3, inv)=>{
+          if(err3) return handleError(res, err3);
+          const slaves = inv ? (inv.esclaves || 0) : 0;
+          const totalPop = srow.population + slaves;
+          let employed = 0;
+          const employmentDetails = [];
+          for(const bp of bprops || []){
+            const info = buildings[bp.id] || { built: 0, active: 0 };
+            const workers = (info.active || 0) * (bp.workers_per_building || 0);
+            employed += workers;
+            if(workers) employmentDetails.push({ label: bp.label || bp.type, amount: workers, source: info.active || 0 });
+          }
+          for(const ip of iprops || []){
+            const inf = infrastructures[ip.id] || infrastructures[String(ip.id)] || 0;
+            const count = typeof inf === 'object' ? (inf.built || 0) : inf;
+            if(!count) continue;
+            const workers = count * (ip.workers_per_building || 0);
+            if(workers){
+              employed += workers;
+              employmentDetails.push({ label: ip.label || ip.type, amount: workers, source: count });
+            }
+            const infObj = typeof inf === 'object' ? inf : {};
+            const effs = safeParse(ip.effects, []);
+            effs.forEach((ef, eidx) => {
+              if(ef.type === 'variable_workers'){
+                const assigned = infObj[`effect_${eidx}_workers`] || 0;
+                if(assigned){
+                  employed += assigned;
+                  employmentDetails.push({ label: ip.label || ip.type, amount: assigned, source: assigned });
+                }
+              }
+            });
+          }
+          if(employed > totalPop) return res.status(400).json({ error: 'Travailleurs insuffisants' });
+          if(slaves) employmentDetails.push({ label: 'Esclaves', amount: -slaves, source: slaves });
+          const employment = { employed: Math.max(employed - slaves, 0), slaves };
+          db.run('UPDATE seigneuries SET infrastructures=? WHERE id=?', [JSON.stringify(infrastructures), srow.id], function(err4){
+            if(err4) return handleError(res, err4);
+            res.json({ infrastructure: { id, built: updated.built }, employment, employmentDetails });
           });
         });
       });

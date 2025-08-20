@@ -398,6 +398,33 @@ th.multi-col {
   z-index: 1000;
 }
 
+.destroy-btn,
+.danger {
+  background-color: #c00;
+  color: #fff;
+}
+.destroy-btn:hover,
+.danger:hover {
+  background-color: #a00;
+}
+
+.confirm-dialog::backdrop {
+  background: rgba(0,0,0,0.5);
+}
+
+.confirm-dialog {
+  border: 2px solid #c00;
+  padding: 20px;
+  border-radius: 6px;
+}
+
+.confirm-dialog .dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 10px;
+}
+
 /* Indicateurs de production */
 .prod-positive {
   color: #2e8b57;

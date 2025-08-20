@@ -47,10 +47,57 @@ function safeParse(json, fallback){
 let gameState = {};
 let tagLabels = {};
 let tagCounts = {};
+let currentUser = null;
+
+function showConfirm(message){
+  return new Promise(resolve => {
+    const dialog = document.getElementById('confirmDialog');
+    const msgEl = document.getElementById('confirmMessage');
+    const okBtn = document.getElementById('confirmOk');
+    const cancelBtn = document.getElementById('confirmCancel');
+    msgEl.textContent = message;
+    const clean = result => {
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      dialog.close();
+      resolve(result);
+    };
+    const onOk = () => clean(true);
+    const onCancel = () => clean(false);
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+    dialog.showModal();
+  });
+}
+
+async function adminUpdate(fields){
+  if(!gameState.s) return;
+  const payload = { id: gameState.s.id, ...fields };
+  try {
+    const res = await fetch('/api/admin/seigneurie_update', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    if(res.ok){
+      await loadAndRender();
+    } else {
+      alert('Mise à jour impossible');
+    }
+  } catch {
+    alert('Mise à jour impossible');
+  }
+}
 
 document.addEventListener('DOMContentLoaded', init);
 
 async function init() {
+  try {
+    const res = await fetch('/api/me');
+    currentUser = res.ok ? await res.json() : null;
+  } catch {
+    currentUser = null;
+  }
   await loadAndRender();
 }
 
@@ -71,6 +118,7 @@ async function loadAndRender() {
     const s = data.seigneurie;
     const inv = data.inventaire || {};
     const barony = data.barony || {};
+    const isAdmin = currentUser && currentUser.is_admin && currentUser.act_as_admin !== false;
     const idh = data.idh || 0;
     const idhDetails = data.idhDetails || [];
     let idhClass = '';
@@ -183,19 +231,50 @@ async function loadAndRender() {
       `<option value="${i}" ${i === (s.tax_rate ?? 5) ? 'selected' : ''}>${i}</option>`
     ).join('');
 
+    const popField = isAdmin ? `<input type="number" id="popInput" value="${s.population}" style="width:6em">` : s.population;
+    const slaveField = isAdmin ? `<input type="number" id="slaveInput" value="${employment.slaves}" style="width:6em">` : employment.slaves;
+    const relField = isAdmin ? `<select id="religionSelect"></select>` : (barony.religion_name || 'Inconnue');
+    const cultField = isAdmin ? `<select id="cultureSelect"></select>` : (barony.culture_name || 'Inconnue');
     popSummary.innerHTML = `
       <h2>Population</h2>
       <table class="admin-table">
         <tr><th>Info</th><th>Nombre</th></tr>
-        <tr><td>Population totale</td><td>${s.population}</td></tr>
+        <tr><td>Population totale</td><td>${popField}</td></tr>
         <tr><td>Population employée</td><td>${employedHtml}</td></tr>
-        <tr><td>Esclaves</td><td>${employment.slaves}</td></tr>
+        <tr><td>Esclaves</td><td>${slaveField}</td></tr>
         <tr><td>IDH</td><td>${idhHtml}</td></tr>
-        <tr><td>Religion</td><td>${barony.religion_name || 'Inconnue'}</td></tr>
-        <tr><td>Culture</td><td>${barony.culture_name || 'Inconnue'}</td></tr>
+        <tr><td>Religion</td><td>${relField}</td></tr>
+        <tr><td>Culture</td><td>${cultField}</td></tr>
         <tr><td>Taxes (écus)</td><td><select id="taxRate">${taxOptions}</select></td></tr>
       </table>
     `;
+    if(isAdmin){
+      const popInput = document.getElementById('popInput');
+      const slaveInput = document.getElementById('slaveInput');
+      popInput.addEventListener('change', ()=>{
+        const val = parseInt(popInput.value,10) || 0;
+        adminUpdate({ population: val });
+      });
+      slaveInput.addEventListener('change', ()=>{
+        const val = parseInt(slaveInput.value,10) || 0;
+        adminUpdate({ esclaves: val });
+      });
+      try {
+        const [relRes, cultRes] = await Promise.all([fetch('/api/religions'), fetch('/api/cultures')]);
+        const religions = relRes.ok ? await relRes.json() : [];
+        const cultures = cultRes.ok ? await cultRes.json() : [];
+        const relSelect = document.getElementById('religionSelect');
+        const cultSelect = document.getElementById('cultureSelect');
+        relSelect.innerHTML = religions.map(r=>`<option value="${r.id}" ${r.id===barony.religion_pop_id?'selected':''}>${r.name}</option>`).join('');
+        cultSelect.innerHTML = cultures.map(c=>`<option value="${c.id}" ${c.id===barony.culture_id?'selected':''}>${c.name}</option>`).join('');
+        relSelect.addEventListener('change', ()=>{
+          adminUpdate({ religion_id: parseInt(relSelect.value,10) || null });
+        });
+        cultSelect.addEventListener('change', ()=>{
+          adminUpdate({ culture_id: parseInt(cultSelect.value,10) || null });
+        });
+      } catch {}
+    }
 
     const taxSelect = document.getElementById('taxRate');
     if (taxSelect) {
@@ -218,8 +297,18 @@ async function loadAndRender() {
     const basicTable = document.getElementById('basicResourcesTable');
     const luxuryTable = document.getElementById('luxuryResourcesTable');
 
-    basicTable.innerHTML = buildTable(basicResources, true, inv, production, productionDetails, capacities);
-    luxuryTable.innerHTML = buildTable(luxuryResources, false, inv, production, productionDetails, capacities);
+    basicTable.innerHTML = buildTable(basicResources, true, inv, production, productionDetails, capacities, isAdmin);
+    luxuryTable.innerHTML = buildTable(luxuryResources, false, inv, production, productionDetails, capacities, isAdmin);
+
+    if(isAdmin){
+      document.querySelectorAll('.resource-input').forEach(inp => {
+        inp.addEventListener('change', () => {
+          const key = inp.dataset.key;
+          const val = parseInt(inp.value,10) || 0;
+          adminUpdate({ inventaire: { [key]: val } });
+        });
+      });
+    }
 
     if (data.unlockedPages && data.unlockedPages.magie) {
       const magieBtn = document.querySelector('.tab-btn[data-tab="magie"]');
@@ -385,7 +474,8 @@ async function loadAndRender() {
         }
         const empTotal = workersPer * active;
 
-        html += `<tr data-id="${bp.id}"><td>${bp.label || bp.type}</td><td>${prod}</td><td>${workersPer}</td><td>${restrHtml}</td><td>${built}</td><td>${maxVal}</td>`;
+        const builtField = isAdmin ? `<input type="number" class="building-built-input" data-id="${bp.id}" value="${built}" style="width:6em">` : built;
+        html += `<tr data-id="${bp.id}"><td>${bp.label || bp.type}</td><td>${prod}</td><td>${workersPer}</td><td>${restrHtml}</td><td>${builtField}</td><td>${maxVal}</td>`;
         if (built > 0) {
           let maxActivate = built;
           if (bp.workers_per_building) {
@@ -417,13 +507,13 @@ async function loadAndRender() {
     }
 
     if (civilDiv) {
-      civilDiv.innerHTML = buildInfraTable(infraProps.filter(i=>i.type==='civil'), infrastructures, inv, 'civilInfraTable');
+      civilDiv.innerHTML = buildInfraTable(infraProps.filter(i=>i.type==='civil'), infrastructures, inv, 'civilInfraTable', isAdmin);
       const table = document.getElementById('civilInfraTable');
       table.addEventListener('click', handleInfraTableClick);
       table.addEventListener('change', handleInfraTableChange);
     }
     if (miliDiv) {
-      miliDiv.innerHTML = buildInfraTable(infraProps.filter(i=>i.type==='militaire'), infrastructures, inv, 'militaryInfraTable');
+      miliDiv.innerHTML = buildInfraTable(infraProps.filter(i=>i.type==='militaire'), infrastructures, inv, 'militaryInfraTable', isAdmin);
       const table = document.getElementById('militaryInfraTable');
       table.addEventListener('click', handleInfraTableClick);
       table.addEventListener('change', handleInfraTableChange);
@@ -465,7 +555,7 @@ async function handleBuildingTableClick(e) {
     }
   } else if (e.target.classList.contains('destroy-btn')) {
     const id = e.target.dataset.id;
-    const ok = confirm("Détruire ce bâtiment ? Les ressources dépensées ne seront pas récupérées. Êtes-vous sûr ?");
+    const ok = await showConfirm('Détruire ce bâtiment ? Les ressources dépensées ne seront pas récupérées. Êtes-vous sûr ?');
     if (!ok) return;
     try {
       const resp = await fetch('/api/building/destroy', {
@@ -518,6 +608,10 @@ async function handleBuildingActivationChange(e) {
       console.error('[build] Erreur réseau lors de l\'activation', err);
       alert('Activation impossible');
     }
+  } else if (e.target.classList.contains('building-built-input')) {
+    const id = e.target.dataset.id;
+    const qty = parseInt(e.target.value,10) || 0;
+    adminUpdate({ buildings: { [id]: qty } });
   }
 }
 
@@ -567,6 +661,27 @@ async function handleInfraTableClick(e) {
       console.error('[infra] Erreur réseau lors de la conversion', err);
       alert('Conversion impossible');
     }
+  } else if (e.target.classList.contains('infra-destroy-btn')) {
+    const id = e.target.dataset.id;
+    const ok = await showConfirm('Détruire cette infrastructure ? Les ressources dépensées ne seront pas récupérées. Êtes-vous sûr ?');
+    if(!ok) return;
+    try {
+      const resp = await fetch('/api/infrastructure/destroy', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ id })
+      });
+      if(resp.ok){
+        await loadAndRender();
+      } else {
+        const msg = await resp.text().catch(()=> '');
+        console.warn('[infra] Destruction refusée', resp.status, msg);
+        alert('Destruction impossible');
+      }
+    } catch (err) {
+      console.error('[infra] Erreur réseau lors de la destruction', err);
+      alert('Destruction impossible');
+    }
   }
 }
 
@@ -613,12 +728,16 @@ async function handleInfraTableChange(e) {
       console.error('[infra] Erreur réseau affectation', err);
       alert('Affectation impossible');
     }
+  } else if (e.target.classList.contains('infra-built-input')) {
+    const id = e.target.dataset.id;
+    const qty = parseInt(e.target.value,10) || 0;
+    adminUpdate({ infrastructures: { [id]: qty } });
   }
 }
 
-function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId) {
+function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId, editable = false) {
   const { buildings = {}, infrastructures = {}, s = {}, bpMap = {}, ipMap = {} } = gameState || {};
-  let html = `<table class="admin-table" id="${tableId}"><tr><th>Nom</th><th>Construits</th><th>Max</th><th>Effets</th><th>Requis</th><th>Coût</th><th>Construire</th><th class="multi-col"></th></tr>`;
+  let html = `<table class="admin-table" id="${tableId}"><tr><th>Nom</th><th>Construits</th><th>Max</th><th>Effets</th><th>Requis</th><th>Coût</th><th>Construire</th><th>Détruire</th><th class="multi-col"></th></tr>`;
   for (const ip of list) {
     const entry = infraBuilt[ip.id] || infraBuilt[String(ip.id)] || 0;
     const built = typeof entry === 'object' ? (entry.built || 0) : entry;
@@ -716,11 +835,17 @@ function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId) {
     } catch {}
 
     const canBuild = hasRes && restrOk;
-    html += `<tr data-id="${ip.id}"><td>${ip.label}</td><td>${built}</td><td>${maxVal}</td><td>${effectsHtml}</td><td>${restrHtml}</td><td>${costHtml}</td>`;
+    const builtField = editable ? `<input type="number" class="infra-built-input" data-id="${ip.id}" value="${built}" style="width:6em">` : built;
+    html += `<tr data-id="${ip.id}"><td>${ip.label}</td><td>${builtField}</td><td>${maxVal}</td><td>${effectsHtml}</td><td>${restrHtml}</td><td>${costHtml}</td>`;
     if (maxReached) {
       html += '<td></td>';
     } else {
       html += `<td><button class="build-btn infra-build-btn" data-id="${ip.id}"${canBuild ? '' : ' disabled'}>Construire</button></td>`;
+    }
+    if (built > 0) {
+      html += `<td><button class="destroy-btn infra-destroy-btn" data-id="${ip.id}">Détruire</button></td>`;
+    } else {
+      html += '<td></td>';
     }
 
     let extraHtml = '';
@@ -783,7 +908,7 @@ function updateVarWorkers(el){
   prodCell.textContent = `${nb*per} ${res}`;
 }
 
-function buildTable(list, showMax = false, inv = {}, production = {}, productionDetails = {}, capacity = {}) {
+function buildTable(list, showMax = false, inv = {}, production = {}, productionDetails = {}, capacity = {}, editable = false) {
   const {
     buildings = {},
     bpMap = {},
@@ -843,7 +968,8 @@ function buildTable(list, showMax = false, inv = {}, production = {}, production
         prodHtml = spanAmount(total);
       }
     }
-    html += `<tr><td>${label}</td><td>${qty}</td><td>${prodHtml}</td>`;
+    const qtyHtml = editable ? `<input type="number" class="resource-input" data-key="${key}" value="${qty}" style="width:6em">` : qty;
+    html += `<tr><td>${label}</td><td>${qtyHtml}</td><td>${prodHtml}</td>`;
     if (showMax) html += `<td>${capacity[key] !== undefined ? capacity[key] : ''}</td>`;
     html += '</tr>';
   }
