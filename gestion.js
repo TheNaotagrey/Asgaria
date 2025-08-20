@@ -214,7 +214,7 @@ async function loadAndRender() {
     const freePop = s.population + employment.slaves - employment.employed;
     if (prodDiv) {
       let html = '<table class="admin-table" id="buildingsTable">';
-      html += '<tr><th>Nom</th><th>Production</th><th>Employés</th><th>Requis</th><th>Construits</th><th>Max</th><th>Activer</th><th>Prod. Tot.</th><th>Emp. Tot.</th><th>Coût</th><th>Construire</th></tr>';
+      html += '<tr><th>Nom</th><th>Production</th><th>Employés</th><th>Requis</th><th>Construits</th><th>Max</th><th>Activer</th><th>Prod. Tot.</th><th>Emp. Tot.</th><th>Coût</th><th>Construire</th><th>Détruire</th></tr>';
       for (const bp of buildingProps) {
         let prodLabel = '';
         if (bp.produces) {
@@ -365,9 +365,14 @@ async function loadAndRender() {
         }
         html += `<td>${prodTotalHtml}</td><td>${empTotal}</td><td>${costHtml}</td>`;
         if (maxReached) {
-          html += '<td></td></tr>';
+          html += '<td></td>';
         } else {
-          html += `<td><button class="build-btn" data-id="${bp.id}"${canBuild ? '' : ' disabled'}>Construire</button></td></tr>`;
+          html += `<td><button class="build-btn" data-id="${bp.id}"${canBuild ? '' : ' disabled'}>Construire</button></td>`;
+        }
+        if (built > 0) {
+          html += `<td><button class="destroy-btn" data-id="${bp.id}">Détruire</button></td></tr>`;
+        } else {
+          html += '<td></td></tr>';
         }
       }
       html += '</table>';
@@ -424,6 +429,25 @@ async function handleBuildingTableClick(e) {
     } catch (err) {
       console.error('[build] Erreur réseau ou serveur', err);
       alert('Erreur réseau lors de la construction');
+    }
+  } else if (e.target.classList.contains('destroy-btn')) {
+    const id = e.target.dataset.id;
+    const ok = confirm("Détruire ce bâtiment ? Les ressources dépensées ne seront pas récupérées. Êtes-vous sûr ?");
+    if (!ok) return;
+    try {
+      const resp = await fetch('/api/building/destroy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+      });
+      if (resp.ok) {
+        await loadAndRender();
+      } else {
+        const msg = await resp.text().catch(() => '');
+        alert('Destruction impossible');
+      }
+    } catch (err) {
+      alert('Erreur réseau lors de la destruction');
     }
   }
 }
