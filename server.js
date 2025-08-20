@@ -811,7 +811,12 @@ app.get('/api/my_seigneurie', (req, res) => {
               basicSpellDiscount: 0,
               advancedSpellDiscount: 0,
               spellRangeBonus: 0,
-              spellMax: 0
+              spellMax: 0,
+              spellSuccessDetails: [],
+              basicSpellDiscountDetails: [],
+              advancedSpellDiscountDetails: [],
+              spellRangeDetails: [],
+              spellMaxDetails: []
             };
             for (const ip of infraList) {
               effectCtx.currentInfraId = ip.id;
@@ -961,7 +966,36 @@ app.get('/api/my_seigneurie', (req, res) => {
               const advancedSpellDiscount = effectCtx.advancedSpellDiscount || 0;
               const spellRange = 5 + (effectCtx.spellRangeBonus || 0);
               const spellMax = effectCtx.spellMax || 0;
-              res.json({ seigneurie: s, barony, inventaire, production, productionDetails, fields, baronyProps, employment, employmentDetails, buildings, infrastructures, capacities, buildingProductionBonus, buildingProductionBonusDetails, idh, idhDetails, unlockedPages: effectCtx.unlockedPages, spellSuccess, basicSpellDiscount, advancedSpellDiscount, spellRange, spellMax, spellsCast });
+              res.json({
+                seigneurie: s,
+                barony,
+                inventaire,
+                production,
+                productionDetails,
+                fields,
+                baronyProps,
+                employment,
+                employmentDetails,
+                buildings,
+                infrastructures,
+                capacities,
+                buildingProductionBonus,
+                buildingProductionBonusDetails,
+                idh,
+                idhDetails,
+                unlockedPages: effectCtx.unlockedPages,
+                spellSuccess,
+                basicSpellDiscount,
+                advancedSpellDiscount,
+                spellRange,
+                spellMax,
+                spellsCast,
+                spellSuccessDetails: effectCtx.spellSuccessDetails || [],
+                basicSpellDiscountDetails: effectCtx.basicSpellDiscountDetails || [],
+                advancedSpellDiscountDetails: effectCtx.advancedSpellDiscountDetails || [],
+                spellRangeDetails: effectCtx.spellRangeDetails || [],
+                spellMaxDetails: effectCtx.spellMaxDetails || []
+              });
             }
             if (s.baronnie_id) {
               db.get('SELECT * FROM barony_properties WHERE barony_id=?', [s.baronnie_id], (err3, props) => {
