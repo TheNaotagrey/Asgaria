@@ -232,7 +232,7 @@ async function loadAndRender(seigneurieId) {
     const advancedSpellDiscountDetails = data.advancedSpellDiscountDetails || [];
     const spellRangeDetails = data.spellRangeDetails || [];
     const spellMaxDetails = data.spellMaxDetails || [];
-    gameState = { s, employment, buildings, infrastructures, bpMap, ipMap, buildingBonuses, buildingBonusDetails, spellSuccess, basicSpellDiscount, advancedSpellDiscount, spellRange, spellMax, spellsCast, spellSuccessDetails, basicSpellDiscountDetails, advancedSpellDiscountDetails, spellRangeDetails, spellMaxDetails, inv, capacities, isAdmin, baronyProps };
+    gameState = { s, employment, buildings, infrastructures, bpMap, ipMap, buildingBonuses, buildingBonusDetails, productionDetails, spellSuccess, basicSpellDiscount, advancedSpellDiscount, spellRange, spellMax, spellsCast, spellSuccessDetails, basicSpellDiscountDetails, advancedSpellDiscountDetails, spellRangeDetails, spellMaxDetails, inv, capacities, isAdmin, baronyProps };
 
     const summary = document.getElementById('summary');
     summary.innerHTML = `
@@ -790,7 +790,7 @@ async function handleInfraTableChange(e) {
 }
 
 function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId, editable = false) {
-  const { buildings = {}, infrastructures = {}, s = {}, bpMap = {}, ipMap = {} } = gameState || {};
+  const { buildings = {}, infrastructures = {}, s = {}, bpMap = {}, ipMap = {}, productionDetails = {} } = gameState || {};
   let html = `<table class="admin-table" id="${tableId}"><tr><th>Nom</th><th>Construits</th><th>Max</th><th>Effets</th><th>Requis</th><th>Coût</th><th>Construire</th><th>Détruire</th><th class="multi-col"></th></tr>`;
   for (const ip of list) {
     const entry = infraBuilt[ip.id] || infraBuilt[String(ip.id)] || 0;
@@ -921,8 +921,14 @@ function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId, editable = fa
             const assigned = entryObj[workerKey] || 0;
             const maxWorkers = (eff.max_workers || 0) * built;
             const label = resourceLabels[eff.resource] || eff.resource;
-            const prodTotal = assigned * (eff.amount || 0);
-            tables.push(`<table class="admin-table var-workers-table"><tr><th>Assignés</th><th>Max</th><th>Production</th></tr><tr><td><input type="number" class="var-workers-input" data-id="${ip.id}" data-idx="${idx}" min="0" max="${maxWorkers}" value="${assigned}" oninput="updateVarWorkers(this)"></td><td>${maxWorkers}</td><td class="vw-prod" data-per="${eff.amount}" data-res="${eff.resource}">${prodTotal} ${label}</td></tr></table>`);
+            let per = eff.amount || 0;
+            const details = productionDetails[eff.resource] || [];
+            const det = details.find(d => d.label === (ip.label || ip.type));
+            if (det && det.source) {
+              per = det.amount / det.source;
+            }
+            const prodTotal = assigned * per;
+            tables.push(`<table class="admin-table var-workers-table"><tr><th>Assignés</th><th>Max</th><th>Production</th></tr><tr><td><input type="number" class="var-workers-input" data-id="${ip.id}" data-idx="${idx}" min="0" max="${maxWorkers}" value="${assigned}" oninput="updateVarWorkers(this)"></td><td>${maxWorkers}</td><td class="vw-prod" data-per="${per}" data-res="${eff.resource}">${prodTotal} ${label}</td></tr></table>`);
           }
         });
       }
@@ -956,10 +962,10 @@ function updateInstantCost(el){
 function updateVarWorkers(el){
   const tr = el.closest('tr');
   const prodCell = tr.querySelector('.vw-prod');
-  const per = parseInt(prodCell.dataset.per,10) || 0;
+  const per = parseFloat(prodCell.dataset.per) || 0;
   const res = resourceLabels[prodCell.dataset.res] || prodCell.dataset.res;
   const nb = parseInt(el.value,10) || 0;
-  prodCell.textContent = `${nb*per} ${res}`;
+  prodCell.textContent = `${nb * per} ${res}`;
 }
 
 function handlePropChange(e) {
