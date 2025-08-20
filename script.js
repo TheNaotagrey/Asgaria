@@ -180,18 +180,7 @@
     if (editReligionPop) {
       editReligionPop.innerHTML = blankOpt + religionOptions.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
     }
-    if (editSanctuary) {
-      editSanctuary.innerHTML = blankOpt + religionOptions.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
-    }
-    if (editPriory) {
-      editPriory.innerHTML = blankOpt + religionOptions.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
-    }
-    if (editChurch) {
-      editChurch.innerHTML = blankOpt + religionOptions.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
-    }
-    if (editCathedral) {
-      editCathedral.innerHTML = blankOpt + religionOptions.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
-    }
+    // No religion selection needed for buildings; presence is handled via checkboxes
     if (addCanonicalSelect) {
       addCanonicalSelect.innerHTML = blankOpt + religionOptions.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
     }
@@ -556,17 +545,25 @@
         groupId = kingdom ? kingdom.empire_id : null;
         groupName = empireMap[groupId]?.name || '';
       } else if (type === 'sanctuary') {
-        groupId = info.sanctuary_religion_id;
-        groupName = religionMap[groupId]?.name || '';
+        if (info.has_sanctuary) {
+          groupId = info.religion_pop_id;
+          groupName = religionMap[groupId]?.name || '';
+        }
       } else if (type === 'priory') {
-        groupId = info.priory_religion_id;
-        groupName = religionMap[groupId]?.name || '';
+        if (info.has_priory) {
+          groupId = info.religion_pop_id;
+          groupName = religionMap[groupId]?.name || '';
+        }
       } else if (type === 'church') {
-        groupId = info.church_religion_id;
-        groupName = religionMap[groupId]?.name || '';
+        if (info.has_church) {
+          groupId = info.religion_pop_id;
+          groupName = religionMap[groupId]?.name || '';
+        }
       } else if (type === 'cathedral') {
-        groupId = info.cathedral_religion_id;
-        groupName = religionMap[groupId]?.name || '';
+        if (info.has_cathedral) {
+          groupId = info.religion_pop_id;
+          groupName = religionMap[groupId]?.name || '';
+        }
       } else if (type === 'occupation') {
         if (!info.seigneur_id) {
           groupId = 'unoccupied';
@@ -651,10 +648,10 @@
       if (editCulture) editCulture.value = info.culture_id || '';
       if (editViscounty) editViscounty.value = info.viscounty_id || '';
       if (editCounty) editCounty.value = info.county_id || '';
-      if (editSanctuary) editSanctuary.value = info.sanctuary_religion_id || '';
-      if (editPriory) editPriory.value = info.priory_religion_id || '';
-      if (editChurch) editChurch.value = info.church_religion_id || '';
-      if (editCathedral) editCathedral.value = info.cathedral_religion_id || '';
+      if (editSanctuary) editSanctuary.checked = !!info.has_sanctuary;
+      if (editPriory) editPriory.checked = !!info.has_priory;
+      if (editChurch) editChurch.checked = !!info.has_church;
+      if (editCathedral) editCathedral.checked = !!info.has_cathedral;
       if (editPlayer) editPlayer.checked = !!info.player;
     }).finally(()=>{
       if (currentFilter) applyFilter(currentFilter); else drawAll();
@@ -672,10 +669,10 @@
     const cultureId = editCulture ? parseInt(editCulture.value || '') || null : null;
     const viscountyId = editViscounty ? parseInt(editViscounty.value || '') || null : null;
     const countyId = editCounty ? parseInt(editCounty.value || '') || null : null;
-    const sanctuaryId = editSanctuary ? parseInt(editSanctuary.value || '') || null : null;
-    const prioryId = editPriory ? parseInt(editPriory.value || '') || null : null;
-    const churchId = editChurch ? parseInt(editChurch.value || '') || null : null;
-    const cathedralId = editCathedral ? parseInt(editCathedral.value || '') || null : null;
+    const hasSanctuary = editSanctuary ? editSanctuary.checked : false;
+    const hasPriory = editPriory ? editPriory.checked : false;
+    const hasChurch = editChurch ? editChurch.checked : false;
+    const hasCathedral = editCathedral ? editCathedral.checked : false;
     const playerFlag = editPlayer ? (editPlayer.checked ? 1 : 0) : 0;
     if (newId === '') return;
     if (newId === oldId) {
@@ -690,14 +687,14 @@
           county_id: countyId,
           viscounty_id: viscountyId,
           culture_id: cultureId,
-          sanctuary_religion_id: sanctuaryId,
-          priory_religion_id: prioryId,
-          church_religion_id: churchId,
-          cathedral_religion_id: cathedralId,
+          has_sanctuary: hasSanctuary ? 1 : 0,
+          has_priory: hasPriory ? 1 : 0,
+          has_church: hasChurch ? 1 : 0,
+          has_cathedral: hasCathedral ? 1 : 0,
           player: playerFlag
         });
       }
-      saveBaronyToServer(oldId, { name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId, sanctuary_religion_id: sanctuaryId, priory_religion_id: prioryId, church_religion_id: churchId, cathedral_religion_id: cathedralId, player: playerFlag });
+      saveBaronyToServer(oldId, { name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId, has_sanctuary: hasSanctuary ? 1 : 0, has_priory: hasPriory ? 1 : 0, has_church: hasChurch ? 1 : 0, has_cathedral: hasCathedral ? 1 : 0, player: playerFlag });
       return;
     }
     // Si un identifiant existe déjà, échanger les baronnies
@@ -718,8 +715,8 @@
       pixelData[newId] = coordsOld;
       // Mettre à jour les noms : l'ancien id prend l'ancien nom de newId ; le nouvel id prend le nouveau nom saisi
       const tempName = baronyMeta[newId] ? baronyMeta[newId].name : '';
-      baronyMeta[oldId] = { id: oldId, name: tempName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId, sanctuary_religion_id: sanctuaryId, priory_religion_id: prioryId, church_religion_id: churchId, cathedral_religion_id: cathedralId, player: playerFlag };
-      baronyMeta[newId] = { id: newId, name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId, sanctuary_religion_id: sanctuaryId, priory_religion_id: prioryId, church_religion_id: churchId, cathedral_religion_id: cathedralId, player: playerFlag };
+      baronyMeta[oldId] = { id: oldId, name: tempName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId, has_sanctuary: hasSanctuary ? 1 : 0, has_priory: hasPriory ? 1 : 0, has_church: hasChurch ? 1 : 0, has_cathedral: hasCathedral ? 1 : 0, player: playerFlag };
+      baronyMeta[newId] = { id: newId, name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId, has_sanctuary: hasSanctuary ? 1 : 0, has_priory: hasPriory ? 1 : 0, has_church: hasChurch ? 1 : 0, has_cathedral: hasCathedral ? 1 : 0, player: playerFlag };
       // Mettre à jour pixelMap
       coordsOld.forEach(([x, y]) => {
         pixelMap[y][x] = newId;
@@ -733,8 +730,8 @@
       colorMap[oldId] = generateColor(oldId);
       drawAll();
       selectBarony(newId);
-      saveBaronyToServer(newId, { name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId, sanctuary_religion_id: sanctuaryId, priory_religion_id: prioryId, church_religion_id: churchId, cathedral_religion_id: cathedralId, player: playerFlag });
-      saveBaronyToServer(oldId, { name: tempName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId, sanctuary_religion_id: sanctuaryId, priory_religion_id: prioryId, church_religion_id: churchId, cathedral_religion_id: cathedralId, player: playerFlag });
+      saveBaronyToServer(newId, { name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId, has_sanctuary: hasSanctuary ? 1 : 0, has_priory: hasPriory ? 1 : 0, has_church: hasChurch ? 1 : 0, has_cathedral: hasCathedral ? 1 : 0, player: playerFlag });
+      saveBaronyToServer(oldId, { name: tempName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId, has_sanctuary: hasSanctuary ? 1 : 0, has_priory: hasPriory ? 1 : 0, has_church: hasChurch ? 1 : 0, has_cathedral: hasCathedral ? 1 : 0, player: playerFlag });
       return;
     }
     const coords = pixelData[oldId] || [];
@@ -753,7 +750,7 @@
     colorMap[newId] = generateColor(newId);
     drawAll();
     selectBarony(newId);
-    saveBaronyToServer(newId, { name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId, sanctuary_religion_id: sanctuaryId, priory_religion_id: prioryId, church_religion_id: churchId, cathedral_religion_id: cathedralId, player: playerFlag });
+    saveBaronyToServer(newId, { name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId, has_sanctuary: hasSanctuary ? 1 : 0, has_priory: hasPriory ? 1 : 0, has_church: hasChurch ? 1 : 0, has_cathedral: hasCathedral ? 1 : 0, player: playerFlag });
   }
 
   function saveBaronyToServer(id, data) {
@@ -1280,11 +1277,11 @@
       // Enregistrer création pour l’undo
       undoStack.push({ type: 'create', id: newId });
       pixelData[newId] = [];
-      baronyMeta[newId] = { id: newId, name: '', seigneur_id: null, religion_pop_id: null, county_id: null, viscounty_id: null, culture_id: null, sanctuary_religion_id: null, priory_religion_id: null, church_religion_id: null, cathedral_religion_id: null, player: 0 };
+      baronyMeta[newId] = { id: newId, name: '', seigneur_id: null, religion_pop_id: null, county_id: null, viscounty_id: null, culture_id: null, has_sanctuary: 0, has_priory: 0, has_church: 0, has_cathedral: 0, player: 0 };
       colorMap[newId] = generateColor(newId);
       currentSelectedId = newId;
       selectBarony(newId);
-      saveBaronyToServer(newId, { name: '', seigneur_id: null, religion_pop_id: null, county_id: null, viscounty_id: null, culture_id: null, sanctuary_religion_id: null, priory_religion_id: null, church_religion_id: null, cathedral_religion_id: null, player: 0 });
+      saveBaronyToServer(newId, { name: '', seigneur_id: null, religion_pop_id: null, county_id: null, viscounty_id: null, culture_id: null, has_sanctuary: 0, has_priory: 0, has_church: 0, has_cathedral: 0, player: 0 });
       setActiveTool('brush');
     });
   if (brushSizeInput)
