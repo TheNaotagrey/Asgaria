@@ -585,9 +585,13 @@ app.post('/api/logout', async (req, res) => {
   }
 });
 
-app.get('/api/me', async (req, res) => {
+app.get('/api/me', (req, res) => {
   try {
-    res.json(req.session.user || null);
+    if (!req.session.user) return res.json(null);
+    db.get('SELECT name FROM seigneurs WHERE user_id=?', [req.session.user.id], (err, row) => {
+      if (err) return handleError(res, err);
+      res.json({ ...req.session.user, character_name: row ? row.name : null });
+    });
   } catch (error) {
     handleError(res, error);
   }
