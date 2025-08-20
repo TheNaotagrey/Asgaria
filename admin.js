@@ -1133,43 +1133,51 @@ function renderTable(container, rows, opts){
     return input;
   };
 
+  const renderRow = (item)=>{
+    const tr = document.createElement('tr');
+    let td = document.createElement('td');
+    td.textContent = item.id;
+    tr.appendChild(td);
+    opts.fields.forEach(f=>{
+      td = document.createElement('td');
+      td.appendChild(makeInput(item[f], f, item));
+      tr.appendChild(td);
+    });
+    td = document.createElement('td');
+    const btn = document.createElement('button');
+    btn.textContent = 'Enregistrer';
+    btn.addEventListener('click', async ()=>{
+      const payload = {};
+      opts.fields.forEach((f,i)=>{
+        const el = tr.children[i+1].firstChild;
+        if(el.getValue){
+          payload[f] = el.getValue();
+        } else if(opts.selects && opts.selects[f]){
+          payload[f] = el.value ? (isNaN(el.value) ? el.value : parseInt(el.value,10)) : null;
+        } else if(f === 'description'){
+          payload[f] = el.value;
+        } else {
+          payload[f] = el.value.trim();
+        }
+      });
+      if (opts.beforeSave) opts.beforeSave(payload, item);
+      const updated = await fetchJSON(`/api/${opts.endpoint}/${item.id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      showSaveIndicator(btn.parentElement);
+      const idx = rows.findIndex(r=>r.id === item.id);
+      if(idx !== -1) rows[idx] = updated;
+      const newRow = renderRow(updated);
+      tbody.replaceChild(newRow, tr);
+    });
+    td.appendChild(btn);
+    tr.appendChild(td);
+    return tr;
+  };
+
   const renderBody = ()=>{
     tbody.innerHTML = '';
 
     rows.slice().sort(compareRows).forEach(item=>{
-      const tr = document.createElement('tr');
-      let td = document.createElement('td');
-      td.textContent = item.id;
-      tr.appendChild(td);
-      opts.fields.forEach(f=>{
-        td = document.createElement('td');
-        td.appendChild(makeInput(item[f], f, item));
-        tr.appendChild(td);
-      });
-      td = document.createElement('td');
-      const btn = document.createElement('button');
-      btn.textContent = 'Enregistrer';
-      btn.addEventListener('click', async ()=>{
-        const payload = {};
-        opts.fields.forEach((f,i)=>{
-          const el = tr.children[i+1].firstChild;
-          if(el.getValue){
-            payload[f] = el.getValue();
-          } else if(opts.selects && opts.selects[f]){
-            payload[f] = el.value ? (isNaN(el.value) ? el.value : parseInt(el.value,10)) : null;
-          } else if(f === 'description'){
-            payload[f] = el.value;
-          } else {
-            payload[f] = el.value.trim();
-          }
-        });
-        if (opts.beforeSave) opts.beforeSave(payload, item);
-        await fetchJSON(`/api/${opts.endpoint}/${item.id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-        showSaveIndicator(btn.parentElement);
-        loadAll();
-      });
-      td.appendChild(btn);
-      tr.appendChild(td);
+      const tr = renderRow(item);
       tbody.appendChild(tr);
     });
 
@@ -1201,9 +1209,10 @@ function renderTable(container, rows, opts){
         }
       });
       if (opts.beforeSave) opts.beforeSave(payload, null);
-      await fetchJSON(`/api/${opts.endpoint}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      const created = await fetchJSON(`/api/${opts.endpoint}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
       showSaveIndicator(addBtn.parentElement);
-      loadAll();
+      rows.push(created);
+      renderBody();
     });
     addTd.appendChild(addBtn);
     addRow.appendChild(addTd);
@@ -1214,6 +1223,12 @@ function renderTable(container, rows, opts){
   container.appendChild(table);
   updateHeaders();
   renderBody();
+}
+
+async function refreshTable(container, rows, opts){
+  const data = await fetchJSON(`/api/${opts.endpoint}`);
+  rows.splice(0, rows.length, ...data);
+  renderTable(container, rows, opts);
 }
 
 async function loadAll(){
