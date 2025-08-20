@@ -1329,6 +1329,64 @@ app.post('/api/building/activate', (req,res)=>{
   });
 });
 
+app.post('/api/building/destroy', (req,res)=>{
+  if(!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
+  const id = parseInt(req.body.id,10);
+  if(!id) return res.status(400).json({ error: 'ID invalide' });
+  const userId = req.session.user.id;
+  db.get('SELECT seigneuries.id as id, seigneuries.population, seigneuries.inventaire_id, seigneuries.buildings FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?', [userId], (err, srow)=>{
+    if(err) return handleError(res, err);
+    if(!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
+    const buildings = safeParse(srow.buildings, {});
+    const binfo = buildings[id];
+    if(!binfo || !binfo.built) return res.status(400).json({ error: 'Aucun bâtiment à détruire' });
+    db.all('SELECT id, label, workers_per_building, effects FROM building_properties', [], (err2, bprops) => {
+      if(err2) return handleError(res, err2);
+      const bprop = bprops.find(bp => bp.id === id);
+      if(!bprop) return res.status(400).json({ error: 'Bâtiment introuvable' });
+      const built = binfo.built - 1;
+      let active = binfo.active || 0;
+      if(active > built) active = built;
+      const updated = { ...binfo, built, active };
+      try {
+        const effects = bprop.effects ? JSON.parse(bprop.effects) : [];
+        effects.forEach((eff, idx) => {
+          if (eff.type === 'instant_production' && eff.uses_per_month != null) {
+            const key = `effect_${idx}_remaining`;
+            const rem = (binfo[key] || 0) - eff.uses_per_month;
+            if (rem > 0) updated[key] = rem; else delete updated[key];
+          }
+        });
+      } catch {}
+      if (built <= 0) {
+        delete buildings[id];
+      } else {
+        buildings[id] = updated;
+      }
+      db.get('SELECT esclaves FROM inventaire WHERE id=?', [srow.inventaire_id], (err3, inv)=>{
+        if(err3) return handleError(res, err3);
+        const slaves = inv ? (inv.esclaves || 0) : 0;
+        const totalPop = srow.population + slaves;
+        let employed = 0;
+        const employmentDetails = [];
+        for(const bp of bprops || []){
+          const info = buildings[bp.id] || { built: 0, active: 0 };
+          const workers = (info.active || 0) * (bp.workers_per_building || 0);
+          employed += workers;
+          if(workers) employmentDetails.push({ label: bp.label || bp.type, amount: workers, source: info.active || 0 });
+        }
+        if(employed > totalPop) return res.status(400).json({ error: 'Travailleurs insuffisants' });
+        if(slaves) employmentDetails.push({ label: 'Esclaves', amount: -slaves, source: slaves });
+        const employment = { employed: Math.max(employed - slaves, 0), slaves };
+        db.run('UPDATE seigneuries SET buildings=? WHERE id=?', [JSON.stringify(buildings), srow.id], function(err4){
+          if(err4) return handleError(res, err4);
+          res.json({ building: { id, built, active }, employment, employmentDetails });
+        });
+      });
+    });
+  });
+});
+
 app.post('/api/infrastructure/instant_production', (req,res)=>{
   if(!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
   const { id, index, quantity } = req.body;
