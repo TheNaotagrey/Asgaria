@@ -1222,9 +1222,14 @@ function renderTable(container, rows, opts){
           }
         });
         if (opts.beforeSave) opts.beforeSave(payload, null);
-        const created = await fetchJSON(`/api/${opts.endpoint}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+        const created = await fetchJSON(`/api/${opts.endpoint}`,{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify(payload)
+        });
         showSaveIndicator(addBtn.parentElement);
-        rows.push(created);
+        const newItem = { ...payload, ...created };
+        rows.push(newItem);
         renderBody();
       });
       addTd.appendChild(addBtn);
