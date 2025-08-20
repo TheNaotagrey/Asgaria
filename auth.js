@@ -13,6 +13,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const authArea = document.getElementById('authArea');
   const controls = document.getElementById('controls');
   const authDialog = document.getElementById('authDialog');
+  const current = location.pathname.split('/').pop();
 
   const showLogin = !user && params.has('auth') && authDialog;
   if (authArea && showLogin) {
@@ -44,28 +45,35 @@ document.addEventListener('DOMContentLoaded', async () => {
     authArea.appendChild(logoutBtn);
   }
 
-  if (user && controls) {
-    const current = location.pathname.split('/').pop();
+  if (controls && authArea && current !== 'index.html') {
+    const mapBtn = document.createElement('button');
+    mapBtn.className = 'control-btn';
+    mapBtn.textContent = 'Carte';
+    mapBtn.onclick = () => location.href = 'index.html';
+    controls.insertBefore(mapBtn, authArea);
+  }
+
+  if (user && controls && authArea) {
     if (user.is_admin && current !== 'admin.html') {
       const adminBtn = document.createElement('button');
       adminBtn.className = 'control-btn';
       adminBtn.textContent = 'Admin';
       adminBtn.onclick = () => location.href = 'admin.html';
-      controls.appendChild(adminBtn);
+      controls.insertBefore(adminBtn, authArea);
     }
     if (current !== 'gestion.html') {
       const gestionBtn = document.createElement('button');
       gestionBtn.className = 'control-btn';
       gestionBtn.textContent = 'Gestion';
       gestionBtn.onclick = () => location.href = 'gestion.html';
-      controls.appendChild(gestionBtn);
+      controls.insertBefore(gestionBtn, authArea);
     }
     if (current !== 'mapEditor.html') {
       const editorBtn = document.createElement('button');
       editorBtn.className = 'control-btn';
       editorBtn.textContent = 'Éditeur';
       editorBtn.onclick = () => location.href = 'mapEditor.html';
-      controls.appendChild(editorBtn);
+      controls.insertBefore(editorBtn, authArea);
     }
   }
 
