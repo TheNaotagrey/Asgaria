@@ -812,11 +812,11 @@ app.get('/api/my_seigneurie', (req, res) => {
               advancedSpellDiscount: 0,
               spellRangeBonus: 0,
               spellMax: 0,
-              spellSuccessDetails: [],
-              basicSpellDiscountDetails: [],
-              advancedSpellDiscountDetails: [],
-              spellRangeDetails: [],
-              spellMaxDetails: []
+              spellSuccessDetails: [{ label: 'Base', amount: 75, source: 1 }],
+              basicSpellDiscountDetails: [{ label: 'Base', amount: 0, source: 1 }],
+              advancedSpellDiscountDetails: [{ label: 'Base', amount: 0, source: 1 }],
+              spellRangeDetails: [{ label: 'Base', amount: 5, source: 1 }],
+              spellMaxDetails: [{ label: 'Base', amount: 0, source: 1 }]
             };
             for (const ip of infraList) {
               effectCtx.currentInfraId = ip.id;

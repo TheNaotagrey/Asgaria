@@ -1572,10 +1572,10 @@ function buildTable(list, showMax = false, inv = {}, production = {}, production
   return html;
 }
 
-function spanAmount(val) {
+function spanAmount(val, suffix = '') {
   const sign = val > 0 ? '+' : '';
   const cls = val > 0 ? 'prod-positive' : 'prod-negative';
-  return `<span class="${cls}">${sign}${val}</span>`;
+  return `<span class="${cls}">${sign}${val}${suffix}</span>`;
 }
 
 function formatDetailLabel(label) {
@@ -1703,9 +1703,9 @@ function renderSpellInfo() {
   const pmVal = (inv.points_magique || 0) + ' / ' + (capacities.points_magique || 0);
   container.innerHTML = `<table class="admin-table"><tr><th colspan="2">Informations générales</th></tr>
     <tr><td>Points magiques</td><td>${buildTooltipValue(pmVal, [])}</td></tr>
-    <tr><td>Taux de réussite des sorts de base</td><td>${buildTooltipValue(spellSuccess + '%', spellSuccessDetails)}</td></tr>
-    <tr><td>Rabais sur les sorts de base</td><td>${buildTooltipValue(basicSpellDiscount + '%', basicSpellDiscountDetails)}</td></tr>
-    <tr><td>Rabais sur les sorts avancés</td><td>${buildTooltipValue(advancedSpellDiscount + '%', advancedSpellDiscountDetails)}</td></tr>
+    <tr><td>Taux de réussite des sorts de base</td><td>${buildTooltipValue(spellSuccess + '%', spellSuccessDetails, '%')}</td></tr>
+    <tr><td>Rabais sur les sorts de base</td><td>${buildTooltipValue(basicSpellDiscount + '%', basicSpellDiscountDetails, '%')}</td></tr>
+    <tr><td>Rabais sur les sorts avancés</td><td>${buildTooltipValue(advancedSpellDiscount + '%', advancedSpellDiscountDetails, '%')}</td></tr>
     <tr><td>Portée des sorts</td><td>${buildTooltipValue(spellRange, spellRangeDetails)}</td></tr>
     <tr><td>Sorts jettables</td><td>${buildTooltipValue(spellsCast + ' / ' + spellMax, spellMaxDetails)}</td></tr>
   </table>`;
@@ -1854,10 +1854,10 @@ async function setupAdminSelector(selectedId){
   container.appendChild(select);
 }
 
-function buildTooltipValue(val, details) {
+function buildTooltipValue(val, details, suffix = '') {
   if (!details || !details.length) return val;
   const rows = details
-    .map(d => `<tr><td>${formatDetailLabel(d.label)}</td><td>${spanAmount(d.amount)}</td></tr>`).join('');
+    .map(d => `<tr><td>${formatDetailLabel(d.label)}</td><td>${spanAmount(d.amount, suffix)}</td></tr>`).join('');
   return `<div class="tooltip">${val}<table class="tooltip-table">${rows}</table></div>`;
 }
 
