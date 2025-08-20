@@ -1173,7 +1173,7 @@ app.post('/api/cast_spell', (req,res)=>{
             const ratio = varEff.ratio || 1;
             const max = varEff.max || 0;
             chosenAmount = Math.min(requestedAmount, max || requestedAmount);
-            const pmCost = Math.ceil(chosenAmount / ratio);
+            const pmCost = Math.ceil((chosenAmount / ratio) * (100 - discount) / 100);
             costs.points_magique = (costs.points_magique || 0) + pmCost;
           }
           consumeResources(db, seigneurieId, costs, err5 => {
@@ -1182,6 +1182,7 @@ app.post('/api/cast_spell', (req,res)=>{
             const success = Math.random() * 100 < successChance;
             const effects = success ? effDefs : [];
             let idx = 0;
+            const randomLuxury = [];
             function applyNext() {
               if (idx >= effects.length) return finish();
               const e = effects[idx++];
@@ -1200,6 +1201,7 @@ app.post('/api/cast_spell', (req,res)=>{
                 const resName = luxuryResources[Math.floor(Math.random()*luxuryResources.length)];
                 performTransaction(db, seigneurieId, resName, e.amount || 0, err6 => {
                   if (err6) return handleError(res, err6);
+                  randomLuxury.push(resName);
                   applyNext();
                 });
               } else {
@@ -1210,7 +1212,7 @@ app.post('/api/cast_spell', (req,res)=>{
               casts += 1;
               db.run('UPDATE seigneuries SET spells_cast=?, spell_month=? WHERE id=?', [casts, spellMonth, seigneurieId], err7 => {
                 if (err7) return handleError(res, err7);
-                res.json({ success });
+                res.json({ success, randomLuxury });
               });
             }
             if (success) {

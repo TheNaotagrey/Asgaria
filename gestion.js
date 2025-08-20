@@ -150,7 +150,7 @@ async function loadAndRender() {
     const advancedSpellDiscountDetails = data.advancedSpellDiscountDetails || [];
     const spellRangeDetails = data.spellRangeDetails || [];
     const spellMaxDetails = data.spellMaxDetails || [];
-    gameState = { s, employment, buildings, infrastructures, bpMap, ipMap, buildingBonuses, buildingBonusDetails, spellSuccess, basicSpellDiscount, advancedSpellDiscount, spellRange, spellMax, spellsCast, spellSuccessDetails, basicSpellDiscountDetails, advancedSpellDiscountDetails, spellRangeDetails, spellMaxDetails };
+    gameState = { s, employment, buildings, infrastructures, bpMap, ipMap, buildingBonuses, buildingBonusDetails, spellSuccess, basicSpellDiscount, advancedSpellDiscount, spellRange, spellMax, spellsCast, spellSuccessDetails, basicSpellDiscountDetails, advancedSpellDiscountDetails, spellRangeDetails, spellMaxDetails, inv, capacities };
 
     const summary = document.getElementById('summary');
     summary.innerHTML = `
@@ -895,7 +895,7 @@ async function castSpell(id) {
     const spell = currentSpells.find(s => String(s.id) === String(id));
     if (resp.ok) {
       const data = await resp.json();
-      showSpellResult(data.success, spell, amount);
+      showSpellResult(data.success, spell, amount, null, data.randomLuxury);
       await loadAndRender();
     } else {
       const data = await resp.json().catch(() => ({}));
@@ -912,8 +912,10 @@ function renderSpellInfo() {
   const container = document.getElementById('spellInfo');
   if (!container) return;
   const { spellSuccess = 75, basicSpellDiscount = 0, advancedSpellDiscount = 0, spellRange = 5, spellMax = 0, spellsCast = 0,
-    spellSuccessDetails = [], basicSpellDiscountDetails = [], advancedSpellDiscountDetails = [], spellRangeDetails = [], spellMaxDetails = [] } = gameState;
+    spellSuccessDetails = [], basicSpellDiscountDetails = [], advancedSpellDiscountDetails = [], spellRangeDetails = [], spellMaxDetails = [], inv = {}, capacities = {} } = gameState;
+  const pmVal = (inv.points_magique || 0) + ' / ' + (capacities.points_magique || 0);
   container.innerHTML = `<table class="admin-table"><tr><th colspan="2">Informations générales</th></tr>
+    <tr><td>Points magiques</td><td>${buildTooltipValue(pmVal, [])}</td></tr>
     <tr><td>Taux de réussite des sorts de base</td><td>${buildTooltipValue(spellSuccess + '%', spellSuccessDetails)}</td></tr>
     <tr><td>Rabais sur les sorts de base</td><td>${buildTooltipValue(basicSpellDiscount + '%', basicSpellDiscountDetails)}</td></tr>
     <tr><td>Rabais sur les sorts avancés</td><td>${buildTooltipValue(advancedSpellDiscount + '%', advancedSpellDiscountDetails)}</td></tr>
@@ -934,30 +936,12 @@ function renderSpells(spells) {
       baseCosts = Object.fromEntries(Object.entries(costs).map(([r,a]) => [r, Math.round(a * (100 - discount) / 100)]));
     } catch {}
     let costStr = formatCosts(baseCosts);
-    let effStr = '';
+    let effStr = s.description || '';
     let qtyField = '';
     let varEff = null;
     try {
       const effs = JSON.parse(s.effects || '[]');
-      effStr = effs.map(e => {
-        if (e.type === 'production') {
-          return `${e.amount} ${resourceLabels[e.resource] || e.resource}`;
-        }
-        if (e.type === 'unlock_page') {
-          return `Débloque ${e.page}`;
-        }
-        if (e.type === 'idh') {
-          return `IDH ${e.amount}`;
-        }
-        if (e.type === 'variable_production') {
-          varEff = e;
-          return `Jusqu'à ${e.max} ${resourceLabels[e.resource] || e.resource} (${e.ratio} / PM)`;
-        }
-        if (e.type === 'random_luxury') {
-          return `${e.amount} ressource de luxe aléatoire`;
-        }
-        return e.type;
-      }).join(', ');
+      varEff = effs.find(e => e.type === 'variable_production');
     } catch {}
     if (varEff) {
       const baseStr = JSON.stringify(baseCosts).replace(/"/g, '&quot;');
@@ -986,12 +970,13 @@ function updateSpellCost(id) {
   const baseCosts = JSON.parse(span.dataset.base || '{}');
   const ratio = parseFloat(span.dataset.ratio) || 1;
   const amount = parseInt(input.value, 10) || 0;
-  const pmCost = (baseCosts.points_magique || 0) + Math.ceil(amount / ratio);
+  const discount = gameState.basicSpellDiscount || 0;
+  const pmCost = (baseCosts.points_magique || 0) + Math.ceil((amount / ratio) * (100 - discount) / 100);
   const newCosts = { ...baseCosts, points_magique: pmCost };
   span.textContent = formatCosts(newCosts);
 }
 
-function formatEffectSummary(e, amount) {
+function formatEffectSummary(e, amount, luxuryName) {
   if (e.type === 'production') {
     return `${e.amount} ${resourceLabels[e.resource] || e.resource}`;
   }
@@ -1005,12 +990,13 @@ function formatEffectSummary(e, amount) {
     return `IDH ${e.amount}`;
   }
   if (e.type === 'random_luxury') {
+    if (luxuryName) return `${e.amount} ${resourceLabels[luxuryName] || luxuryName}`;
     return `${e.amount} ressource de luxe aléatoire`;
   }
   return e.type;
 }
 
-function showSpellResult(success, spell, amount, error) {
+function showSpellResult(success, spell, amount, error, randomLuxury) {
   const overlay = document.createElement('div');
   overlay.className = 'popup-overlay';
   const popup = document.createElement('div');
@@ -1021,7 +1007,14 @@ function showSpellResult(success, spell, amount, error) {
   const content = document.createElement('div');
   if (success) {
     const effs = safeParse(spell.effects, []);
-    const items = effs.map(e => `<li>${formatEffectSummary(e, amount)}</li>`).join('');
+    let luxIdx = 0;
+    const items = effs.map(e => {
+      let luxName;
+      if (e.type === 'random_luxury' && Array.isArray(randomLuxury)) {
+        luxName = randomLuxury[luxIdx++] || null;
+      }
+      return `<li>${formatEffectSummary(e, amount, luxName)}</li>`;
+    }).join('');
     content.innerHTML = `<ul>${items}</ul>`;
   } else {
     content.textContent = error || 'Le sort a échoué.';
