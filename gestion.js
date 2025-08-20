@@ -137,7 +137,13 @@ async function loadAndRender() {
       });
     });
 
-    gameState = { s, employment, buildings, infrastructures, bpMap, ipMap, buildingBonuses, buildingBonusDetails };
+    const spellSuccess = data.spellSuccess || 75;
+    const basicSpellDiscount = data.basicSpellDiscount || 0;
+    const advancedSpellDiscount = data.advancedSpellDiscount || 0;
+    const spellRange = data.spellRange || 5;
+    const spellMax = data.spellMax || 0;
+    const spellsCast = data.spellsCast || 0;
+    gameState = { s, employment, buildings, infrastructures, bpMap, ipMap, buildingBonuses, buildingBonusDetails, spellSuccess, basicSpellDiscount, advancedSpellDiscount, spellRange, spellMax, spellsCast };
 
     const summary = document.getElementById('summary');
     summary.innerHTML = `
@@ -214,6 +220,7 @@ async function loadAndRender() {
       if (magieBtn && magiePanel) {
         magieBtn.style.display = '';
         magiePanel.style.display = '';
+        renderSpellInfo();
         try {
           const spellsRes = await fetch('/api/spells');
           const spells = spellsRes.ok ? await spellsRes.json() : [];
@@ -877,9 +884,12 @@ async function castSpell(id) {
       body: JSON.stringify({ id })
     });
     if (resp.ok) {
+      const data = await resp.json();
+      alert(data.success ? 'Sort réussi' : 'Le sort a échoué');
       await loadAndRender();
     } else {
-      alert('Impossible de lancer le sort');
+      const data = await resp.json().catch(() => ({}));
+      alert(data.error || 'Impossible de lancer le sort');
     }
   } catch (e) {
     console.error('Erreur lancement sort', e);
@@ -887,14 +897,31 @@ async function castSpell(id) {
   }
 }
 
+function renderSpellInfo() {
+  const container = document.getElementById('spellInfo');
+  if (!container) return;
+  const { spellSuccess = 75, basicSpellDiscount = 0, advancedSpellDiscount = 0, spellRange = 5, spellMax = 0, spellsCast = 0 } = gameState;
+  container.innerHTML = `<table class="admin-table"><tr><th colspan="2">Informations générales</th></tr>
+    <tr><td>Taux de réussite des sorts de base</td><td>${spellSuccess}%</td></tr>
+    <tr><td>Rabais sur les sorts de base</td><td>${basicSpellDiscount}%</td></tr>
+    <tr><td>Rabais sur les sorts avancés</td><td>${advancedSpellDiscount}%</td></tr>
+    <tr><td>Portée des sorts</td><td>${spellRange}</td></tr>
+    <tr><td>Sorts jettables</td><td>${spellsCast} / ${spellMax}</td></tr>
+  </table>`;
+}
+
 function renderSpells(spells) {
   const container = document.getElementById('spellList');
   if (!container) return;
-  const rows = spells.map(s => {
+  const rows = spells.filter(s => s.type === 'base').map(s => {
     let costStr = '';
     try {
       const costs = JSON.parse(s.costs || '{}');
-      costStr = Object.entries(costs).map(([r,a]) => `${a} ${resourceLabels[r] || r}`).join(', ');
+      const discount = gameState.basicSpellDiscount || 0;
+      costStr = Object.entries(costs).map(([r,a]) => {
+        const val = Math.round(a * (100 - discount) / 100);
+        return `${val} ${resourceLabels[r] || r}`;
+      }).join(', ');
     } catch {}
     let effStr = '';
     try {

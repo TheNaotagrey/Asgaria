@@ -129,4 +129,64 @@ class UnlockPageEffect extends Effect {
   }
 }
 
-module.exports = { Effect, StorageEffect, ResourceProductionEffect, BuildingProductionEffect, InstantProductionEffect, IDHEffect, VariableWorkersEffect, UnlockPageEffect };
+class SpellSuccessEffect extends Effect {
+  constructor(amount) {
+    super();
+    this.amount = amount;
+  }
+  apply(ctx, count, label) {
+    const total = this.amount * count;
+    ctx.spellSuccessBonus = (ctx.spellSuccessBonus || 0) + total;
+    if (ctx.spellSuccessDetails) ctx.spellSuccessDetails.push({ label, amount: total, source: count });
+  }
+}
+
+class SpellBasicDiscountEffect extends Effect {
+  constructor(amount) {
+    super();
+    this.amount = amount;
+  }
+  apply(ctx, count, label) {
+    const total = this.amount * count;
+    ctx.basicSpellDiscount = (ctx.basicSpellDiscount || 0) + total;
+    if (ctx.basicSpellDiscountDetails) ctx.basicSpellDiscountDetails.push({ label, amount: total, source: count });
+  }
+}
+
+class SpellAdvancedDiscountEffect extends Effect {
+  constructor(amount) {
+    super();
+    this.amount = amount;
+  }
+  apply(ctx, count, label) {
+    const total = this.amount * count;
+    ctx.advancedSpellDiscount = (ctx.advancedSpellDiscount || 0) + total;
+    if (ctx.advancedSpellDiscountDetails) ctx.advancedSpellDiscountDetails.push({ label, amount: total, source: count });
+  }
+}
+
+class SpellRangeEffect extends Effect {
+  constructor(amount) {
+    super();
+    this.amount = amount;
+  }
+  apply(ctx, count, label) {
+    const total = this.amount * count;
+    ctx.spellRangeBonus = (ctx.spellRangeBonus || 0) + total;
+    if (ctx.spellRangeDetails) ctx.spellRangeDetails.push({ label, amount: total, source: count });
+  }
+}
+
+class SpellMaxPerMonthEffect extends Effect {
+  constructor(amount) {
+    super();
+    this.amount = amount;
+  }
+  apply(ctx, count, label) {
+    const total = this.amount * count;
+    ctx.spellMax = (ctx.spellMax || 0) + total;
+    if (ctx.spellMaxDetails) ctx.spellMaxDetails.push({ label, amount: total, source: count });
+  }
+}
+
+module.exports = { Effect, StorageEffect, ResourceProductionEffect, BuildingProductionEffect, InstantProductionEffect, IDHEffect, VariableWorkersEffect, UnlockPageEffect, SpellSuccessEffect, SpellBasicDiscountEffect, SpellAdvancedDiscountEffect, SpellRangeEffect, SpellMaxPerMonthEffect };

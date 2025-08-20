@@ -9,7 +9,7 @@ const { inventaireFields, performTransaction } = require('./transactions');
 const logger = require('./logger');
 const handleError = require('./handleError');
 const { consumeResources } = require('./services/buildingService');
-const { StorageEffect, ResourceProductionEffect, BuildingProductionEffect, IDHEffect, VariableWorkersEffect, UnlockPageEffect } = require('./effects');
+const { StorageEffect, ResourceProductionEffect, BuildingProductionEffect, IDHEffect, VariableWorkersEffect, UnlockPageEffect, SpellSuccessEffect, SpellBasicDiscountEffect, SpellAdvancedDiscountEffect, SpellRangeEffect, SpellMaxPerMonthEffect } = require('./effects');
 const app = express();
 const db = new sqlite3.Database('asgaria.db');
 
@@ -184,6 +184,8 @@ CREATE TABLE IF NOT EXISTS seigneuries (
   inventaire_id INTEGER,
   buildings TEXT DEFAULT '{}',
   infrastructures TEXT DEFAULT '{}',
+  spells_cast INTEGER DEFAULT 0,
+  spell_month TEXT,
   FOREIGN KEY(baronnie_id) REFERENCES baronies(id),
   FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id),
   FOREIGN KEY(inventaire_id) REFERENCES inventaire(id)
@@ -252,6 +254,7 @@ CREATE TABLE IF NOT EXISTS infrastructure_properties (
 CREATE TABLE IF NOT EXISTS spells (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   label TEXT,
+  type TEXT,
   costs TEXT,
   effects TEXT,
   description TEXT
@@ -292,6 +295,12 @@ db.exec(initSql, () => {
       }
       if (!rows.some(r => r.name === 'tax_rate')) {
         db.run("ALTER TABLE seigneuries ADD COLUMN tax_rate INTEGER DEFAULT 5");
+      }
+      if (!rows.some(r => r.name === 'spells_cast')) {
+        db.run("ALTER TABLE seigneuries ADD COLUMN spells_cast INTEGER DEFAULT 0");
+      }
+      if (!rows.some(r => r.name === 'spell_month')) {
+        db.run("ALTER TABLE seigneuries ADD COLUMN spell_month TEXT");
       }
     }
   });
@@ -382,6 +391,12 @@ db.exec(initSql, () => {
     if (err || !rows) return;
     if (!rows.some(r => r.name === 'effects')) {
       db.run('ALTER TABLE barony_properties ADD COLUMN effects TEXT');
+    }
+  });
+  db.all("PRAGMA table_info(spells)", (err, rows) => {
+    if (err || !rows) return;
+    if (!rows.some(r => r.name === 'type')) {
+      db.run('ALTER TABLE spells ADD COLUMN type TEXT');
     }
   });
   // Ensure every barony has a properties row with default values
@@ -773,6 +788,9 @@ app.get('/api/my_seigneurie', (req, res) => {
                   if (errI) return handleError(res, errI);
                   const infraList = iprops || [];
                   const capacities = { vivres: 500, points_magique: 2000 };
+                  const currentMonth = new Date().toISOString().slice(0,7);
+                  let spellsCast = s.spells_cast || 0;
+                  if (s.spell_month !== currentMonth) spellsCast = 0;
                   const buildingProductionBonus = {};
                   const buildingProductionBonusDetails = {};
                   const effectCtx = {
@@ -785,7 +803,12 @@ app.get('/api/my_seigneurie', (req, res) => {
                     buildingProductionBonusDetails,
                     idh: 5,
                     idhDetails: [{ label: 'Base', amount: 5, source: 1 }],
-                    unlockedPages: {}
+                    unlockedPages: {},
+                    spellSuccessBonus: 0,
+                    basicSpellDiscount: 0,
+                    advancedSpellDiscount: 0,
+                    spellRangeBonus: 0,
+                    spellMax: 0
                   };
                   for (const ip of infraList) {
                     const entry = infrastructures[ip.id] || infrastructures[String(ip.id)] || 0;
@@ -809,6 +832,21 @@ app.get('/api/my_seigneurie', (req, res) => {
                         if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
                       } else if (def.type === 'unlock_page') {
                         effObj = new UnlockPageEffect(def.page);
+                        if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
+                      } else if (def.type === 'spell_success') {
+                        effObj = new SpellSuccessEffect(def.amount || 0);
+                        if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
+                      } else if (def.type === 'spell_basic_discount') {
+                        effObj = new SpellBasicDiscountEffect(def.amount || 0);
+                        if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
+                      } else if (def.type === 'spell_advanced_discount') {
+                        effObj = new SpellAdvancedDiscountEffect(def.amount || 0);
+                        if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
+                      } else if (def.type === 'spell_range') {
+                        effObj = new SpellRangeEffect(def.amount || 0);
+                        if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
+                      } else if (def.type === 'spell_max_per_month') {
+                        effObj = new SpellMaxPerMonthEffect(def.amount || 0);
                         if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
                       } else if (def.type === 'variable_workers') {
                         const max = (def.max_workers || 0) * count;
@@ -887,7 +925,12 @@ app.get('/api/my_seigneurie', (req, res) => {
                         idhDetails.push({ label: 'Esclaves', amount: -slavePenalty, source: slaves });
                       }
                     }
-                    res.json({ seigneurie: s, barony, inventaire, production, productionDetails, fields, baronyProps, employment, employmentDetails, buildings, infrastructures, capacities, buildingProductionBonus, buildingProductionBonusDetails, idh, idhDetails, unlockedPages: effectCtx.unlockedPages });
+                    const spellSuccess = 75 + (effectCtx.spellSuccessBonus || 0);
+                    const basicSpellDiscount = effectCtx.basicSpellDiscount || 0;
+                    const advancedSpellDiscount = effectCtx.advancedSpellDiscount || 0;
+                    const spellRange = 5 + (effectCtx.spellRangeBonus || 0);
+                    const spellMax = effectCtx.spellMax || 0;
+                    res.json({ seigneurie: s, barony, inventaire, production, productionDetails, fields, baronyProps, employment, employmentDetails, buildings, infrastructures, capacities, buildingProductionBonus, buildingProductionBonusDetails, idh, idhDetails, unlockedPages: effectCtx.unlockedPages, spellSuccess, basicSpellDiscount, advancedSpellDiscount, spellRange, spellMax, spellsCast });
                   }
                   if (s.baronnie_id) {
                     db.get('SELECT * FROM barony_properties WHERE barony_id=?', [s.baronnie_id], (err3, props) => {
@@ -906,6 +949,16 @@ app.get('/api/my_seigneurie', (req, res) => {
                           effObj = new IDHEffect(def.amount || 0);
                         } else if (def.type === 'unlock_page') {
                           effObj = new UnlockPageEffect(def.page);
+                        } else if (def.type === 'spell_success') {
+                          effObj = new SpellSuccessEffect(def.amount || 0);
+                        } else if (def.type === 'spell_basic_discount') {
+                          effObj = new SpellBasicDiscountEffect(def.amount || 0);
+                        } else if (def.type === 'spell_advanced_discount') {
+                          effObj = new SpellAdvancedDiscountEffect(def.amount || 0);
+                        } else if (def.type === 'spell_range') {
+                          effObj = new SpellRangeEffect(def.amount || 0);
+                        } else if (def.type === 'spell_max_per_month') {
+                          effObj = new SpellMaxPerMonthEffect(def.amount || 0);
                         }
                         if (effObj) {
                           effObj.apply(effectCtx, 1, 'Baronnie');
@@ -1023,7 +1076,7 @@ app.put('/api/infrastructure_properties/:id', requireAdmin, (req,res)=>{
   update('infrastructure_properties', infraPropFields)(req,res);
 });
 
-const spellFields = ['label','costs','effects','description'];
+const spellFields = ['label','type','costs','effects','description'];
 app.get('/api/spells', (req,res)=>{
   list('spells')(req,res);
 });
@@ -1039,31 +1092,105 @@ app.post('/api/cast_spell', (req,res)=>{
   const spellId = parseInt(req.body.id, 10);
   if (!spellId) return res.status(400).json({ error: 'ID invalide' });
   const userId = req.session.user.id;
-  db.get('SELECT seigneuries.id FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?', [userId], (err, row) => {
+  db.get('SELECT seigneuries.id, seigneuries.baronnie_id, seigneuries.buildings, seigneuries.infrastructures, seigneuries.spells_cast, seigneuries.spell_month FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?', [userId], (err, srow) => {
     if (err) return handleError(res, err);
-    if (!row) return res.status(400).json({ error: 'Seigneurie introuvable' });
-    const seigneurieId = row.id;
-    db.get('SELECT * FROM spells WHERE id=?', [spellId], (err2, spell) => {
+    if (!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
+    const seigneurieId = srow.id;
+    const infrastructures = safeParse(srow.infrastructures, {});
+    const currentMonth = new Date().toISOString().slice(0,7);
+    let casts = srow.spells_cast || 0;
+    let spellMonth = srow.spell_month;
+    if (spellMonth !== currentMonth) { casts = 0; spellMonth = currentMonth; }
+    db.all('SELECT id, label, effects FROM infrastructure_properties', [], (err2, iprops) => {
       if (err2) return handleError(res, err2);
-      if (!spell) return res.status(404).json({ error: 'Sort introuvable' });
-      const costs = safeParse(spell.costs, {});
-      consumeResources(db, seigneurieId, costs, err3 => {
-        if (err3) return handleError(res, err3);
-        const effects = safeParse(spell.effects, []);
-        let idx = 0;
-        function applyNext() {
-          if (idx >= effects.length) return res.json({ ok: true });
-          const e = effects[idx++];
-          if (e.type === 'production') {
-            performTransaction(db, seigneurieId, e.resource, e.amount || 0, err4 => {
-              if (err4) return handleError(res, err4);
-              applyNext();
-            });
-          } else {
-            applyNext();
+      const effectCtx = { spellSuccessBonus:0, basicSpellDiscount:0, advancedSpellDiscount:0, spellRangeBonus:0, spellMax:0 };
+      (iprops || []).forEach(ip => {
+        const entry = infrastructures[ip.id] || infrastructures[String(ip.id)] || 0;
+        const count = typeof entry === 'object' ? (entry.built || 0) : entry;
+        if (!count) return;
+        const effects = safeParse(ip.effects, []);
+        effects.forEach(def => {
+          let effObj = null;
+          if (def.type === 'spell_success') {
+            effObj = new SpellSuccessEffect(def.amount || 0);
+          } else if (def.type === 'spell_basic_discount') {
+            effObj = new SpellBasicDiscountEffect(def.amount || 0);
+          } else if (def.type === 'spell_advanced_discount') {
+            effObj = new SpellAdvancedDiscountEffect(def.amount || 0);
+          } else if (def.type === 'spell_range') {
+            effObj = new SpellRangeEffect(def.amount || 0);
+          } else if (def.type === 'spell_max_per_month') {
+            effObj = new SpellMaxPerMonthEffect(def.amount || 0);
           }
-        }
-        applyNext();
+          if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
+        });
+      });
+      const applyBarony = cb => {
+        if (!srow.baronnie_id) return cb();
+        db.get('SELECT effects FROM barony_properties WHERE barony_id=?', [srow.baronnie_id], (err3, bprops) => {
+          if (err3) return handleError(res, err3);
+          const beffs = safeParse(bprops && bprops.effects, []);
+          beffs.forEach(def => {
+            let effObj = null;
+            if (def.type === 'spell_success') {
+              effObj = new SpellSuccessEffect(def.amount || 0);
+            } else if (def.type === 'spell_basic_discount') {
+              effObj = new SpellBasicDiscountEffect(def.amount || 0);
+            } else if (def.type === 'spell_advanced_discount') {
+              effObj = new SpellAdvancedDiscountEffect(def.amount || 0);
+            } else if (def.type === 'spell_range') {
+              effObj = new SpellRangeEffect(def.amount || 0);
+            } else if (def.type === 'spell_max_per_month') {
+              effObj = new SpellMaxPerMonthEffect(def.amount || 0);
+            }
+            if (effObj) effObj.apply(effectCtx, 1, 'Baronnie');
+          });
+          cb();
+        });
+      };
+      applyBarony(() => {
+        const max = effectCtx.spellMax || 0;
+        if (max && casts >= max) return res.status(400).json({ error: 'Limite de sorts atteinte' });
+        db.get('SELECT * FROM spells WHERE id=?', [spellId], (err4, spell) => {
+          if (err4) return handleError(res, err4);
+          if (!spell) return res.status(404).json({ error: 'Sort introuvable' });
+          let costs = safeParse(spell.costs, {});
+          const discount = spell.type === 'base' ? effectCtx.basicSpellDiscount || 0 : effectCtx.advancedSpellDiscount || 0;
+          if (discount) {
+            costs = Object.fromEntries(Object.entries(costs).map(([r,a]) => [r, Math.round(a * (100 - discount) / 100)]));
+          }
+          consumeResources(db, seigneurieId, costs, err5 => {
+            if (err5) return handleError(res, err5);
+            const successChance = 75 + (effectCtx.spellSuccessBonus || 0);
+            const success = Math.random() * 100 < successChance;
+            const effects = success ? safeParse(spell.effects, []) : [];
+            let idx = 0;
+            function applyNext() {
+              if (idx >= effects.length) return finish();
+              const e = effects[idx++];
+              if (e.type === 'production') {
+                performTransaction(db, seigneurieId, e.resource, e.amount || 0, err6 => {
+                  if (err6) return handleError(res, err6);
+                  applyNext();
+                });
+              } else {
+                applyNext();
+              }
+            }
+            function finish() {
+              casts += 1;
+              db.run('UPDATE seigneuries SET spells_cast=?, spell_month=? WHERE id=?', [casts, spellMonth, seigneurieId], err7 => {
+                if (err7) return handleError(res, err7);
+                res.json({ success });
+              });
+            }
+            if (success) {
+              applyNext();
+            } else {
+              finish();
+            }
+          });
+        });
       });
     });
   });

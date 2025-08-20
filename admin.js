@@ -87,9 +87,10 @@ const maxOptions = [
   ...baronyPropIntFields.map(f=>({ id:f, name:baronyPropLabels[f] || f }))
 ];
 
-const spellFields = ['label','costs','effects','description'];
+const spellFields = ['label','type','costs','effects','description'];
 const spellLabels = {
   label:'Nom',
+  type:'Type',
   costs:'Coûts',
   effects:'Effets',
   description:'Description'
@@ -1318,7 +1319,8 @@ async function loadAll(){
   renderTable(document.getElementById('tableSpells'), spellsById, {
     endpoint:'spells',
     fields:spellFields,
-    labels:spellLabels
+    labels:spellLabels,
+    selects:{ type:[{id:'base',name:'Base'},{id:'advanced',name:'Avancé'}] }
   });
 }
 
