@@ -1170,8 +1170,15 @@ function renderTable(container, rows, opts){
         }
       });
       if (opts.beforeSave) opts.beforeSave(payload, item);
-      const updated = await fetchJSON(`/api/${opts.endpoint}/${item.id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      const resp = await fetchJSON(`/api/${opts.endpoint}/${item.id}`, {
+        method:'PUT',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(payload)
+      });
       showSaveIndicator(btn.parentElement);
+      const updated = resp && typeof resp === 'object' && 'id' in resp
+        ? resp
+        : { ...item, ...payload };
       const idx = rows.findIndex(r=>r.id === item.id);
       if(idx !== -1) rows[idx] = updated;
       const newRow = renderRow(updated);
