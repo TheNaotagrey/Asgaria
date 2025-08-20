@@ -474,6 +474,7 @@ th.multi-col {
   font-weight: bold;
   cursor: help;
   position: relative;
+  display: inline-block;
 }
 
 .tooltip-table {

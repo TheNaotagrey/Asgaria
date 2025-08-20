@@ -1858,6 +1858,6 @@ function buildTooltipValue(val, details) {
   if (!details || !details.length) return val;
   const rows = details
     .map(d => `<tr><td>${formatDetailLabel(d.label)}</td><td>${spanAmount(d.amount)}</td></tr>`).join('');
-  return `<span class="tooltip">${val}<table class="tooltip-table">${rows}</table></span>`;
+  return `<div class="tooltip">${val}<table class="tooltip-table">${rows}</table></div>`;
 }
 
