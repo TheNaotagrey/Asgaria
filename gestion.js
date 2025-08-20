@@ -239,12 +239,12 @@ async function loadAndRender(seigneurieId) {
     summary.innerHTML = `
       <div id="infoTables" class="resource-tables">
         <div class="resource-table-container">
-          <h2>Localisation de Jure</h2>
-          <table id="deJureTable" class="admin-table"></table>
-        </div>
-        <div class="resource-table-container">
           <h2>Informations générales</h2>
           <table id="generalInfoTable" class="admin-table"></table>
+        </div>
+        <div class="resource-table-container">
+          <h2>Localisation de Jure</h2>
+          <table id="deJureTable" class="admin-table"></table>
         </div>
       </div>
       <div id="populationSummary"></div>
