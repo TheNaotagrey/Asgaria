@@ -235,6 +235,8 @@ async function loadAndRender(seigneurieId) {
     const spellMaxDetails = data.spellMaxDetails || [];
     gameState = { s, employment, buildings, infrastructures, bpMap, ipMap, buildingBonuses, buildingBonusDetails, productionDetails, spellSuccess, basicSpellDiscount, advancedSpellDiscount, spellRange, spellMax, spellsCast, spellSuccessDetails, basicSpellDiscountDetails, advancedSpellDiscountDetails, spellRangeDetails, spellMaxDetails, inv, capacities, isAdmin, baronyProps };
 
+    await renderTradeRoutes(barony.id);
+
     const summary = document.getElementById('summary');
     summary.innerHTML = `
       <div id="infoTables" class="resource-tables">
@@ -1839,6 +1841,28 @@ function showSpellResult(success, spell, amount, error, randomLuxury) {
   popup.appendChild(btn);
   overlay.appendChild(popup);
   document.body.appendChild(overlay);
+}
+
+async function renderTradeRoutes(baronyId) {
+  const container = document.getElementById('tradeRoutes');
+  if (!container) return;
+  container.textContent = '';
+  if (!baronyId) {
+    container.textContent = 'Aucune baronnie sélectionnée';
+    return;
+  }
+  try {
+    const res = await fetch(`/api/trade_partners?barony_id=${baronyId}`);
+    const routes = res.ok ? await res.json() : [];
+    if (!routes.length) {
+      container.textContent = 'Aucune route commerciale';
+      return;
+    }
+    const rows = routes.map(r => `<tr><td>${r.id}</td><td>${r.name || ''}</td><td>${r.seigneur_name || ''}</td><td>${r.duchy_name || ''}</td></tr>`).join('');
+    container.innerHTML = `<table class="admin-table"><tr><th>#</th><th>Nom</th><th>Propriétaire</th><th>Province (Duché)</th></tr>${rows}</table>`;
+  } catch {
+    container.textContent = 'Erreur de chargement';
+  }
 }
 
 async function setupAdminSelector(selectedId){
