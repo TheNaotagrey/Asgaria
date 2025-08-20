@@ -476,3 +476,13 @@ th.multi-col {
   max-height: 80vh;
   overflow: auto;
 }
+
+.popup.spell-success {
+  border: 2px solid #28a745;
+  color: #155724;
+}
+
+.popup.spell-failure {
+  border: 2px solid #dc3545;
+  color: #721c24;
+}

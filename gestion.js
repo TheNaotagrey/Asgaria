@@ -145,7 +145,12 @@ async function loadAndRender() {
     const spellRange = data.spellRange || 5;
     const spellMax = data.spellMax || 0;
     const spellsCast = data.spellsCast || 0;
-    gameState = { s, employment, buildings, infrastructures, bpMap, ipMap, buildingBonuses, buildingBonusDetails, spellSuccess, basicSpellDiscount, advancedSpellDiscount, spellRange, spellMax, spellsCast };
+    const spellSuccessDetails = data.spellSuccessDetails || [];
+    const basicSpellDiscountDetails = data.basicSpellDiscountDetails || [];
+    const advancedSpellDiscountDetails = data.advancedSpellDiscountDetails || [];
+    const spellRangeDetails = data.spellRangeDetails || [];
+    const spellMaxDetails = data.spellMaxDetails || [];
+    gameState = { s, employment, buildings, infrastructures, bpMap, ipMap, buildingBonuses, buildingBonusDetails, spellSuccess, basicSpellDiscount, advancedSpellDiscount, spellRange, spellMax, spellsCast, spellSuccessDetails, basicSpellDiscountDetails, advancedSpellDiscountDetails, spellRangeDetails, spellMaxDetails };
 
     const summary = document.getElementById('summary');
     summary.innerHTML = `
@@ -887,30 +892,33 @@ async function castSpell(id) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, amount })
     });
+    const spell = currentSpells.find(s => String(s.id) === String(id));
     if (resp.ok) {
       const data = await resp.json();
-      alert(data.success ? 'Sort réussi' : 'Le sort a échoué');
+      showSpellResult(data.success, spell, amount);
       await loadAndRender();
     } else {
       const data = await resp.json().catch(() => ({}));
-      alert(data.error || 'Impossible de lancer le sort');
+      showSpellResult(false, spell, amount, data.error || 'Impossible de lancer le sort');
     }
   } catch (e) {
     console.error('Erreur lancement sort', e);
-    alert('Impossible de lancer le sort');
+    const spell = currentSpells.find(s => String(s.id) === String(id));
+    showSpellResult(false, spell, 0, 'Impossible de lancer le sort');
   }
 }
 
 function renderSpellInfo() {
   const container = document.getElementById('spellInfo');
   if (!container) return;
-  const { spellSuccess = 75, basicSpellDiscount = 0, advancedSpellDiscount = 0, spellRange = 5, spellMax = 0, spellsCast = 0 } = gameState;
+  const { spellSuccess = 75, basicSpellDiscount = 0, advancedSpellDiscount = 0, spellRange = 5, spellMax = 0, spellsCast = 0,
+    spellSuccessDetails = [], basicSpellDiscountDetails = [], advancedSpellDiscountDetails = [], spellRangeDetails = [], spellMaxDetails = [] } = gameState;
   container.innerHTML = `<table class="admin-table"><tr><th colspan="2">Informations générales</th></tr>
-    <tr><td>Taux de réussite des sorts de base</td><td>${spellSuccess}%</td></tr>
-    <tr><td>Rabais sur les sorts de base</td><td>${basicSpellDiscount}%</td></tr>
-    <tr><td>Rabais sur les sorts avancés</td><td>${advancedSpellDiscount}%</td></tr>
-    <tr><td>Portée des sorts</td><td>${spellRange}</td></tr>
-    <tr><td>Sorts jettables</td><td>${spellsCast} / ${spellMax}</td></tr>
+    <tr><td>Taux de réussite des sorts de base</td><td>${buildTooltipValue(spellSuccess + '%', spellSuccessDetails)}</td></tr>
+    <tr><td>Rabais sur les sorts de base</td><td>${buildTooltipValue(basicSpellDiscount + '%', basicSpellDiscountDetails)}</td></tr>
+    <tr><td>Rabais sur les sorts avancés</td><td>${buildTooltipValue(advancedSpellDiscount + '%', advancedSpellDiscountDetails)}</td></tr>
+    <tr><td>Portée des sorts</td><td>${buildTooltipValue(spellRange, spellRangeDetails)}</td></tr>
+    <tr><td>Sorts jettables</td><td>${buildTooltipValue(spellsCast + ' / ' + spellMax, spellMaxDetails)}</td></tr>
   </table>`;
 }
 
@@ -919,17 +927,16 @@ function renderSpells(spells) {
   const container = document.getElementById('spellList');
   if (!container) return;
   const rows = spells.filter(s => s.type === 'base').map(s => {
-    let costStr = '';
+    let baseCosts = {};
     try {
       const costs = JSON.parse(s.costs || '{}');
       const discount = gameState.basicSpellDiscount || 0;
-      costStr = Object.entries(costs).map(([r,a]) => {
-        const val = Math.round(a * (100 - discount) / 100);
-        return `${val} ${resourceLabels[r] || r}`;
-      }).join(', ');
+      baseCosts = Object.fromEntries(Object.entries(costs).map(([r,a]) => [r, Math.round(a * (100 - discount) / 100)]));
     } catch {}
+    let costStr = formatCosts(baseCosts);
     let effStr = '';
     let qtyField = '';
+    let varEff = null;
     try {
       const effs = JSON.parse(s.effects || '[]');
       effStr = effs.map(e => {
@@ -943,7 +950,7 @@ function renderSpells(spells) {
           return `IDH ${e.amount}`;
         }
         if (e.type === 'variable_production') {
-          qtyField = `<input type="number" class="spell-qty" data-id="${s.id}" min="1" ${e.max ? `max="${e.max}"` : ''}>`;
+          varEff = e;
           return `Jusqu'à ${e.max} ${resourceLabels[e.resource] || e.resource} (${e.ratio} / PM)`;
         }
         if (e.type === 'random_luxury') {
@@ -952,11 +959,86 @@ function renderSpells(spells) {
         return e.type;
       }).join(', ');
     } catch {}
+    if (varEff) {
+      const baseStr = JSON.stringify(baseCosts).replace(/"/g, '&quot;');
+      costStr = `<span class="spell-cost" data-id="${s.id}" data-base='${baseStr}' data-ratio="${varEff.ratio || 1}">${costStr}</span>`;
+      qtyField = `<input type="number" class="spell-qty" data-id="${s.id}" min="1" ${varEff.max ? `max="${varEff.max}"` : ''}>`;
+    }
     return `<tr><td>${s.label}</td><td>${costStr}</td><td>${effStr}</td><td>${qtyField}</td><td><button class="cast-spell" data-id="${s.id}">Lancer</button></td></tr>`;
   }).join('');
   container.innerHTML = `<table class="admin-table"><tr><th>Nom</th><th>Coût</th><th>Effets</th><th>Quantité</th><th></th></tr>${rows}</table>`;
   container.querySelectorAll('button.cast-spell').forEach(btn => {
     btn.addEventListener('click', () => castSpell(btn.dataset.id));
   });
+  container.querySelectorAll('input.spell-qty').forEach(inp => {
+    inp.addEventListener('input', () => updateSpellCost(inp.dataset.id));
+  });
+}
+
+function formatCosts(costs) {
+  return Object.entries(costs).map(([r, a]) => `${a} ${resourceLabels[r] || r}`).join(', ');
+}
+
+function updateSpellCost(id) {
+  const span = document.querySelector(`span.spell-cost[data-id="${id}"]`);
+  const input = document.querySelector(`input.spell-qty[data-id="${id}"]`);
+  if (!span || !input) return;
+  const baseCosts = JSON.parse(span.dataset.base || '{}');
+  const ratio = parseFloat(span.dataset.ratio) || 1;
+  const amount = parseInt(input.value, 10) || 0;
+  const pmCost = (baseCosts.points_magique || 0) + Math.ceil(amount / ratio);
+  const newCosts = { ...baseCosts, points_magique: pmCost };
+  span.textContent = formatCosts(newCosts);
+}
+
+function formatEffectSummary(e, amount) {
+  if (e.type === 'production') {
+    return `${e.amount} ${resourceLabels[e.resource] || e.resource}`;
+  }
+  if (e.type === 'variable_production') {
+    return `${amount} ${resourceLabels[e.resource] || e.resource}`;
+  }
+  if (e.type === 'unlock_page') {
+    return `Débloque ${e.page}`;
+  }
+  if (e.type === 'idh') {
+    return `IDH ${e.amount}`;
+  }
+  if (e.type === 'random_luxury') {
+    return `${e.amount} ressource de luxe aléatoire`;
+  }
+  return e.type;
+}
+
+function showSpellResult(success, spell, amount, error) {
+  const overlay = document.createElement('div');
+  overlay.className = 'popup-overlay';
+  const popup = document.createElement('div');
+  popup.className = `popup ${success ? 'spell-success' : 'spell-failure'}`;
+  const title = document.createElement('h2');
+  title.textContent = success ? 'Sort réussi' : 'Échec du sort';
+  popup.appendChild(title);
+  const content = document.createElement('div');
+  if (success) {
+    const effs = safeParse(spell.effects, []);
+    const items = effs.map(e => `<li>${formatEffectSummary(e, amount)}</li>`).join('');
+    content.innerHTML = `<ul>${items}</ul>`;
+  } else {
+    content.textContent = error || 'Le sort a échoué.';
+  }
+  popup.appendChild(content);
+  const btn = document.createElement('button');
+  btn.textContent = 'Fermer';
+  btn.addEventListener('click', () => overlay.remove());
+  popup.appendChild(btn);
+  overlay.appendChild(popup);
+  document.body.appendChild(overlay);
+}
+
+function buildTooltipValue(val, details) {
+  if (!details || !details.length) return val;
+  const rows = details
+    .map(d => `<tr><td>${formatDetailLabel(d.label)}</td><td>${spanAmount(d.amount)}</td></tr>`).join('');
+  return `<span class="tooltip">${val}<table class="tooltip-table">${rows}</table></span>`;
 }
 
