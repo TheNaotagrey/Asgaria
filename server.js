@@ -743,292 +743,316 @@ app.put('/api/seigneuries/:id', requireAdmin, (req, res) => {
 app.get('/api/my_seigneurie', (req, res) => {
   if (!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
   const userId = req.session.user.id;
+  const overrideId = isAdminActive(req.session.user) && req.query.seigneurie_id ? parseInt(req.query.seigneurie_id, 10) : null;
   db.serialize(() => {
-    db.get('SELECT * FROM seigneurs WHERE user_id=?', [userId], (err, seigneur) => {
-      if (err) return handleError(res, err);
-      function ensureSeigneur(cb) {
-        if (seigneur) return cb(seigneur);
-        const name = `Seigneur ${req.session.user.first_name}`;
-        db.run('INSERT INTO seigneurs(name,user_id) VALUES (?,?)', [name, userId], function(err){
-          if (err) return handleError(res, err);
-          cb({ id: this.lastID, name, user_id: userId });
-        });
-      }
-      ensureSeigneur(seig => {
-        db.get('SELECT * FROM seigneuries WHERE seigneur_id=?', [seig.id], (err, seigneurie) => {
-          if (err) return handleError(res, err);
-          function ensureSeigneurie(cb) {
-            if (seigneurie) return cb(seigneurie);
-            db.run('INSERT INTO inventaire DEFAULT VALUES', function(err){
-              if (err) return handleError(res, err);
-              const invId = this.lastID;
-              db.run('INSERT INTO seigneuries (baronnie_id,seigneur_id,population,inventaire_id,buildings,infrastructures) VALUES (NULL,?,?,?,?,?)',
-                [seig.id, 0, invId, '{}', '{}'], function(err){
-                  if (err) return handleError(res, err);
-                  cb({ id: this.lastID, baronnie_id: null, seigneur_id: seig.id, population: 0, inventaire_id: invId, buildings: '{}', infrastructures: '{}', tax_rate: 5 });
-                });
-            });
+    function respond(seig, s) {
+      db.get('SELECT * FROM inventaire WHERE id=?', [s.inventaire_id], (err, inventaire) => {
+        if (err) return handleError(res, err);
+        const buildings = s.buildings ? JSON.parse(s.buildings) : {};
+        const infrastructures = s.infrastructures ? JSON.parse(s.infrastructures) : {};
+        db.all('SELECT id, type, label, produces, production, workers_per_building FROM building_properties', [], (err2, bprops) => {
+          if (err2) return handleError(res, err2);
+          const props = bprops || [];
+          const bpMap = Object.fromEntries(props.map(b => [String(b.id), b]));
+          let fields = { built: 0, active: 0 };
+          const production = {};
+          const productionDetails = {};
+          let employed = 0;
+          const employmentDetails = [];
+          for (const bp of props) {
+            const info = buildings[bp.id] || { built: 0, active: 0 };
+            const active = info.active || 0;
+            const workers = active * (bp.workers_per_building || 0);
+            employed += workers;
+            if (workers) {
+              employmentDetails.push({ label: bp.label || bp.type, amount: workers, source: active });
+            }
+            if (bp.type === 'field') {
+              fields = info;
+            }
+            const prodRes = bp.produces;
+            if (active > 0 && prodRes && bp.production) {
+              const amount = active * bp.production;
+              production[prodRes] = (production[prodRes] || 0) + amount;
+              if (!productionDetails[prodRes]) productionDetails[prodRes] = [];
+              productionDetails[prodRes].push({ label: bp.label || bp.type, amount, source: active });
+            }
           }
-          ensureSeigneurie(s => {
-            db.get('SELECT * FROM inventaire WHERE id=?', [s.inventaire_id], (err, inventaire) => {
-              if (err) return handleError(res, err);
-              const buildings = s.buildings ? JSON.parse(s.buildings) : {};
-              const infrastructures = s.infrastructures ? JSON.parse(s.infrastructures) : {};
-              db.all('SELECT id, type, label, produces, production, workers_per_building FROM building_properties', [], (err2, bprops) => {
-                if (err2) return handleError(res, err2);
-                const props = bprops || [];
-                const bpMap = Object.fromEntries(props.map(b => [String(b.id), b]));
-                let fields = { built: 0, active: 0 };
-                const production = {};
-                const productionDetails = {};
-                let employed = 0;
-                const employmentDetails = [];
-                for (const bp of props) {
-                  const info = buildings[bp.id] || { built: 0, active: 0 };
-                  const active = info.active || 0;
-                  const workers = active * (bp.workers_per_building || 0);
-                  employed += workers;
-                  if (workers) {
-                    employmentDetails.push({ label: bp.label || bp.type, amount: workers, source: active });
+          db.all('SELECT * FROM infrastructure_properties', [], (errI, iprops) => {
+            if (errI) return handleError(res, errI);
+            const infraList = iprops || [];
+            const capacities = { vivres: 500, points_magique: 2000 };
+            const currentMonth = new Date().toISOString().slice(0,7);
+            let spellsCast = s.spells_cast || 0;
+            if (s.spell_month !== currentMonth) spellsCast = 0;
+            const buildingProductionBonus = {};
+            const buildingProductionBonusDetails = {};
+            const effectCtx = {
+              production,
+              productionDetails,
+              capacity: capacities,
+              buildings,
+              bpMap,
+              buildingProductionBonus,
+              buildingProductionBonusDetails,
+              infraProductionMultipliers: {},
+              infraProductionByInfra: {},
+              idh: 5,
+              idhDetails: [{ label: 'Base', amount: 5, source: 1 }],
+              unlockedPages: {},
+              spellSuccessBonus: 0,
+              basicSpellDiscount: 0,
+              advancedSpellDiscount: 0,
+              spellRangeBonus: 0,
+              spellMax: 0
+            };
+            for (const ip of infraList) {
+              effectCtx.currentInfraId = ip.id;
+              const entry = infrastructures[ip.id] || infrastructures[String(ip.id)] || 0;
+              const count = typeof entry === 'object' ? (entry.built || 0) : entry;
+              if (!count) { delete effectCtx.currentInfraId; continue; }
+              const workers = count * (ip.workers_per_building || 0);
+              if (workers) {
+                employed += workers;
+                employmentDetails.push({ label: ip.label || ip.type, amount: workers, source: count });
+              }
+              const entryObj = typeof entry === 'object' ? entry : {};
+              const effects = safeParse(ip.effects, []);
+              effects.forEach((def, idx) => {
+                let effObj = null;
+                if (def.type === 'storage') {
+                  effObj = new StorageEffect(def.resource, def.amount || 0);
+                  if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
+                } else if (def.type === 'production') {
+                  effObj = new ResourceProductionEffect(def.resource, def.amount || 0);
+                  if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
+                } else if (def.type === 'building_production') {
+                  effObj = new BuildingProductionEffect(def.building, def.amount || 0);
+                  if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
+                } else if (def.type === 'infra_production') {
+                  effObj = new InfraProductionEffect(def.infrastructure, def.amount || 1);
+                  if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
+                } else if (def.type === 'idh') {
+                  effObj = new IDHEffect(def.amount || 0);
+                  if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
+                } else if (def.type === 'unlock_page') {
+                  effObj = new UnlockPageEffect(def.page);
+                  if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
+                } else if (def.type === 'spell_success') {
+                  effObj = new SpellSuccessEffect(def.amount || 0);
+                  if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
+                } else if (def.type === 'spell_basic_discount') {
+                  effObj = new SpellBasicDiscountEffect(def.amount || 0);
+                  if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
+                } else if (def.type === 'spell_advanced_discount') {
+                  effObj = new SpellAdvancedDiscountEffect(def.amount || 0);
+                  if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
+                } else if (def.type === 'spell_range') {
+                  effObj = new SpellRangeEffect(def.amount || 0);
+                  if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
+                } else if (def.type === 'spell_max_per_month') {
+                  effObj = new SpellMaxPerMonthEffect(def.amount || 0);
+                  if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
+                } else if (def.type === 'variable_workers') {
+                  const max = (def.max_workers || 0) * count;
+                  let assigned = entryObj[`effect_${idx}_workers`] || 0;
+                  if (assigned > max) assigned = max;
+                  if (assigned) {
+                    employed += assigned;
+                    employmentDetails.push({ label: ip.label || ip.type, amount: assigned, source: assigned });
                   }
-                  if (bp.type === 'field') {
-                    fields = info;
+                  effObj = new VariableWorkersEffect(def.resource, def.amount || 0);
+                  if (effObj) effObj.apply(effectCtx, assigned, ip.label || ip.type);
+                }
+              });
+              delete effectCtx.currentInfraId;
+            }
+            const slaves = inventaire.esclaves || 0;
+            if (slaves) {
+              employmentDetails.push({ label: 'Esclaves', amount: -slaves, source: slaves });
+            }
+            const populationCons = s.population * 15;
+            const slaveCons = slaves * 5;
+            if (populationCons || slaveCons) {
+              production.vivres = (production.vivres || 0) - (populationCons + slaveCons);
+              if (!productionDetails.vivres) productionDetails.vivres = [];
+              if (populationCons) {
+                productionDetails.vivres.push({ label: 'Population', amount: -populationCons, source: s.population });
+              }
+              if (slaveCons) {
+                productionDetails.vivres.push({ label: 'Esclaves', amount: -slaveCons, source: slaves });
+              }
+            }
+            const taxRate = typeof s.tax_rate === 'number' ? s.tax_rate : parseInt(s.tax_rate, 10) || 0;
+            const taxGold = Math.floor((s.population || 0) * taxRate / 100);
+            if (taxGold) {
+              production.or_ = (production.or_ || 0) + taxGold;
+              if (!productionDetails.or_) productionDetails.or_ = [];
+              productionDetails.or_.push({ label: 'Taxes', amount: taxGold, source: taxRate });
+            }
+            const employment = { employed: Math.max(employed - slaves, 0), slaves };
+            function finalize(barony, baronyProps) {
+              if (effectCtx.infrastructureProductionMultipliers && effectCtx.infraProductionByInfra) {
+                Object.entries(effectCtx.infrastructureProductionMultipliers).forEach(([iid, mult]) => {
+                  if (mult === 1) return;
+                  const arr = effectCtx.infraProductionByInfra[iid];
+                  if (!arr) return;
+                  arr.forEach(entry => {
+                    const added = entry.amount * (mult - 1);
+                    production[entry.resource] = (production[entry.resource] || 0) + added;
+                    if (!productionDetails[entry.resource]) productionDetails[entry.resource] = [];
+                    const detail = productionDetails[entry.resource].find(d => d.label === entry.label);
+                    if (detail) {
+                      detail.amount += added;
+                    } else {
+                      productionDetails[entry.resource].push({ label: entry.label, amount: entry.amount * mult, source: entry.source });
+                    }
+                  });
+                });
+              }
+              const idhDetails = effectCtx.idhDetails || [];
+              let idh = effectCtx.idh;
+              if (taxRate === 0) {
+                idh += 3;
+                idhDetails.push({ label: 'Taxes', amount: 3, source: taxRate });
+              } else if (taxRate <= 2) {
+                idh += 2;
+                idhDetails.push({ label: 'Taxes', amount: 2, source: taxRate });
+              } else if (taxRate <= 4) {
+                idh += 1;
+                idhDetails.push({ label: 'Taxes', amount: 1, source: taxRate });
+              } else {
+                const malus = -(taxRate - 5);
+                idh += malus;
+                idhDetails.push({ label: 'Taxes', amount: malus, source: taxRate });
+              }
+              const popPenalty = -Math.min(Math.floor(s.population / 1000), 5);
+              if (popPenalty) {
+                idh += popPenalty;
+                idhDetails.push({ label: 'Population', amount: popPenalty, source: s.population });
+              }
+              if (!seig.religion_id) {
+                idh -= 1;
+                idhDetails.push({ label: 'Sans religion', amount: -1, source: 1 });
+              }
+              if (barony && seig.religion_id !== barony.religion_pop_id) {
+                idh -= 1;
+                idhDetails.push({ label: 'Religion différente', amount: -1, source: 1 });
+              }
+              const totalPop = s.population + slaves;
+              if (totalPop > 0) {
+                let slavePenalty = Math.floor((20 * slaves) / totalPop) - 1;
+                if (slavePenalty < 0) slavePenalty = 0;
+                if (slavePenalty > 5) slavePenalty = 5;
+                if (slavePenalty) {
+                  idh -= slavePenalty;
+                  idhDetails.push({ label: 'Esclaves', amount: -slavePenalty, source: slaves });
+                }
+              }
+              const spellSuccess = 75 + (effectCtx.spellSuccessBonus || 0);
+              const basicSpellDiscount = effectCtx.basicSpellDiscount || 0;
+              const advancedSpellDiscount = effectCtx.advancedSpellDiscount || 0;
+              const spellRange = 5 + (effectCtx.spellRangeBonus || 0);
+              const spellMax = effectCtx.spellMax || 0;
+              res.json({ seigneurie: s, barony, inventaire, production, productionDetails, fields, baronyProps, employment, employmentDetails, buildings, infrastructures, capacities, buildingProductionBonus, buildingProductionBonusDetails, idh, idhDetails, unlockedPages: effectCtx.unlockedPages, spellSuccess, basicSpellDiscount, advancedSpellDiscount, spellRange, spellMax, spellsCast });
+            }
+            if (s.baronnie_id) {
+              db.get('SELECT * FROM barony_properties WHERE barony_id=?', [s.baronnie_id], (err3, props) => {
+                if (err3) return handleError(res, err3);
+                const baronyProps = props || {};
+                const baronyEffects = safeParse(baronyProps.effects, []);
+                for (const def of baronyEffects) {
+                  let effObj = null;
+                  if (def.type === 'storage') {
+                    effObj = new StorageEffect(def.resource, def.amount || 0);
+                  } else if (def.type === 'production') {
+                    effObj = new ResourceProductionEffect(def.resource, def.amount || 0);
+                  } else if (def.type === 'building_production') {
+                    effObj = new BuildingProductionEffect(def.building, def.amount || 0);
+                  } else if (def.type === 'infra_production') {
+                    effObj = new InfraProductionEffect(def.infrastructure, def.amount || 1);
+                  } else if (def.type === 'idh') {
+                    effObj = new IDHEffect(def.amount || 0);
+                  } else if (def.type === 'unlock_page') {
+                    effObj = new UnlockPageEffect(def.page);
+                  } else if (def.type === 'spell_success') {
+                    effObj = new SpellSuccessEffect(def.amount || 0);
+                  } else if (def.type === 'spell_basic_discount') {
+                    effObj = new SpellBasicDiscountEffect(def.amount || 0);
+                  } else if (def.type === 'spell_advanced_discount') {
+                    effObj = new SpellAdvancedDiscountEffect(def.amount || 0);
+                  } else if (def.type === 'spell_range') {
+                    effObj = new SpellRangeEffect(def.amount || 0);
+                  } else if (def.type === 'spell_max_per_month') {
+                    effObj = new SpellMaxPerMonthEffect(def.amount || 0);
                   }
-                  const prodRes = bp.produces;
-                  if (active > 0 && prodRes && bp.production) {
-                    const amount = active * bp.production;
-                    production[prodRes] = (production[prodRes] || 0) + amount;
-                    if (!productionDetails[prodRes]) productionDetails[prodRes] = [];
-                    productionDetails[prodRes].push({ label: bp.label || bp.type, amount, source: active });
+                  if (effObj) {
+                    effObj.apply(effectCtx, 1, 'Baronnie');
                   }
                 }
-                db.all('SELECT * FROM infrastructure_properties', [], (errI, iprops) => {
-                  if (errI) return handleError(res, errI);
-                  const infraList = iprops || [];
-                  const capacities = { vivres: 500, points_magique: 2000 };
-                  const currentMonth = new Date().toISOString().slice(0,7);
-                  let spellsCast = s.spells_cast || 0;
-                  if (s.spell_month !== currentMonth) spellsCast = 0;
-                  const buildingProductionBonus = {};
-                  const buildingProductionBonusDetails = {};
-                  const effectCtx = {
-                    production,
-                    productionDetails,
-                    capacity: capacities,
-                    buildings,
-                    bpMap,
-                    buildingProductionBonus,
-                    buildingProductionBonusDetails,
-                    infraProductionMultipliers: {},
-                    infraProductionByInfra: {},
-                    idh: 5,
-                    idhDetails: [{ label: 'Base', amount: 5, source: 1 }],
-                    unlockedPages: {},
-                    spellSuccessBonus: 0,
-                    basicSpellDiscount: 0,
-                    advancedSpellDiscount: 0,
-                    spellRangeBonus: 0,
-                    spellMax: 0
-                  };
-                  for (const ip of infraList) {
-                    effectCtx.currentInfraId = ip.id;
-                    const entry = infrastructures[ip.id] || infrastructures[String(ip.id)] || 0;
-                    const count = typeof entry === 'object' ? (entry.built || 0) : entry;
-                    if (!count) { delete effectCtx.currentInfraId; continue; }
-                    const workers = count * (ip.workers_per_building || 0);
-                    if (workers) {
-                      employed += workers;
-                      employmentDetails.push({ label: ip.label || ip.type, amount: workers, source: count });
-                    }
-                    const entryObj = typeof entry === 'object' ? entry : {};
-                    const effects = safeParse(ip.effects, []);
-                    effects.forEach((def, idx) => {
-                      let effObj = null;
-                      if (def.type === 'storage') {
-                        effObj = new StorageEffect(def.resource, def.amount || 0);
-                        if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
-                      } else if (def.type === 'production') {
-                        effObj = new ResourceProductionEffect(def.resource, def.amount || 0);
-                        if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
-                      } else if (def.type === 'building_production') {
-                        effObj = new BuildingProductionEffect(def.building, def.amount || 0);
-                        if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
-                      } else if (def.type === 'infra_production') {
-                        effObj = new InfraProductionEffect(def.infrastructure, def.amount || 1);
-                        if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
-                      } else if (def.type === 'idh') {
-                        effObj = new IDHEffect(def.amount || 0);
-                        if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
-                      } else if (def.type === 'unlock_page') {
-                        effObj = new UnlockPageEffect(def.page);
-                        if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
-                      } else if (def.type === 'spell_success') {
-                        effObj = new SpellSuccessEffect(def.amount || 0);
-                        if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
-                      } else if (def.type === 'spell_basic_discount') {
-                        effObj = new SpellBasicDiscountEffect(def.amount || 0);
-                        if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
-                      } else if (def.type === 'spell_advanced_discount') {
-                        effObj = new SpellAdvancedDiscountEffect(def.amount || 0);
-                        if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
-                      } else if (def.type === 'spell_range') {
-                        effObj = new SpellRangeEffect(def.amount || 0);
-                        if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
-                      } else if (def.type === 'spell_max_per_month') {
-                        effObj = new SpellMaxPerMonthEffect(def.amount || 0);
-                        if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
-                      } else if (def.type === 'variable_workers') {
-                        const max = (def.max_workers || 0) * count;
-                        let assigned = entryObj[`effect_${idx}_workers`] || 0;
-                        if (assigned > max) assigned = max;
-                        if (assigned) {
-                          employed += assigned;
-                          employmentDetails.push({ label: ip.label || ip.type, amount: assigned, source: assigned });
-                        }
-                        effObj = new VariableWorkersEffect(def.resource, def.amount || 0);
-                        if (effObj) effObj.apply(effectCtx, assigned, ip.label || ip.type);
-                      }
-                    });
-                    delete effectCtx.currentInfraId;
-                  }
-                  const slaves = inventaire.esclaves || 0;
-                  if (slaves) {
-                    employmentDetails.push({ label: 'Esclaves', amount: -slaves, source: slaves });
-                  }
-                  const populationCons = s.population * 15;
-                  const slaveCons = slaves * 5;
-                  if (populationCons || slaveCons) {
-                    production.vivres = (production.vivres || 0) - (populationCons + slaveCons);
-                    if (!productionDetails.vivres) productionDetails.vivres = [];
-                    if (populationCons) {
-                      productionDetails.vivres.push({ label: 'Population', amount: -populationCons, source: s.population });
-                    }
-                    if (slaveCons) {
-                      productionDetails.vivres.push({ label: 'Esclaves', amount: -slaveCons, source: slaves });
-                    }
-                  }
-                  const taxRate = typeof s.tax_rate === 'number' ? s.tax_rate : parseInt(s.tax_rate, 10) || 0;
-                  const taxGold = Math.floor((s.population || 0) * taxRate / 100);
-                  if (taxGold) {
-                    production.or_ = (production.or_ || 0) + taxGold;
-                    if (!productionDetails.or_) productionDetails.or_ = [];
-                    productionDetails.or_.push({ label: 'Taxes', amount: taxGold, source: taxRate });
-                  }
-                  const employment = { employed: Math.max(employed - slaves, 0), slaves };
-                  function finalize(barony, baronyProps) {
-                    if (effectCtx.infrastructureProductionMultipliers && effectCtx.infraProductionByInfra) {
-                      Object.entries(effectCtx.infrastructureProductionMultipliers).forEach(([iid, mult]) => {
-                        if (mult === 1) return;
-                        const arr = effectCtx.infraProductionByInfra[iid];
-                        if (!arr) return;
-                        arr.forEach(entry => {
-                          const added = entry.amount * (mult - 1);
-                          production[entry.resource] = (production[entry.resource] || 0) + added;
-                          if (!productionDetails[entry.resource]) productionDetails[entry.resource] = [];
-                          const detail = productionDetails[entry.resource].find(d => d.label === entry.label);
-                          if (detail) {
-                            detail.amount += added;
-                          } else {
-                            productionDetails[entry.resource].push({ label: entry.label, amount: entry.amount * mult, source: entry.source });
-                          }
-                        });
-                      });
-                    }
-                    const idhDetails = effectCtx.idhDetails || [];
-                    let idh = effectCtx.idh;
-                    if (taxRate === 0) {
-                      idh += 3;
-                      idhDetails.push({ label: 'Taxes', amount: 3, source: taxRate });
-                    } else if (taxRate <= 2) {
-                      idh += 2;
-                      idhDetails.push({ label: 'Taxes', amount: 2, source: taxRate });
-                    } else if (taxRate <= 4) {
-                      idh += 1;
-                      idhDetails.push({ label: 'Taxes', amount: 1, source: taxRate });
-                    } else {
-                      const malus = -(taxRate - 5);
-                      idh += malus;
-                      idhDetails.push({ label: 'Taxes', amount: malus, source: taxRate });
-                    }
-                    const popPenalty = -Math.min(Math.floor(s.population / 1000), 5);
-                    if (popPenalty) {
-                      idh += popPenalty;
-                      idhDetails.push({ label: 'Population', amount: popPenalty, source: s.population });
-                    }
-                    if (!seig.religion_id) {
-                      idh -= 1;
-                      idhDetails.push({ label: 'Sans religion', amount: -1, source: 1 });
-                    }
-                    if (barony && seig.religion_id !== barony.religion_pop_id) {
-                      idh -= 1;
-                      idhDetails.push({ label: 'Religion différente', amount: -1, source: 1 });
-                    }
-                    const totalPop = s.population + slaves;
-                    if (totalPop > 0) {
-                      let slavePenalty = Math.floor((20 * slaves) / totalPop) - 1;
-                      if (slavePenalty < 0) slavePenalty = 0;
-                      if (slavePenalty > 5) slavePenalty = 5;
-                      if (slavePenalty) {
-                        idh -= slavePenalty;
-                        idhDetails.push({ label: 'Esclaves', amount: -slavePenalty, source: slaves });
-                      }
-                    }
-                    const spellSuccess = 75 + (effectCtx.spellSuccessBonus || 0);
-                    const basicSpellDiscount = effectCtx.basicSpellDiscount || 0;
-                    const advancedSpellDiscount = effectCtx.advancedSpellDiscount || 0;
-                    const spellRange = 5 + (effectCtx.spellRangeBonus || 0);
-                    const spellMax = effectCtx.spellMax || 0;
-                    res.json({ seigneurie: s, barony, inventaire, production, productionDetails, fields, baronyProps, employment, employmentDetails, buildings, infrastructures, capacities, buildingProductionBonus, buildingProductionBonusDetails, idh, idhDetails, unlockedPages: effectCtx.unlockedPages, spellSuccess, basicSpellDiscount, advancedSpellDiscount, spellRange, spellMax, spellsCast });
-                  }
-                  if (s.baronnie_id) {
-                    db.get('SELECT * FROM barony_properties WHERE barony_id=?', [s.baronnie_id], (err3, props) => {
-                      if (err3) return handleError(res, err3);
-                      const baronyProps = props || {};
-                      const baronyEffects = safeParse(baronyProps.effects, []);
-                      for (const def of baronyEffects) {
-                        let effObj = null;
-                        if (def.type === 'storage') {
-                          effObj = new StorageEffect(def.resource, def.amount || 0);
-                        } else if (def.type === 'production') {
-                          effObj = new ResourceProductionEffect(def.resource, def.amount || 0);
-                        } else if (def.type === 'building_production') {
-                          effObj = new BuildingProductionEffect(def.building, def.amount || 0);
-                        } else if (def.type === 'infra_production') {
-                          effObj = new InfraProductionEffect(def.infrastructure, def.amount || 1);
-                        } else if (def.type === 'idh') {
-                          effObj = new IDHEffect(def.amount || 0);
-                        } else if (def.type === 'unlock_page') {
-                          effObj = new UnlockPageEffect(def.page);
-                        } else if (def.type === 'spell_success') {
-                          effObj = new SpellSuccessEffect(def.amount || 0);
-                        } else if (def.type === 'spell_basic_discount') {
-                          effObj = new SpellBasicDiscountEffect(def.amount || 0);
-                        } else if (def.type === 'spell_advanced_discount') {
-                          effObj = new SpellAdvancedDiscountEffect(def.amount || 0);
-                        } else if (def.type === 'spell_range') {
-                          effObj = new SpellRangeEffect(def.amount || 0);
-                        } else if (def.type === 'spell_max_per_month') {
-                          effObj = new SpellMaxPerMonthEffect(def.amount || 0);
-                        }
-                        if (effObj) {
-                          effObj.apply(effectCtx, 1, 'Baronnie');
-                        }
-                      }
-                      db.get(`SELECT b.*, r.name as religion_name, c.name as culture_name FROM baronies b LEFT JOIN religions r ON b.religion_pop_id=r.id LEFT JOIN cultures c ON b.culture_id=c.id WHERE b.id=?`, [s.baronnie_id], (err4, barony) => {
-                        if (err4) return handleError(res, err4);
-                        finalize(barony, baronyProps);
-                      });
-                    });
-                  } else {
-                    finalize(null, {});
-                  }
+                db.get(`SELECT b.*, r.name as religion_name, c.name as culture_name FROM baronies b LEFT JOIN religions r ON b.religion_pop_id=r.id LEFT JOIN cultures c ON b.culture_id=c.id WHERE b.id=?`, [s.baronnie_id], (err4, barony) => {
+                  if (err4) return handleError(res, err4);
+                  finalize(barony, baronyProps);
                 });
               });
-            });
+            } else {
+              finalize(null, {});
+            }
           });
         });
       });
-    });
+    }
+
+    if (overrideId) {
+      db.get('SELECT seigneuries.*, seigneurs.name as seigneur_name, seigneurs.religion_id as religion_id FROM seigneuries JOIN seigneurs ON seigneurs.id=seigneuries.seigneur_id WHERE seigneuries.id=?', [overrideId], (err, row) => {
+        if (err) return handleError(res, err);
+        if (!row) return res.status(404).json({ error: 'Introuvable' });
+        const seig = { id: row.seigneur_id, name: row.seigneur_name, religion_id: row.religion_id };
+        const s = {
+          id: row.id,
+          baronnie_id: row.baronnie_id,
+          seigneur_id: row.seigneur_id,
+          population: row.population,
+          inventaire_id: row.inventaire_id,
+          buildings: row.buildings,
+          infrastructures: row.infrastructures,
+          tax_rate: row.tax_rate,
+          spells_cast: row.spells_cast,
+          spell_month: row.spell_month
+        };
+        respond(seig, s);
+      });
+    } else {
+      db.get('SELECT * FROM seigneurs WHERE user_id=?', [userId], (err, seigneur) => {
+        if (err) return handleError(res, err);
+        function ensureSeigneur(cb) {
+          if (seigneur) return cb(seigneur);
+          const name = `Seigneur ${req.session.user.first_name}`;
+          db.run('INSERT INTO seigneurs(name,user_id) VALUES (?,?)', [name, userId], function(err){
+            if (err) return handleError(res, err);
+            cb({ id: this.lastID, name, user_id: userId });
+          });
+        }
+        ensureSeigneur(seig => {
+          db.get('SELECT * FROM seigneuries WHERE seigneur_id=?', [seig.id], (err, seigneurie) => {
+            if (err) return handleError(res, err);
+            function ensureSeigneurie(cb) {
+              if (seigneurie) return cb(seigneurie);
+              db.run('INSERT INTO inventaire DEFAULT VALUES', function(err){
+                if (err) return handleError(res, err);
+                const invId = this.lastID;
+                db.run('INSERT INTO seigneuries (baronnie_id,seigneur_id,population,inventaire_id,buildings,infrastructures) VALUES (NULL,?,?,?,?,?)',
+                  [seig.id, 0, invId, '{}', '{}'], function(err){
+                    if (err) return handleError(res, err);
+                    cb({ id: this.lastID, baronnie_id: null, seigneur_id: seig.id, population: 0, inventaire_id: invId, buildings: '{}', infrastructures: '{}', tax_rate: 5 });
+                  });
+              });
+            }
+            ensureSeigneurie(s => respond(seig, s));
+          });
+        });
+      });
+    }
   });
 });
 
