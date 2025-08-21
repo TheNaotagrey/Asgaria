@@ -35,6 +35,9 @@
   const randomBtn = document.getElementById('randomBtn');
   const legendDiv = document.getElementById('legend');
 
+  const linkBtn = document.getElementById('linkBarony');
+  const unlinkBtn = document.getElementById('unlinkBarony');
+
   const infoPanel = document.getElementById('infoPanel');
   const editIdInput = document.getElementById('editId');
   const editNameInput = document.getElementById('editName');
@@ -69,6 +72,29 @@
 
   let core = null;
   let currentSelectedId = null;
+  let pendingLinkId = null;
+  let pendingAction = null; // 'link' or 'unlink'
+
+  function startLinking(action) {
+    if (!currentSelectedId) return;
+    pendingLinkId = currentSelectedId;
+    pendingAction = action;
+  }
+
+  if (linkBtn) linkBtn.addEventListener('click', () => startLinking('link'));
+  if (unlinkBtn) unlinkBtn.addEventListener('click', () => startLinking('unlink'));
+
+  window.addEventListener('keydown', e => {
+    if (e.key === 'Control') {
+      startLinking(e.altKey ? 'unlink' : 'link');
+    }
+  });
+  window.addEventListener('keyup', e => {
+    if (e.key === 'Control') {
+      pendingLinkId = null;
+      pendingAction = null;
+    }
+  });
 
   function populateReligionSelects() {
     const selects = [
@@ -92,6 +118,31 @@
   }
 
   function handleSelect(id) {
+    if (pendingAction && pendingLinkId && id && id !== pendingLinkId) {
+      const sourceId = pendingLinkId;
+      const targetId = id;
+      const method = pendingAction === 'link' ? 'POST' : 'DELETE';
+      fetch(`${API_BASE}/api/barony_connections`, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ barony_id_1: sourceId, barony_id_2: targetId })
+      }).then(() => {
+        if (pendingAction === 'link') {
+          if (!baronyAdjacency[sourceId]) baronyAdjacency[sourceId] = [];
+          if (!baronyAdjacency[targetId]) baronyAdjacency[targetId] = [];
+          if (!baronyAdjacency[sourceId].includes(targetId)) baronyAdjacency[sourceId].push(targetId);
+          if (!baronyAdjacency[targetId].includes(sourceId)) baronyAdjacency[targetId].push(sourceId);
+        } else {
+          if (baronyAdjacency[sourceId]) baronyAdjacency[sourceId] = baronyAdjacency[sourceId].filter(b => b !== targetId);
+          if (baronyAdjacency[targetId]) baronyAdjacency[targetId] = baronyAdjacency[targetId].filter(b => b !== sourceId);
+        }
+      });
+      pendingLinkId = null;
+      pendingAction = null;
+      core.selectBarony(sourceId);
+      return;
+    }
+
     currentSelectedId = id;
     if (!id) {
       if (infoPanel) infoPanel.style.display = 'none';
@@ -104,7 +155,8 @@
     if (editPrioryReligionSelect) editPrioryReligionSelect.value = baronyMeta[id]?.priory_religion_id || '';
     if (editChurchReligionSelect) editChurchReligionSelect.value = baronyMeta[id]?.church_religion_id || '';
     if (editCathedralReligionSelect) editCathedralReligionSelect.value = baronyMeta[id]?.cathedral_religion_id || '';
-    if (filterManager && filterSelect) {
+
+    if (filterManager && filterSelect && filterSelect.value) {
       filterManager.applyFilter(filterSelect.value);
     }
   }

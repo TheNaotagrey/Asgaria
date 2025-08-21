@@ -112,7 +112,7 @@
     infoCathedral.textContent = religionMap[info.cathedral_religion_id]?.name || 'Aucune';
     infoPlayer.textContent = info.player ? 'Oui' : 'Non';
     infoCanonical.textContent = (canonicalLandMap[id] || []).map(rid => religionMap[rid]?.name || '').join(', ');
-    if (filterManager && filterSelect) {
+    if (filterManager && filterSelect && filterSelect.value) {
       filterManager.applyFilter(filterSelect.value);
     }
   }
