@@ -9,13 +9,8 @@
     let colorMap = {};
 
     function generateColor(str) {
-      let hash = 0;
-      for (let i = 0; i < str.length; i++) {
-        hash = str.charCodeAt(i) + ((hash << 5) - hash);
-      }
-      const r = (hash >> 16) & 255;
-      const g = (hash >> 8) & 255;
-      const b = hash & 255;
+      const hue = Math.floor(Math.random() * 360);
+      const [r, g, b] = hslToRgb(hue, 65, 65);
       return [r, g, b, 100];
     }
 
