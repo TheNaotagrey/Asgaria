@@ -114,8 +114,8 @@
     infoPlayer.textContent = info.player ? 'Oui' : 'Non';
     infoBishop.textContent = info.bishop ? 'Oui' : 'Non';
       infoCanonical.textContent = (canonicalLandMap[id] || []).map(rid => baronyMeta[rid]?.name || '').join(', ');
-    if (filterManager && filterSelect && filterSelect.value) {
-      filterManager.applyFilter(filterSelect.value);
+    if (filterManager && filterSelect && filterSelect.value === 'distance') {
+      filterManager.applyFilter('distance');
     }
   }
 
