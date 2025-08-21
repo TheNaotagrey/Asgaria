@@ -91,12 +91,13 @@ class InfraProductionEffect extends Effect {
 }
 
 class InstantProductionEffect extends Effect {
-  constructor(resource, amount, costs = {}, usesPerMonth = 0) {
+  constructor(resource, amount, costs = {}, usesPerMonth = 0, perBuilding = true) {
     super();
     this.resource = resource;
     this.amount = amount;
     this.costs = costs;
     this.usesPerMonth = usesPerMonth;
+    this.perBuilding = perBuilding;
   }
 
   apply(ctx, count, label) {
@@ -107,6 +108,7 @@ class InstantProductionEffect extends Effect {
       amount: this.amount,
       costs: this.costs,
       usesPerMonth: this.usesPerMonth,
+      perBuilding: this.perBuilding,
       source: count
     });
   }
