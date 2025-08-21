@@ -431,8 +431,8 @@
     if (editPlayerCheckbox) editPlayerCheckbox.checked = !!baronyMeta[id]?.player;
     if (editBishopCheckbox) editBishopCheckbox.checked = !!baronyMeta[id]?.bishop;
 
-    if (filterManager && filterSelect && filterSelect.value) {
-      filterManager.applyFilter(filterSelect.value);
+    if (filterManager && filterSelect && filterSelect.value === 'distance') {
+      filterManager.applyFilter('distance');
     }
   }
 
