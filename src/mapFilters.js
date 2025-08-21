@@ -2,8 +2,10 @@
   function init(core, data, options = {}) {
     const updateLegend = options.updateLegend || (() => {});
     const terrainColor = [239, 228, 176];
-    const playerColor = [82, 190, 128];
-    const npcColor = [231, 76, 60];
+    const playerSeigneurColor = [82, 190, 128];
+    const playerBishopColor = [46, 134, 193];
+    const npcSeigneurColor = [231, 76, 60];
+    const npcBishopColor = [155, 89, 182];
     let currentFilter = '';
     let canonicalPatterns = {};
     let colorMap = {};
@@ -272,12 +274,18 @@
           if (!info.seigneur_id) {
             groupId = 'unoccupied';
             groupName = 'Non occupée';
+          } else if (info.player && info.bishop) {
+            groupId = 'player_bishop';
+            groupName = 'Joueur Évêque';
           } else if (info.player) {
-            groupId = 'player';
-            groupName = 'Joueur';
+            groupId = 'player_seigneur';
+            groupName = 'Joueur Seigneur';
+          } else if (info.bishop) {
+            groupId = 'npc_bishop';
+            groupName = 'PNJ Évêque';
           } else {
-            groupId = 'npc';
-            groupName = 'PNJ';
+            groupId = 'npc_seigneur';
+            groupName = 'PNJ Seigneur';
           }
         }
         if (groupId == null) {
@@ -287,8 +295,10 @@
         if (!groupColors[groupId]) {
           let col;
           if (type === 'occupation') {
-            if (groupId === 'player') col = playerColor;
-            else if (groupId === 'npc') col = npcColor;
+            if (groupId === 'player_seigneur') col = playerSeigneurColor;
+            else if (groupId === 'player_bishop') col = playerBishopColor;
+            else if (groupId === 'npc_seigneur') col = npcSeigneurColor;
+            else if (groupId === 'npc_bishop') col = npcBishopColor;
             else col = terrainColor;
           } else if (randomize) {
             const hue = Math.floor(Math.random() * 360);

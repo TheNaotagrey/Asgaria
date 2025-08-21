@@ -51,6 +51,7 @@
   const infoChurch = document.getElementById('infoChurch');
   const infoCathedral = document.getElementById('infoCathedral');
   const infoPlayer = document.getElementById('infoPlayer');
+  const infoBishop = document.getElementById('infoBishop');
   const infoCanonical = document.getElementById('infoCanonical');
   const legendDiv = document.getElementById('legend');
   const filterSelect = document.getElementById('filterSelect');
@@ -111,6 +112,7 @@
     infoChurch.textContent = religionMap[info.church_religion_id]?.name || 'Aucune';
     infoCathedral.textContent = religionMap[info.cathedral_religion_id]?.name || 'Aucune';
     infoPlayer.textContent = info.player ? 'Oui' : 'Non';
+    infoBishop.textContent = info.bishop ? 'Oui' : 'Non';
     infoCanonical.textContent = (canonicalLandMap[id] || []).map(rid => religionMap[rid]?.name || '').join(', ');
     if (filterManager && filterSelect && filterSelect.value) {
       filterManager.applyFilter(filterSelect.value);
