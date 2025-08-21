@@ -238,11 +238,27 @@ main {
   border-radius: 4px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
   min-width: 200px;
+  max-width: 300px;
+  overflow-wrap: anywhere;
   z-index: 10;
 }
 .info-panel h2 {
   margin-top: 0;
   font-size: 1rem;
+}
+.info-group {
+  margin-bottom: 8px;
+}
+.info-group h3 {
+  margin: 4px 0;
+  font-size: 0.9rem;
+}
+.info-row {
+  margin: 2px 0;
+}
+.info-panel ul {
+  margin: 2px 0 0 16px;
+  padding: 0;
 }
 .info-panel label {
   display: block;
