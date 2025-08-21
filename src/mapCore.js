@@ -1,5 +1,31 @@
 (function (global) {
-  function init(canvas, options = {}) {
+  /**
+   * Initialise le rendu de la carte.
+   * @param {Object} [opts] Options de configuration.
+   * @param {HTMLCanvasElement} [opts.canvas] Canvas cible. Utilisé si `mapId` n'est pas fourni.
+   * @param {string} [opts.mapId='pixelCanvas'] Id du canvas à récupérer dans le DOM.
+   * @param {boolean} [opts.enablePan=true] Active le déplacement de la carte à la souris.
+   * @param {boolean} [opts.enableZoom=true] Active le zoom via la molette.
+   * @param {Function} [opts.fetchData] Fonction asynchrone de récupération des données.
+   * @param {Function} [opts.onSelect] Callback lors de la sélection d'une baronnie.
+   * @param {Function} [opts.drawOverlay] Fonction de dessin d'une surcouche.
+   * @param {string} [opts.mapMode='land'] Mode de carte à charger.
+   */
+  function init(opts = {}) {
+    const {
+      canvas: passedCanvas,
+      mapId = 'pixelCanvas',
+      enablePan = true,
+      enableZoom = true,
+      fetchData = async () => ({}),
+      onSelect = () => {},
+      drawOverlay = () => {},
+      mapMode = 'land'
+    } = opts;
+
+    const canvas = passedCanvas || document.getElementById(mapId);
+    if (!canvas) throw new Error('No canvas element provided or found');
+
     const group = canvas.parentElement;
     const container = group.parentElement;
     const ctx = canvas.getContext('2d');
@@ -36,11 +62,6 @@
     let panning = false;
     let panStartX = 0;
     let panStartY = 0;
-
-    const fetchData = options.fetchData || (async () => ({}));
-    const onSelect = options.onSelect || (() => {});
-    const drawOverlay = options.drawOverlay || (() => {});
-    const mapMode = options.mapMode || 'land';
 
     function applyTransform() {
       group.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${scale})`;
@@ -173,11 +194,15 @@
     }
 
 
-    canvas.addEventListener('wheel', handleWheel, { passive: false });
-    canvas.addEventListener('mousedown', handlePanStart);
-    canvas.addEventListener('mousemove', handlePanMove);
+    if (enableZoom) {
+      canvas.addEventListener('wheel', handleWheel, { passive: false });
+    }
+    if (enablePan) {
+      canvas.addEventListener('mousedown', handlePanStart);
+      canvas.addEventListener('mousemove', handlePanMove);
+      window.addEventListener('mouseup', handlePanEnd);
+    }
     canvas.addEventListener('click', handleCanvasClick);
-    window.addEventListener('mouseup', handlePanEnd);
 
     window.addEventListener('resize', () => {
       fitToContainer();

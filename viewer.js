@@ -231,7 +231,8 @@
       pixelCanvas.height = mapHeight;
       pixelCanvas.style.width = mapWidth + 'px';
       pixelCanvas.style.height = mapHeight + 'px';
-      const core = mapCore.init(pixelCanvas, {
+      const core = mapCore.init({
+        canvas: pixelCanvas,
         fetchData,
         onSelect: handleSelect,
         drawOverlay: () => {},
