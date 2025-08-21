@@ -53,9 +53,55 @@
   const infoPlayer = document.getElementById('infoPlayer');
   const infoBishop = document.getElementById('infoBishop');
   const infoCanonical = document.getElementById('infoCanonical');
+  const seaInfoPanel = document.getElementById('seaInfoPanel');
+  const seaInfoId = document.getElementById('seaInfoId');
+  const seaInfoName = document.getElementById('seaInfoName');
   const legendDiv = document.getElementById('legend');
   const filterSelect = document.getElementById('filterSelect');
   const randomBtn = document.getElementById('randomBtn');
+
+  const landFilters = [
+    { value: '', label: 'Aucun' },
+    { value: 'religion', label: 'Religion' },
+    { value: 'sanctuary', label: 'Sanctuaire' },
+    { value: 'priory', label: 'Prieuré' },
+    { value: 'church', label: 'Église' },
+    { value: 'cathedral', label: 'Cathédrale' },
+    { value: 'canonical', label: 'Terres canoniques' },
+    { value: 'culture', label: 'Culture' },
+    { value: 'viscounty', label: 'Vicomté de jure' },
+    { value: 'viscounty_defacto', label: 'Vicomté de facto' },
+    { value: 'county', label: 'Comté de jure' },
+    { value: 'county_defacto', label: 'Comté de facto' },
+    { value: 'marquisate', label: 'Marquisat de jure' },
+    { value: 'marquisate_defacto', label: 'Marquisat de facto' },
+    { value: 'duchy', label: 'Duché de jure' },
+    { value: 'duchy_defacto', label: 'Duché de facto' },
+    { value: 'archduchy', label: 'Archiduché de jure' },
+    { value: 'archduchy_defacto', label: 'Archiduché de facto' },
+    { value: 'kingdom', label: 'Royaume de jure' },
+    { value: 'kingdom_defacto', label: 'Royaume de facto' },
+    { value: 'empire', label: 'Empire de jure' },
+    { value: 'empire_defacto', label: 'Empire de facto' },
+    { value: 'distance', label: 'Distance' },
+    { value: 'occupation', label: 'Occupation' }
+  ];
+  const seaFilters = [
+    { value: '', label: 'Aucun' },
+    { value: 'distance', label: 'Distance' }
+  ];
+  function populateFilters() {
+    if (!filterSelect) return;
+    const filters = mapMode === 'sea' ? seaFilters : landFilters;
+    filterSelect.innerHTML = '';
+    filters.forEach(f => {
+      const opt = document.createElement('option');
+      opt.value = f.value;
+      opt.textContent = f.label;
+      filterSelect.appendChild(opt);
+    });
+  }
+  populateFilters();
 
   function updateLegend(groups) {
     if (!legendDiv) return;
@@ -81,12 +127,28 @@
   }
 
   function handleSelect(id) {
+    if (mapMode === 'sea') {
+      if (!id) {
+        if (seaInfoPanel) seaInfoPanel.style.display = 'none';
+        return;
+      }
+      const info = baronyMeta[id] || {};
+      if (seaInfoPanel) seaInfoPanel.style.display = 'block';
+      if (infoPanel) infoPanel.style.display = 'none';
+      if (seaInfoId) seaInfoId.textContent = info.id || '';
+      if (seaInfoName) seaInfoName.textContent = info.name || '';
+      if (filterManager && filterSelect && filterSelect.value === 'distance') {
+        filterManager.applyFilter('distance');
+      }
+      return;
+    }
     if (!id) {
-      infoPanel.style.display = 'none';
+      if (infoPanel) infoPanel.style.display = 'none';
       return;
     }
     const info = baronyMeta[id] || {};
-    infoPanel.style.display = 'block';
+    if (infoPanel) infoPanel.style.display = 'block';
+    if (seaInfoPanel) seaInfoPanel.style.display = 'none';
     infoId.textContent = info.id || '';
     infoName.textContent = info.name || '';
     infoSeigneur.textContent = seigneurMap[info.seigneur_id]?.name || '';
@@ -113,7 +175,7 @@
     infoCathedral.textContent = religionMap[info.cathedral_religion_id]?.name || 'Aucune';
     infoPlayer.textContent = info.player ? 'Oui' : 'Non';
     infoBishop.textContent = info.bishop ? 'Oui' : 'Non';
-      infoCanonical.textContent = (canonicalLandMap[id] || []).map(rid => baronyMeta[rid]?.name || '').join(', ');
+    infoCanonical.textContent = (canonicalLandMap[id] || []).map(rid => baronyMeta[rid]?.name || '').join(', ');
     if (filterManager && filterSelect && filterSelect.value === 'distance') {
       filterManager.applyFilter('distance');
     }

@@ -46,12 +46,42 @@
 
     function applyFilter(type, randomize = false) {
       if (data.mapMode === 'sea') {
+        currentFilter = type || '';
         colorMap = {};
-        Object.keys(data.baronyMeta || {}).forEach(id => {
-          const hue = Math.floor(Math.random() * 360);
-          const [r, g, b] = hslToRgb(hue, 65, 65);
-          colorMap[id] = [r, g, b, 100];
-        });
+        if (type === 'distance') {
+          if (!core.currentSelectedId) {
+            updateLegend(null);
+            core.setCanonicalPatterns({});
+            core.setColorMap(colorMap);
+            return;
+          }
+          const distances = {};
+          const queue = [core.currentSelectedId];
+          distances[core.currentSelectedId] = 0;
+          while (queue.length > 0) {
+            const cur = queue.shift();
+            const next = data.baronyAdjacency[cur] || [];
+            next.forEach(n => {
+              if (distances[n] === undefined) {
+                distances[n] = distances[cur] + 1;
+                queue.push(n);
+              }
+            });
+          }
+          Object.keys(data.baronyMeta).forEach(id => {
+            const d = distances[id];
+            if (d === undefined) return;
+            const hue = (d * 40) % 360;
+            const [r, g, b] = hslToRgb(hue, 65, 65);
+            colorMap[id] = [r, g, b, 100];
+          });
+        } else {
+          Object.keys(data.baronyMeta || {}).forEach(id => {
+            const hue = Math.floor(Math.random() * 360);
+            const [r, g, b] = hslToRgb(hue, 65, 65);
+            colorMap[id] = [r, g, b, 100];
+          });
+        }
         if (core.currentSelectedId && colorMap[core.currentSelectedId]) colorMap[core.currentSelectedId][3] = 180;
         updateLegend(null);
         canonicalPatterns = {};
