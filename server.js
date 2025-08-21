@@ -19,7 +19,7 @@ const VALID_TABLES = new Set([
   'duchies','marquisates','counties','viscounties','baronies','barony_pixels',
   'canonical_lands','inventaire','seigneuries','transactions','barony_properties',
   'building_properties','infrastructure_properties','barony_connections','trade_routes','tags','spells',
-  'maritime_zones','maritime_zone_pixels','maritime_zone_connections','maritime_zone_baronies'
+  'sanctuaries','maritime_zones','maritime_zone_pixels','maritime_zone_connections','maritime_zone_baronies'
 ]);
 
 // create tables if they do not exist
@@ -112,10 +112,9 @@ CREATE TABLE IF NOT EXISTS baronies (
   county_id INTEGER,
   viscounty_id INTEGER,
   culture_id INTEGER,
-  has_sanctuary INTEGER DEFAULT 0,
-  has_priory INTEGER DEFAULT 0,
-  has_church INTEGER DEFAULT 0,
-  has_cathedral INTEGER DEFAULT 0,
+  priory_religion_id INTEGER,
+  church_religion_id INTEGER,
+  cathedral_religion_id INTEGER,
   player INTEGER DEFAULT 0,
   FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id) ON DELETE SET NULL,
   FOREIGN KEY(religion_pop_id) REFERENCES religions(id),
@@ -126,6 +125,14 @@ CREATE TABLE IF NOT EXISTS baronies (
 CREATE TABLE IF NOT EXISTS barony_pixels (
   barony_id INTEGER PRIMARY KEY REFERENCES baronies(id),
   data BLOB
+);
+CREATE TABLE IF NOT EXISTS sanctuaries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  barony_id INTEGER,
+  religion_id INTEGER,
+  active INTEGER DEFAULT 0,
+  FOREIGN KEY(barony_id) REFERENCES baronies(id),
+  FOREIGN KEY(religion_id) REFERENCES religions(id)
 );
 CREATE TABLE IF NOT EXISTS canonical_lands (
   religion_id INTEGER,
@@ -346,17 +353,14 @@ db.exec(initSql, () => {
     if (!rows.some(r => r.name === 'viscounty_id')) {
       db.run('ALTER TABLE baronies ADD COLUMN viscounty_id INTEGER');
     }
-    if (!rows.some(r => r.name === 'has_sanctuary')) {
-      db.run('ALTER TABLE baronies ADD COLUMN has_sanctuary INTEGER DEFAULT 0');
+    if (!rows.some(r => r.name === 'priory_religion_id')) {
+      db.run('ALTER TABLE baronies ADD COLUMN priory_religion_id INTEGER');
     }
-    if (!rows.some(r => r.name === 'has_priory')) {
-      db.run('ALTER TABLE baronies ADD COLUMN has_priory INTEGER DEFAULT 0');
+    if (!rows.some(r => r.name === 'church_religion_id')) {
+      db.run('ALTER TABLE baronies ADD COLUMN church_religion_id INTEGER');
     }
-    if (!rows.some(r => r.name === 'has_church')) {
-      db.run('ALTER TABLE baronies ADD COLUMN has_church INTEGER DEFAULT 0');
-    }
-    if (!rows.some(r => r.name === 'has_cathedral')) {
-      db.run('ALTER TABLE baronies ADD COLUMN has_cathedral INTEGER DEFAULT 0');
+    if (!rows.some(r => r.name === 'cathedral_religion_id')) {
+      db.run('ALTER TABLE baronies ADD COLUMN cathedral_religion_id INTEGER');
     }
     if (!rows.some(r => r.name === 'player')) {
       db.run('ALTER TABLE baronies ADD COLUMN player INTEGER DEFAULT 0');
@@ -1230,11 +1234,11 @@ app.get('/api/baronies', (req, res) => {
 });
 app.post('/api/baronies', create('baronies',[
   'id','name','seigneur_id','religion_pop_id','county_id','viscounty_id','culture_id',
-  'has_sanctuary','has_priory','has_church','has_cathedral','player'
+  'priory_religion_id','church_religion_id','cathedral_religion_id','player'
 ]));
 app.put('/api/baronies/:id', update('baronies',[
   'name','seigneur_id','religion_pop_id','county_id','viscounty_id','culture_id',
-  'has_sanctuary','has_priory','has_church','has_cathedral','player'
+  'priory_religion_id','church_religion_id','cathedral_religion_id','player'
 ]));
 app.delete('/api/baronies/:id', (req,res)=>{
   db.run('DELETE FROM baronies WHERE id=?',[req.params.id], function(err){
@@ -2152,6 +2156,17 @@ app.post('/api/canonical_lands', create('canonical_lands',['religion_id','barony
 app.delete('/api/canonical_lands', (req, res) => {
   const { religion_id, barony_id } = req.query;
   db.run('DELETE FROM canonical_lands WHERE religion_id=? AND barony_id=?', [religion_id, barony_id], function(err){
+    if(err) return handleError(res, err);
+    res.json({deleted: this.changes});
+  });
+});
+
+// Sanctuaries API
+app.get('/api/sanctuaries', list('sanctuaries'));
+app.post('/api/sanctuaries', create('sanctuaries',['barony_id','religion_id','active']));
+app.put('/api/sanctuaries/:id', update('sanctuaries',['barony_id','religion_id','active']));
+app.delete('/api/sanctuaries/:id', (req,res)=>{
+  db.run('DELETE FROM sanctuaries WHERE id=?',[req.params.id], function(err){
     if(err) return handleError(res, err);
     res.json({deleted: this.changes});
   });

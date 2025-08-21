@@ -22,6 +22,7 @@
   let empireMap = {};
   let seigneurToCounty = {}, seigneurToDuchy = {}, seigneurToKingdom = {}, seigneurToViscounty = {}, seigneurToMarquisate = {}, seigneurToArchduchy = {}, seigneurToEmpire = {};
   let canonicalLandMap = {};
+  let sanctuaryMap = {};
   let baronyAdjacency = {};
   let mapData = {};
 
@@ -84,7 +85,7 @@
     baronyMeta = {};
     entities.forEach(e => { baronyMeta[e.id] = e; });
     if (mapMode !== 'sea') {
-      const [seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires, canonicalLands, connections] = await Promise.all([
+      const [seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires, canonicalLands, sanctuaries, connections] = await Promise.all([
         fetch(API_BASE + '/api/seigneurs').then(r => r.json()),
         fetch(API_BASE + '/api/religions').then(r => r.json()),
         fetch(API_BASE + '/api/cultures').then(r => r.json()),
@@ -96,6 +97,7 @@
         fetch(API_BASE + '/api/archduchies').then(r => r.json()),
         fetch(API_BASE + '/api/empires').then(r => r.json()),
         fetch(API_BASE + '/api/canonical_lands').then(r => r.json()),
+        fetch(API_BASE + '/api/sanctuaries').then(r => r.json()),
         fetch(API_BASE + '/api/barony_connections').then(r => r.json())
       ]);
       seigneurMap = {};
@@ -130,6 +132,11 @@
         if (!canonicalLandMap[cl.barony_id]) canonicalLandMap[cl.barony_id] = [];
         canonicalLandMap[cl.barony_id].push(cl.religion_id);
       });
+      sanctuaryMap = {};
+      sanctuaries.forEach(s => {
+        if (!sanctuaryMap[s.barony_id]) sanctuaryMap[s.barony_id] = [];
+        sanctuaryMap[s.barony_id].push({ religion_id: s.religion_id, active: !!s.active });
+      });
       baronyAdjacency = {};
       connections.forEach(c => {
         if (!baronyAdjacency[c.barony_id_1]) baronyAdjacency[c.barony_id_1] = [];
@@ -152,6 +159,7 @@
       archduchyMap,
       empireMap,
       canonicalLandMap,
+      sanctuaryMap,
       baronyAdjacency,
       seigneurToCounty,
       seigneurToDuchy,

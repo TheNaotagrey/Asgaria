@@ -237,23 +237,35 @@
             sid = data.seigneurMap[sid]?.overlord_id;
           }
         } else if (type === 'sanctuary') {
-          if (info.has_sanctuary) {
-            groupId = info.religion_pop_id;
-            groupName = data.religionMap[groupId]?.name || '';
+          const sancts = data.sanctuaryMap[id] || [];
+          if (sancts.length > 0) {
+            canonicalPatterns[id] = [];
+            sancts.forEach(s => {
+              if (!groupColors[s.religion_id]) {
+                const col = hexToRgb(data.religionMap[s.religion_id]?.color) || generateColor(String(s.religion_id)).slice(0,3);
+                groupColors[s.religion_id] = { color: col, name: data.religionMap[s.religion_id]?.name || 'N/A' };
+              }
+              const col = groupColors[s.religion_id].color;
+              const repeat = s.active ? 3 : 1;
+              for (let i = 0; i < repeat; i++) canonicalPatterns[id].push(col);
+            });
+            const first = canonicalPatterns[id][0];
+            colorMap[id] = [first[0], first[1], first[2], 100];
+            return;
           }
         } else if (type === 'priory') {
-          if (info.has_priory) {
-            groupId = info.religion_pop_id;
+          if (info.priory_religion_id) {
+            groupId = info.priory_religion_id;
             groupName = data.religionMap[groupId]?.name || '';
           }
         } else if (type === 'church') {
-          if (info.has_church) {
-            groupId = info.religion_pop_id;
+          if (info.church_religion_id) {
+            groupId = info.church_religion_id;
             groupName = data.religionMap[groupId]?.name || '';
           }
         } else if (type === 'cathedral') {
-          if (info.has_cathedral) {
-            groupId = info.religion_pop_id;
+          if (info.cathedral_religion_id) {
+            groupId = info.cathedral_religion_id;
             groupName = data.religionMap[groupId]?.name || '';
           }
         } else if (type === 'occupation') {
@@ -284,7 +296,6 @@
           } else {
             if (
               type === 'religion' ||
-              type === 'sanctuary' ||
               type === 'priory' ||
               type === 'church' ||
               type === 'cathedral'
