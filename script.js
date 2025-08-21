@@ -7,13 +7,14 @@
   const npcColor = [231, 76, 60];
   const params = new URLSearchParams(location.search);
   const mapMode = params.get('mode') === 'sea' ? 'sea' : 'land';
+  const pixelEndpoint = mapMode === 'sea' ? '/api/maritime_zone_pixels' : '/api/barony_pixels';
+  const entityEndpoint = mapMode === 'sea' ? '/api/maritime_zones' : '/api/baronies';
 
   // Pixel data loaded from the server
   let pixelData = {};
 
   async function loadPixelData() {
-    const endpoint = mapMode === 'sea' ? '/api/maritime_zone_pixels' : '/api/barony_pixels';
-    const resp = await fetch(API_BASE + endpoint);
+    const resp = await fetch(API_BASE + pixelEndpoint);
     pixelData = await resp.json();
     Object.keys(pixelData).forEach(id => {
       if (!baronyMeta[id]) {
@@ -137,22 +138,22 @@
   const selectBtn = document.getElementById('selectBarony');
   const linkBtn = document.getElementById('linkBarony');
   const unlinkBtn = document.getElementById('unlinkBarony');
-  const infoPanel = document.getElementById('infoPanel');
-  const editIdInput = document.getElementById('editId');
-  const editNameInput = document.getElementById('editName');
-  const editSeigneur = document.getElementById('editSeigneur');
-  const editReligionPop = document.getElementById('editReligionPop');
-  const editCulture = document.getElementById('editCulture');
-  const editViscounty = document.getElementById('editViscounty');
-  const editCounty = document.getElementById('editCounty');
-  const editSanctuary = document.getElementById('editSanctuary');
-  const editPriory = document.getElementById('editPriory');
-  const editChurch = document.getElementById('editChurch');
-  const editCathedral = document.getElementById('editCathedral');
-  const editPlayer = document.getElementById('editPlayer');
-  const canonicalListDiv = document.getElementById('canonicalList');
-  const addCanonicalSelect = document.getElementById('addCanonicalSelect');
-  const addCanonicalBtn = document.getElementById('addCanonical');
+  const infoPanel = mapMode === 'sea' ? document.getElementById('seaInfoPanel') : document.getElementById('infoPanel');
+  const editIdInput = mapMode === 'sea' ? document.getElementById('seaEditId') : document.getElementById('editId');
+  const editNameInput = mapMode === 'sea' ? document.getElementById('seaEditName') : document.getElementById('editName');
+  const editSeigneur = mapMode === 'sea' ? null : document.getElementById('editSeigneur');
+  const editReligionPop = mapMode === 'sea' ? null : document.getElementById('editReligionPop');
+  const editCulture = mapMode === 'sea' ? null : document.getElementById('editCulture');
+  const editViscounty = mapMode === 'sea' ? null : document.getElementById('editViscounty');
+  const editCounty = mapMode === 'sea' ? null : document.getElementById('editCounty');
+  const editSanctuary = mapMode === 'sea' ? null : document.getElementById('editSanctuary');
+  const editPriory = mapMode === 'sea' ? null : document.getElementById('editPriory');
+  const editChurch = mapMode === 'sea' ? null : document.getElementById('editChurch');
+  const editCathedral = mapMode === 'sea' ? null : document.getElementById('editCathedral');
+  const editPlayer = mapMode === 'sea' ? null : document.getElementById('editPlayer');
+  const canonicalListDiv = mapMode === 'sea' ? null : document.getElementById('canonicalList');
+  const addCanonicalSelect = mapMode === 'sea' ? null : document.getElementById('addCanonicalSelect');
+  const addCanonicalBtn = mapMode === 'sea' ? null : document.getElementById('addCanonical');
   const filterSelect = document.getElementById('colorFilter');
   const legendDiv = document.getElementById('legend');
   if (mapMode === 'sea' && filterSelect) {
@@ -296,7 +297,7 @@
 
   // Save pixels to the server
   if (saveBtn) saveBtn.addEventListener('click', () => {
-    fetch(API_BASE + '/api/barony_pixels', {
+    fetch(API_BASE + pixelEndpoint, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(pixelData)
@@ -670,21 +671,23 @@
     if (editIdInput) editIdInput.value = baronyMeta[id].id;
     if (editNameInput) editNameInput.value = baronyMeta[id].name || '';
     refreshCanonicalList(id);
-    fetch(`${API_BASE}/api/baronies?id=${id}`).then(r=>r.json()).then(list=>{
+    fetch(`${API_BASE}${entityEndpoint}?id=${id}`).then(r=>r.json()).then(list=>{
       const info = list.find(b=>String(b.id)===String(id));
       if(!info) return;
       if (editNameInput) editNameInput.value = info.name || '';
       baronyMeta[id].name = info.name || '';
-      if (editSeigneur) editSeigneur.value = info.seigneur_id || '';
-      if (editReligionPop) editReligionPop.value = info.religion_pop_id || '';
-      if (editCulture) editCulture.value = info.culture_id || '';
-      if (editViscounty) editViscounty.value = info.viscounty_id || '';
-      if (editCounty) editCounty.value = info.county_id || '';
-      if (editSanctuary) editSanctuary.checked = !!info.has_sanctuary;
-      if (editPriory) editPriory.checked = !!info.has_priory;
-      if (editChurch) editChurch.checked = !!info.has_church;
-      if (editCathedral) editCathedral.checked = !!info.has_cathedral;
-      if (editPlayer) editPlayer.checked = !!info.player;
+      if (mapMode !== 'sea') {
+        if (editSeigneur) editSeigneur.value = info.seigneur_id || '';
+        if (editReligionPop) editReligionPop.value = info.religion_pop_id || '';
+        if (editCulture) editCulture.value = info.culture_id || '';
+        if (editViscounty) editViscounty.value = info.viscounty_id || '';
+        if (editCounty) editCounty.value = info.county_id || '';
+        if (editSanctuary) editSanctuary.checked = !!info.has_sanctuary;
+        if (editPriory) editPriory.checked = !!info.has_priory;
+        if (editChurch) editChurch.checked = !!info.has_church;
+        if (editCathedral) editCathedral.checked = !!info.has_cathedral;
+        if (editPlayer) editPlayer.checked = !!info.player;
+      }
     }).finally(()=>{
       if (currentFilter) applyFilter(currentFilter); else drawAll();
     });
@@ -696,17 +699,18 @@
     const oldId = currentSelectedId;
     const newId = editIdInput.value.trim();
     const newName = editNameInput.value.trim();
-    const seigneurId = editSeigneur ? parseInt(editSeigneur.value || '') || null : null;
-    const relPop = editReligionPop ? parseInt(editReligionPop.value || '') || null : null;
-    const cultureId = editCulture ? parseInt(editCulture.value || '') || null : null;
-    const viscountyId = editViscounty ? parseInt(editViscounty.value || '') || null : null;
-    const countyId = editCounty ? parseInt(editCounty.value || '') || null : null;
-    const hasSanctuary = editSanctuary ? editSanctuary.checked : false;
-    const hasPriory = editPriory ? editPriory.checked : false;
-    const hasChurch = editChurch ? editChurch.checked : false;
-    const hasCathedral = editCathedral ? editCathedral.checked : false;
-    const playerFlag = editPlayer ? (editPlayer.checked ? 1 : 0) : 0;
-    if (newId === '') return;
+    if (mapMode !== 'sea') {
+      const seigneurId = editSeigneur ? parseInt(editSeigneur.value || '') || null : null;
+      const relPop = editReligionPop ? parseInt(editReligionPop.value || '') || null : null;
+      const cultureId = editCulture ? parseInt(editCulture.value || '') || null : null;
+      const viscountyId = editViscounty ? parseInt(editViscounty.value || '') || null : null;
+      const countyId = editCounty ? parseInt(editCounty.value || '') || null : null;
+      const hasSanctuary = editSanctuary ? editSanctuary.checked : false;
+      const hasPriory = editPriory ? editPriory.checked : false;
+      const hasChurch = editChurch ? editChurch.checked : false;
+      const hasCathedral = editCathedral ? editCathedral.checked : false;
+      const playerFlag = editPlayer ? (editPlayer.checked ? 1 : 0) : 0;
+      if (newId === '') return;
     if (newId === oldId) {
       // seulement le nom change
       const op = { type: 'rename', oldId: oldId, newId: oldId, oldName: baronyMeta[oldId].name || '', newName: newName, coords: [] };
@@ -726,7 +730,7 @@
           player: playerFlag
         });
       }
-      saveBaronyToServer(oldId, { name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId, has_sanctuary: hasSanctuary ? 1 : 0, has_priory: hasPriory ? 1 : 0, has_church: hasChurch ? 1 : 0, has_cathedral: hasCathedral ? 1 : 0, player: playerFlag });
+      saveEntityToServer(oldId, { name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId, has_sanctuary: hasSanctuary ? 1 : 0, has_priory: hasPriory ? 1 : 0, has_church: hasChurch ? 1 : 0, has_cathedral: hasCathedral ? 1 : 0, player: playerFlag });
       return;
     }
     // Si un identifiant existe déjà, échanger les baronnies
@@ -762,8 +766,8 @@
       colorMap[oldId] = generateColor(oldId);
       drawAll();
       selectBarony(newId);
-      saveBaronyToServer(newId, { name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId, has_sanctuary: hasSanctuary ? 1 : 0, has_priory: hasPriory ? 1 : 0, has_church: hasChurch ? 1 : 0, has_cathedral: hasCathedral ? 1 : 0, player: playerFlag });
-      saveBaronyToServer(oldId, { name: tempName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId, has_sanctuary: hasSanctuary ? 1 : 0, has_priory: hasPriory ? 1 : 0, has_church: hasChurch ? 1 : 0, has_cathedral: hasCathedral ? 1 : 0, player: playerFlag });
+      saveEntityToServer(newId, { name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId, has_sanctuary: hasSanctuary ? 1 : 0, has_priory: hasPriory ? 1 : 0, has_church: hasChurch ? 1 : 0, has_cathedral: hasCathedral ? 1 : 0, player: playerFlag });
+      saveEntityToServer(oldId, { name: tempName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId, has_sanctuary: hasSanctuary ? 1 : 0, has_priory: hasPriory ? 1 : 0, has_church: hasChurch ? 1 : 0, has_cathedral: hasCathedral ? 1 : 0, player: playerFlag });
       return;
     }
     const coords = pixelData[oldId] || [];
@@ -782,11 +786,63 @@
     colorMap[newId] = generateColor(newId);
     drawAll();
     selectBarony(newId);
-    saveBaronyToServer(newId, { name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId, has_sanctuary: hasSanctuary ? 1 : 0, has_priory: hasPriory ? 1 : 0, has_church: hasChurch ? 1 : 0, has_cathedral: hasCathedral ? 1 : 0, player: playerFlag });
+    saveEntityToServer(newId, { name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId, has_sanctuary: hasSanctuary ? 1 : 0, has_priory: hasPriory ? 1 : 0, has_church: hasChurch ? 1 : 0, has_cathedral: hasCathedral ? 1 : 0, player: playerFlag });
+    return;
+    }
+    // --- Mode maritime ---
+    if (newId === '') return;
+    if (newId === oldId) {
+      const op = { type: 'rename', oldId: oldId, newId: oldId, oldName: baronyMeta[oldId].name || '', newName: newName, coords: [] };
+      undoStack.push(op);
+      if (baronyMeta[oldId]) {
+        baronyMeta[oldId].name = newName;
+      }
+      saveEntityToServer(oldId, { name: newName });
+      return;
+    }
+    if (pixelData[newId]) {
+      const coordsOld = pixelData[oldId] || [];
+      const coordsNew = pixelData[newId] || [];
+      const changes = [];
+      coordsOld.forEach(([x, y]) => { changes.push({ x, y, oldId: oldId, newId: newId }); });
+      coordsNew.forEach(([x, y]) => { changes.push({ x, y, oldId: newId, newId: oldId }); });
+      undoStack.push({ type: 'swap', id1: oldId, id2: newId, changes: changes, oldName: baronyMeta[oldId] ? baronyMeta[oldId].name : '', newName: baronyMeta[newId] ? baronyMeta[newId].name : '' });
+      pixelData[oldId] = coordsNew;
+      pixelData[newId] = coordsOld;
+      const tempName = baronyMeta[newId] ? baronyMeta[newId].name : '';
+      baronyMeta[oldId] = { id: oldId, name: tempName };
+      baronyMeta[newId] = { id: newId, name: newName };
+      coordsOld.forEach(([x, y]) => { pixelMap[y][x] = newId; });
+      coordsNew.forEach(([x, y]) => { pixelMap[y][x] = oldId; });
+      currentSelectedId = newId;
+      colorMap[newId] = generateColor(newId);
+      colorMap[oldId] = generateColor(oldId);
+      drawAll();
+      selectBarony(newId);
+      saveEntityToServer(newId, { name: newName });
+      saveEntityToServer(oldId, { name: tempName });
+      return;
+    }
+    const coords = pixelData[oldId] || [];
+    const op = { type: 'rename', oldId: oldId, newId: newId, oldName: baronyMeta[oldId] ? baronyMeta[oldId].name : '', newName: newName, coords: coords.slice() };
+    undoStack.push(op);
+    pixelData[newId] = coords;
+    baronyMeta[newId] = { id: newId, name: newName };
+    coords.forEach(([x, y]) => {
+      pixelMap[y][x] = newId;
+      drawPixel(x, y, newId);
+    });
+    delete pixelData[oldId];
+    delete baronyMeta[oldId];
+    currentSelectedId = newId;
+    colorMap[newId] = generateColor(newId);
+    drawAll();
+    selectBarony(newId);
+    saveEntityToServer(newId, { name: newName });
   }
 
-  function saveBaronyToServer(id, data) {
-    fetch(API_BASE + '/api/baronies/' + id, {
+  function saveEntityToServer(id, data) {
+    fetch(API_BASE + entityEndpoint + '/' + id, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -810,7 +866,7 @@
     delete colorMap[id];
     currentSelectedId = null;
     if (infoPanel) infoPanel.style.display = 'none';
-    fetch(API_BASE + '/api/baronies/' + id, { method: 'DELETE' });
+    fetch(API_BASE + entityEndpoint + '/' + id, { method: 'DELETE' });
   }
 
   // Créer un nouvel ID unique
@@ -1334,11 +1390,16 @@
       // Enregistrer création pour l’undo
       undoStack.push({ type: 'create', id: newId });
       pixelData[newId] = [];
-      baronyMeta[newId] = { id: newId, name: '', seigneur_id: null, religion_pop_id: null, county_id: null, viscounty_id: null, culture_id: null, has_sanctuary: 0, has_priory: 0, has_church: 0, has_cathedral: 0, player: 0 };
+      if (mapMode === 'sea') {
+        baronyMeta[newId] = { id: newId, name: '' };
+        saveEntityToServer(newId, { name: '' });
+      } else {
+        baronyMeta[newId] = { id: newId, name: '', seigneur_id: null, religion_pop_id: null, county_id: null, viscounty_id: null, culture_id: null, has_sanctuary: 0, has_priory: 0, has_church: 0, has_cathedral: 0, player: 0 };
+        saveEntityToServer(newId, { name: '', seigneur_id: null, religion_pop_id: null, county_id: null, viscounty_id: null, culture_id: null, has_sanctuary: 0, has_priory: 0, has_church: 0, has_cathedral: 0, player: 0 });
+      }
       colorMap[newId] = generateColor(newId);
       currentSelectedId = newId;
       selectBarony(newId);
-      saveBaronyToServer(newId, { name: '', seigneur_id: null, religion_pop_id: null, county_id: null, viscounty_id: null, culture_id: null, has_sanctuary: 0, has_priory: 0, has_church: 0, has_cathedral: 0, player: 0 });
       setActiveTool('brush');
     });
   if (brushSizeInput)
