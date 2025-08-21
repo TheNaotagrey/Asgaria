@@ -5,12 +5,15 @@
   const terrainColor = [239, 228, 176];
   const playerColor = [82, 190, 128];
   const npcColor = [231, 76, 60];
+  const params = new URLSearchParams(location.search);
+  const mapMode = params.get('mode') === 'sea' ? 'sea' : 'land';
 
   // Pixel data loaded from the server
   let pixelData = {};
 
   async function loadPixelData() {
-    const resp = await fetch(API_BASE + '/api/barony_pixels');
+    const endpoint = mapMode === 'sea' ? '/api/maritime_zone_pixels' : '/api/barony_pixels';
+    const resp = await fetch(API_BASE + endpoint);
     pixelData = await resp.json();
     Object.keys(pixelData).forEach(id => {
       if (!baronyMeta[id]) {
@@ -122,6 +125,7 @@
 
   // Sélecteurs DOM
   const baseMap = document.getElementById('baseMap');
+  if (mapMode === 'sea' && baseMap) baseMap.src = 'zones_maritimes.png';
   const pixelCanvas = document.getElementById('pixelCanvas');
   const panZoomGroup = document.getElementById('panZoomGroup');
   const mapContainer = document.getElementById('mapContainer');
@@ -151,6 +155,9 @@
   const addCanonicalBtn = document.getElementById('addCanonical');
   const filterSelect = document.getElementById('colorFilter');
   const legendDiv = document.getElementById('legend');
+  if (mapMode === 'sea' && filterSelect) {
+    filterSelect.innerHTML = '<option value="sea">Zones Maritimes</option>';
+  }
 
   let seigneurOptions = [];
   let religionOptions = [];
@@ -189,6 +196,22 @@
   }
 
   async function loadMetaData() {
+    if (mapMode === 'sea') {
+      const [zones, connections] = await Promise.all([
+        fetch(API_BASE + '/api/maritime_zones').then(r => r.json()),
+        fetch(API_BASE + '/api/maritime_zone_connections').then(r => r.json())
+      ]);
+      baronyMeta = {};
+      zones.forEach(z => { baronyMeta[z.id] = z; });
+      baronyAdjacency = {};
+      connections.forEach(c => {
+        if (!baronyAdjacency[c.zone_id_1]) baronyAdjacency[c.zone_id_1] = [];
+        if (!baronyAdjacency[c.zone_id_2]) baronyAdjacency[c.zone_id_2] = [];
+        baronyAdjacency[c.zone_id_1].push(c.zone_id_2);
+        baronyAdjacency[c.zone_id_2].push(c.zone_id_1);
+      });
+      return;
+    }
     const [baronies, seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires, canonicalLands, connections] = await Promise.all([
       fetch(API_BASE + '/api/baronies').then(r => r.json()),
       fetch(API_BASE + '/api/seigneurs').then(r => r.json()),
@@ -413,6 +436,10 @@
   }
 
   function applyFilter(type, randomize = false) {
+    if (mapMode === 'sea') {
+      randomizeColors();
+      return;
+    }
     currentFilter = type || '';
     canonicalPatterns = {};
     if (!type) {
@@ -1474,7 +1501,9 @@
     }
   });
   document.addEventListener('DOMContentLoaded', () => {
-    Promise.all([loadPixelData(), loadMetaData(), loadOptions()]).then(() => {
+    const loaders = [loadPixelData(), loadMetaData()];
+    if (mapMode !== 'sea') loaders.push(loadOptions());
+    Promise.all(loaders).then(() => {
       if (baseMap.complete) {
         init();
         applyFilter(filterSelect ? filterSelect.value : '');

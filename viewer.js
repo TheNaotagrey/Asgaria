@@ -5,6 +5,8 @@
   const terrainColor = [239, 228, 176];
   const playerColor = [82, 190, 128];
   const npcColor = [231, 76, 60];
+  const params = new URLSearchParams(location.search);
+  const mapMode = params.get('mode') === 'sea' ? 'sea' : 'land';
 
   let pixelData = {};
   let baronyMeta = {};
@@ -25,7 +27,8 @@
   let currentFilter = '';
 
   async function loadPixelData() {
-    const resp = await fetch(API_BASE + '/api/barony_pixels');
+    const endpoint = mapMode === 'sea' ? '/api/maritime_zone_pixels' : '/api/barony_pixels';
+    const resp = await fetch(API_BASE + endpoint);
     pixelData = await resp.json();
     rebuildPixelMap();
     initColorMap();
@@ -33,6 +36,22 @@
   }
 
   async function loadMetaData() {
+    if (mapMode === 'sea') {
+      const [zones, connections] = await Promise.all([
+        fetch(API_BASE + '/api/maritime_zones').then(r => r.json()),
+        fetch(API_BASE + '/api/maritime_zone_connections').then(r => r.json())
+      ]);
+      baronyMeta = {};
+      zones.forEach(z => { baronyMeta[z.id] = z; });
+      baronyAdjacency = {};
+      connections.forEach(c => {
+        if (!baronyAdjacency[c.zone_id_1]) baronyAdjacency[c.zone_id_1] = [];
+        if (!baronyAdjacency[c.zone_id_2]) baronyAdjacency[c.zone_id_2] = [];
+        baronyAdjacency[c.zone_id_1].push(c.zone_id_2);
+        baronyAdjacency[c.zone_id_2].push(c.zone_id_1);
+      });
+      return;
+    }
     const [baronies, seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires, canonicalLands, connections] = await Promise.all([
       fetch(API_BASE + '/api/baronies').then(r => r.json()),
       fetch(API_BASE + '/api/seigneurs').then(r => r.json()),
@@ -157,11 +176,15 @@
   }
 
   const baseMap = document.getElementById('baseMap');
+  if (mapMode === 'sea' && baseMap) baseMap.src = 'zones_maritimes.png';
   const pixelCanvas = document.getElementById('pixelCanvas');
   const panZoomGroup = document.getElementById('panZoomGroup');
   const mapContainer = document.getElementById('mapContainer');
   const randomBtn = document.getElementById('randomColors');
   const filterSelect = document.getElementById('colorFilter');
+  if (mapMode === 'sea' && filterSelect) {
+    filterSelect.innerHTML = '<option value="sea">Zones Maritimes</option>';
+  }
   const legendDiv = document.getElementById('legend');
   const infoPanel = document.getElementById('infoPanel');
   const infoId = document.getElementById('infoId');
@@ -378,6 +401,10 @@
   }
 
   function applyFilter(type, randomize = false) {
+    if (mapMode === 'sea') {
+      randomizeColors();
+      return;
+    }
     currentFilter = type || '';
     canonicalPatterns = {};
     if (!type) {
