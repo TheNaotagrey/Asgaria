@@ -15,32 +15,7 @@
     <div id="controls" class="controls-row">
       <button id="randomBtn" class="control-btn">Couleurs aléatoires</button>
       <label for="filterSelect">Filtre :</label>
-      <select id="filterSelect" class="control-btn">
-        <option value="">Aucun</option>
-        <option value="religion">Religion</option>
-        <option value="sanctuary">Sanctuaire</option>
-        <option value="priory">Prieuré</option>
-        <option value="church">Église</option>
-        <option value="cathedral">Cathédrale</option>
-        <option value="canonical">Terres canoniques</option>
-        <option value="culture">Culture</option>
-        <option value="viscounty">Vicomté de jure</option>
-        <option value="viscounty_defacto">Vicomté de facto</option>
-        <option value="county">Comté de jure</option>
-        <option value="county_defacto">Comté de facto</option>
-        <option value="marquisate">Marquisat de jure</option>
-        <option value="marquisate_defacto">Marquisat de facto</option>
-        <option value="duchy">Duché de jure</option>
-        <option value="duchy_defacto">Duché de facto</option>
-        <option value="archduchy">Archiduché de jure</option>
-        <option value="archduchy_defacto">Archiduché de facto</option>
-        <option value="kingdom">Royaume de jure</option>
-        <option value="kingdom_defacto">Royaume de facto</option>
-        <option value="empire">Empire de jure</option>
-        <option value="empire_defacto">Empire de facto</option>
-        <option value="distance">Distance</option>
-        <option value="occupation">Occupation</option>
-      </select>
+      <select id="filterSelect" class="control-btn"></select>
       <span id="authArea" class="auth-area"></span>
     </div>
   </header>
@@ -72,6 +47,11 @@
       <div><strong>Joueur :</strong> <span id="infoPlayer"></span></div>
       <div><strong>Évêque :</strong> <span id="infoBishop"></span></div>
       <div><strong>Terres canoniques :</strong> <span id="infoCanonical"></span></div>
+    </aside>
+    <aside id="seaInfoPanel" class="info-panel" style="display:none;">
+      <h2>Zone maritime sélectionnée</h2>
+      <div><strong>ID :</strong> <span id="seaInfoId"></span></div>
+      <div><strong>Nom :</strong> <span id="seaInfoName"></span></div>
     </aside>
     <div id="legend" class="legend" style="display:none;"></div>
   </main>

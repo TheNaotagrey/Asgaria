@@ -34,13 +34,58 @@
   const filterSelect = document.getElementById('filterSelect');
   const randomBtn = document.getElementById('randomBtn');
   const legendDiv = document.getElementById('legend');
+  const landFilters = [
+    { value: '', label: 'Aucun' },
+    { value: 'religion', label: 'Religion' },
+    { value: 'sanctuary', label: 'Sanctuaire' },
+    { value: 'priory', label: 'Prieuré' },
+    { value: 'church', label: 'Église' },
+    { value: 'cathedral', label: 'Cathédrale' },
+    { value: 'canonical', label: 'Terres canoniques' },
+    { value: 'culture', label: 'Culture' },
+    { value: 'viscounty', label: 'Vicomté de jure' },
+    { value: 'viscounty_defacto', label: 'Vicomté de facto' },
+    { value: 'county', label: 'Comté de jure' },
+    { value: 'county_defacto', label: 'Comté de facto' },
+    { value: 'marquisate', label: 'Marquisat de jure' },
+    { value: 'marquisate_defacto', label: 'Marquisat de facto' },
+    { value: 'duchy', label: 'Duché de jure' },
+    { value: 'duchy_defacto', label: 'Duché de facto' },
+    { value: 'archduchy', label: 'Archiduché de jure' },
+    { value: 'archduchy_defacto', label: 'Archiduché de facto' },
+    { value: 'kingdom', label: 'Royaume de jure' },
+    { value: 'kingdom_defacto', label: 'Royaume de facto' },
+    { value: 'empire', label: 'Empire de jure' },
+    { value: 'empire_defacto', label: 'Empire de facto' },
+    { value: 'distance', label: 'Distance' },
+    { value: 'occupation', label: 'Occupation' }
+  ];
+  const seaFilters = [
+    { value: '', label: 'Aucun' },
+    { value: 'distance', label: 'Distance' }
+  ];
+  function populateFilters() {
+    if (!filterSelect) return;
+    const filters = mapMode === 'sea' ? seaFilters : landFilters;
+    filterSelect.innerHTML = '';
+    filters.forEach(f => {
+      const opt = document.createElement('option');
+      opt.value = f.value;
+      opt.textContent = f.label;
+      filterSelect.appendChild(opt);
+    });
+  }
+  populateFilters();
 
   const linkBtn = document.getElementById('linkBarony');
   const unlinkBtn = document.getElementById('unlinkBarony');
 
   const infoPanel = document.getElementById('infoPanel');
+  const seaInfoPanel = document.getElementById('seaInfoPanel');
   const editIdInput = document.getElementById('editId');
   const editNameInput = document.getElementById('editName');
+  const seaEditIdInput = document.getElementById('seaEditId');
+  const seaEditNameInput = document.getElementById('seaEditName');
   const editReligionPopSelect = document.getElementById('editReligionPop');
   const editSanctuariesBtn = document.getElementById('editSanctuaries');
   const editCanonicalBtn = document.getElementById('editCanonical');
@@ -391,10 +436,14 @@
       const sourceId = pendingLinkId;
       const targetId = id;
       const method = pendingAction === 'link' ? 'POST' : 'DELETE';
-      fetch(`${API_BASE}/api/barony_connections`, {
+      const connectionEndpoint = mapMode === 'sea' ? '/api/maritime_zone_connections' : '/api/barony_connections';
+      const body = mapMode === 'sea'
+        ? { zone_id_1: sourceId, zone_id_2: targetId }
+        : { barony_id_1: sourceId, barony_id_2: targetId };
+      fetch(`${API_BASE}${connectionEndpoint}`, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ barony_id_1: sourceId, barony_id_2: targetId })
+        body: JSON.stringify(body)
       }).then(() => {
         if (pendingAction === 'link') {
           if (!baronyAdjacency[sourceId]) baronyAdjacency[sourceId] = [];
@@ -413,6 +462,21 @@
     }
 
     currentSelectedId = id;
+    if (mapMode === 'sea') {
+      if (!id) {
+        if (seaInfoPanel) seaInfoPanel.style.display = 'none';
+        return;
+      }
+      if (seaInfoPanel) seaInfoPanel.style.display = 'block';
+      if (infoPanel) infoPanel.style.display = 'none';
+      if (seaEditIdInput) seaEditIdInput.value = id;
+      if (seaEditNameInput) seaEditNameInput.value = baronyMeta[id]?.name || '';
+      if (filterManager && filterSelect && filterSelect.value === 'distance') {
+        filterManager.applyFilter('distance');
+      }
+      return;
+    }
+
     if (!id) {
       if (infoPanel) infoPanel.style.display = 'none';
       return;
@@ -506,6 +570,15 @@
         baronyAdjacency[c.barony_id_1].push(c.barony_id_2);
         baronyAdjacency[c.barony_id_2].push(c.barony_id_1);
       });
+    } else {
+      const connections = await fetch(API_BASE + '/api/maritime_zone_connections').then(r => r.json());
+      baronyAdjacency = {};
+      connections.forEach(c => {
+        if (!baronyAdjacency[c.zone_id_1]) baronyAdjacency[c.zone_id_1] = [];
+        if (!baronyAdjacency[c.zone_id_2]) baronyAdjacency[c.zone_id_2] = [];
+        baronyAdjacency[c.zone_id_1].push(c.zone_id_2);
+        baronyAdjacency[c.zone_id_2].push(c.zone_id_1);
+      });
     }
     mapData = {
       pixelData,
@@ -567,24 +640,33 @@
   });
 
   // Basic editing: updating name/id
-  const saveBtn = document.getElementById('saveBarony');
-  function updateBarony() {
+  function updateEntity() {
     if (!currentSelectedId) return;
-    const newId = editIdInput.value.trim();
-    const newName = editNameInput.value.trim();
+    const idInput = mapMode === 'sea' ? seaEditIdInput : editIdInput;
+    const nameInput = mapMode === 'sea' ? seaEditNameInput : editNameInput;
+    const newId = idInput ? idInput.value.trim() : currentSelectedId;
+    const newName = nameInput ? nameInput.value.trim() : '';
     fetch(`${API_BASE}${entityEndpoint}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: currentSelectedId, newId, name: newName })
     }).then(() => {
-      baronyMeta[newId] = { id: newId, name: newName };
+      baronyMeta[newId] = { ...baronyMeta[currentSelectedId], id: newId, name: newName };
       if (newId !== currentSelectedId) {
-        core.colorMap[newId] = core.colorMap[currentSelectedId];
-        delete core.colorMap[currentSelectedId];
-        delete pixelData[currentSelectedId];
+        if (core.colorMap[currentSelectedId]) {
+          core.colorMap[newId] = core.colorMap[currentSelectedId];
+          delete core.colorMap[currentSelectedId];
+        }
+        if (pixelData[currentSelectedId]) {
+          pixelData[newId] = pixelData[currentSelectedId];
+          delete pixelData[currentSelectedId];
+        }
       }
       core.selectBarony(newId);
     });
   }
-  if (saveBtn) saveBtn.addEventListener('click', updateBarony);
+  if (editIdInput) editIdInput.addEventListener('change', updateEntity);
+  if (editNameInput) editNameInput.addEventListener('change', updateEntity);
+  if (seaEditIdInput) seaEditIdInput.addEventListener('change', updateEntity);
+  if (seaEditNameInput) seaEditNameInput.addEventListener('change', updateEntity);
 })();
