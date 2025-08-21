@@ -1,7 +1,7 @@
 (() => {
   const API_BASE = location.origin === 'null' ? 'http://localhost:3000' : '';
-  const originalWidth = 1724;
-  const originalHeight = 1291;
+  let mapWidth = 0;
+  let mapHeight = 0;
   const terrainColor = [239, 228, 176];
   const playerColor = [82, 190, 128];
   const npcColor = [231, 76, 60];
@@ -21,10 +21,10 @@
         baronyMeta[id] = { id, name: '' };
       }
     });
-    for (let y = 0; y < originalHeight; y++) pixelMap[y].fill(0);
+    pixelMap = Array.from({ length: mapHeight }, () => new Array(mapWidth).fill(0));
     Object.entries(pixelData).forEach(([id, coords]) => {
       coords.forEach(([x, y]) => {
-        if (y >= 0 && y < originalHeight && x >= 0 && x < originalWidth) {
+        if (y >= 0 && y < mapHeight && x >= 0 && x < mapWidth) {
           pixelMap[y][x] = String(id);
         }
       });
@@ -61,8 +61,23 @@
     if(baronyAdjacency[b]) baronyAdjacency[b]=baronyAdjacency[b].filter(x=>x!==a);
   }
 
+  function shiftAllPixels(dx, dy) {
+    Object.entries(pixelData).forEach(([id, coords]) => {
+      pixelData[id] = coords
+        .map(([x, y]) => [x + dx, y + dy])
+        .filter(([x, y]) => x >= 0 && y >= 0 && x < mapWidth && y < mapHeight);
+    });
+    pixelMap = Array.from({ length: mapHeight }, () => new Array(mapWidth).fill(0));
+    Object.entries(pixelData).forEach(([id, coords]) => {
+      coords.forEach(([x, y]) => {
+        pixelMap[y][x] = String(id);
+      });
+    });
+    drawAll();
+  }
+
   // Carte de correspondance pixel : pixelMap[y][x] = id (ou 0 si aucun)
-  const pixelMap = Array.from({ length: originalHeight }, () => new Array(originalWidth).fill(0));
+  let pixelMap = [];
 
   // Convertisseur HSL→RGB (déterministe pour attribuer des couleurs aux baronnies)
   function hslToRgb(h, s, l) {
@@ -133,8 +148,10 @@
   const toggleEditBtn = document.getElementById('toggleEdit');
   const randomBtn = document.getElementById('randomColors');
   const saveBtn = document.getElementById('saveToFile');
+  const offsetXInput = document.getElementById('offsetX');
+  const offsetYInput = document.getElementById('offsetY');
+  const applyOffsetBtn = document.getElementById('applyOffset');
   const deleteBtn = document.getElementById('deleteBarony');
-  const toggleMapBtn = document.getElementById('toggleMap');
   const selectBtn = document.getElementById('selectBarony');
   const linkBtn = document.getElementById('linkBarony');
   const unlinkBtn = document.getElementById('unlinkBarony');
@@ -297,11 +314,27 @@
 
   // Save pixels to the server
   if (saveBtn) saveBtn.addEventListener('click', () => {
+    const dx = parseInt(offsetXInput.value) || 0;
+    const dy = parseInt(offsetYInput.value) || 0;
+    if (dx !== 0 || dy !== 0) {
+      shiftAllPixels(dx, dy);
+      offsetXInput.value = '0';
+      offsetYInput.value = '0';
+    }
     fetch(API_BASE + pixelEndpoint, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(pixelData)
     });
+  });
+  if (applyOffsetBtn) applyOffsetBtn.addEventListener('click', () => {
+    const dx = parseInt(offsetXInput.value) || 0;
+    const dy = parseInt(offsetYInput.value) || 0;
+    if (dx !== 0 || dy !== 0) {
+      shiftAllPixels(dx, dy);
+      offsetXInput.value = '0';
+      offsetYInput.value = '0';
+    }
   });
   if (linkBtn) linkBtn.addEventListener('click', () => {
     if (currentSelectedId) linkMode = 'link';
@@ -325,8 +358,6 @@
 
   // Canvas context
   const ctx = pixelCanvas.getContext('2d');
-  pixelCanvas.width = originalWidth;
-  pixelCanvas.height = originalHeight;
   ctx.imageSmoothingEnabled = false;
 
   // État de l’interface
@@ -339,7 +370,6 @@
   let currentSelectedId = null;
   let mergeMode = false;
   let mergeBaseId = null;
-  let usingBlankMap = false;
 
   // Historique des opérations pour l’undo
   const undoStack = [];
@@ -358,19 +388,19 @@
   function fitToContainer() {
     const contW = mapContainer.clientWidth;
     const contH = mapContainer.clientHeight;
-    scale = Math.min(contW / originalWidth, contH / originalHeight);
-    offsetX = (contW - originalWidth * scale) / 2;
-    offsetY = (contH - originalHeight * scale) / 2;
+    scale = Math.min(contW / mapWidth, contH / mapHeight);
+    offsetX = (contW - mapWidth * scale) / 2;
+    offsetY = (contH - mapHeight * scale) / 2;
     applyTransform();
   }
 
   // Dessiner la carte complète
   function drawAll() {
-    const imageData = ctx.createImageData(originalWidth, originalHeight);
+    const imageData = ctx.createImageData(mapWidth, mapHeight);
     const data = imageData.data;
     let idx = 0;
-    for (let y = 0; y < originalHeight; y++) {
-      for (let x = 0; x < originalWidth; x++) {
+    for (let y = 0; y < mapHeight; y++) {
+      for (let x = 0; x < mapWidth; x++) {
         const id = pixelMap[y][x];
         if (id && (colorMap[id] || (currentFilter === 'canonical' && canonicalPatterns[id]))) {
           if (currentFilter === 'canonical' && canonicalPatterns[id]) {
@@ -911,7 +941,7 @@
       for (let dx = -half; dx <= half; dx++) {
         const nx = x + dx;
         const ny = y + dy;
-        if (nx < 0 || ny < 0 || nx >= originalWidth || ny >= originalHeight) continue;
+        if (nx < 0 || ny < 0 || nx >= mapWidth || ny >= mapHeight) continue;
         const oldId = pixelMap[ny][nx];
         if (erase) {
           if (!oldId) continue;
@@ -956,8 +986,8 @@
       const deltas = [[1, 0], [-1, 0], [0, 1], [0, -1]];
       while (queue.length > 0) {
         const [cx, cy] = queue.pop();
-        if (cx < 0 || cy < 0 || cx >= originalWidth || cy >= originalHeight) continue;
-        const key = cy * originalWidth + cx;
+        if (cx < 0 || cy < 0 || cx >= mapWidth || cy >= mapHeight) continue;
+        const key = cy * mapWidth + cx;
         if (visited.has(key)) continue;
         visited.add(key);
         if (pixelMap[cy][cx] !== targetId) continue;
@@ -975,8 +1005,8 @@
         for (const [dx, dy] of deltas) {
           const nx = cx + dx;
           const ny = cy + dy;
-          if (nx < 0 || ny < 0 || nx >= originalWidth || ny >= originalHeight) continue;
-          const nKey = ny * originalWidth + nx;
+          if (nx < 0 || ny < 0 || nx >= mapWidth || ny >= mapHeight) continue;
+          const nKey = ny * mapWidth + nx;
           if (!visited.has(nKey)) queue.push([nx, ny]);
         }
       }
@@ -990,8 +1020,8 @@
         backgroundColors && backgroundColors[y] ? backgroundColors[y][x] : null;
       while (queue.length > 0) {
         const [cx, cy] = queue.pop();
-        if (cx < 0 || cy < 0 || cx >= originalWidth || cy >= originalHeight) continue;
-        const key = cy * originalWidth + cx;
+        if (cx < 0 || cy < 0 || cx >= mapWidth || cy >= mapHeight) continue;
+        const key = cy * mapWidth + cx;
         if (visited.has(key)) continue;
         visited.add(key);
         // Ne remplir que les pixels sans baronnie
@@ -1009,8 +1039,8 @@
         for (const [dx, dy] of deltas) {
           const nx = cx + dx;
           const ny = cy + dy;
-          if (nx < 0 || ny < 0 || nx >= originalWidth || ny >= originalHeight) continue;
-          const nKey = ny * originalWidth + nx;
+          if (nx < 0 || ny < 0 || nx >= mapWidth || ny >= mapHeight) continue;
+          const nKey = ny * mapWidth + nx;
           if (!visited.has(nKey)) queue.push([nx, ny]);
         }
       }
@@ -1020,7 +1050,7 @@
   // Gestion du clic sur le canevas
   function handleCanvasClick(e) {
     const [x, y] = getMapCoordinates(e);
-    if (x < 0 || y < 0 || x >= originalWidth || y >= originalHeight) return;
+    if (x < 0 || y < 0 || x >= mapWidth || y >= mapHeight) return;
     const idAtPixel = pixelMap[y][x];
     if (linkMode && currentSelectedId && idAtPixel && idAtPixel !== currentSelectedId) {
       const body = JSON.stringify({ barony_id_1: currentSelectedId, barony_id_2: idAtPixel });
@@ -1167,12 +1197,10 @@
         Object.keys(pixelData).forEach((id) => {
           baronyMeta[id] = { id: id, name: '' };
         });
-        for (let y = 0; y < originalHeight; y++) {
-          pixelMap[y].fill(0);
-        }
+        pixelMap = Array.from({ length: mapHeight }, () => new Array(mapWidth).fill(0));
         Object.entries(pixelData).forEach(([id, coords]) => {
           coords.forEach(([px, py]) => {
-            if (py >= 0 && py < originalHeight && px >= 0 && px < originalWidth) {
+            if (py >= 0 && py < mapHeight && px >= 0 && px < mapWidth) {
               pixelMap[py][px] = id;
             }
           });
@@ -1186,24 +1214,6 @@
       }
     };
     reader.readAsText(file);
-  }
-
-  function toggleMap() {
-    // Déterminer la nouvelle source à partir des Data URI. On évite les chemins
-    // relatifs pour ne pas tainter le canvas. Si mapSources n'est pas défini,
-    // on retombe sur les chemins classiques.
-    let newSrc;
-    if (usingBlankMap) {
-      newSrc = (window.mapSources && window.mapSources.asgaria) || 'Asgaria.png';
-    } else {
-      newSrc = (window.mapSources && window.mapSources.blank) || 'BlankMap.png';
-    }
-    baseMap.setAttribute('src', newSrc);
-    usingBlankMap = !usingBlankMap;
-    // Recharger les couleurs de fond pour la nouvelle carte
-    loadBackgroundColors(newSrc).then(() => {
-      // rien à faire après chargement, la carte est redessinée lors des modifications ultérieures
-    });
   }
 
   // Chargement des couleurs de fond pour le bucket fill.
@@ -1221,16 +1231,16 @@
         img.onload = () => {
           try {
             const offCanvas = document.createElement('canvas');
-            offCanvas.width = originalWidth;
-            offCanvas.height = originalHeight;
+            offCanvas.width = mapWidth;
+            offCanvas.height = mapHeight;
             const offCtx = offCanvas.getContext('2d');
             offCtx.imageSmoothingEnabled = false;
             offCtx.drawImage(img, 0, 0);
-            const data = offCtx.getImageData(0, 0, originalWidth, originalHeight).data;
-            backgroundColors = Array.from({ length: originalHeight }, () => new Array(originalWidth));
-            for (let y = 0; y < originalHeight; y++) {
-              for (let x = 0; x < originalWidth; x++) {
-                const idx = (y * originalWidth + x) * 4;
+            const data = offCtx.getImageData(0, 0, mapWidth, mapHeight).data;
+            backgroundColors = Array.from({ length: mapHeight }, () => new Array(mapWidth));
+            for (let y = 0; y < mapHeight; y++) {
+              for (let x = 0; x < mapWidth; x++) {
+                const idx = (y * mapWidth + x) * 4;
                 const r = data[idx];
                 const g = data[idx + 1];
                 const b = data[idx + 2];
@@ -1309,7 +1319,6 @@
   if (randomBtn) randomBtn.addEventListener('click', randomizeColors);
   if (filterSelect) filterSelect.addEventListener('change', () => applyFilter(filterSelect.value));
   if (deleteBtn) deleteBtn.addEventListener('click', deleteBarony);
-  if (toggleMapBtn) toggleMapBtn.addEventListener('click', toggleMap);
   if (selectBtn) selectBtn.addEventListener('click', () => {
     const id = prompt('ID de la baronnie à sélectionner ?');
     if (id) selectBarony(id.trim());
@@ -1405,7 +1414,7 @@
   pixelCanvas.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     const [x, y] = getMapCoordinates(e);
-    if (x < 0 || y < 0 || x >= originalWidth || y >= originalHeight) return;
+    if (x < 0 || y < 0 || x >= mapWidth || y >= mapHeight) return;
     const changes = [];
     applyBrush(x, y, null, true, changes);
     if (changes.length > 0) undoStack.push({ type: 'paint', changes });
@@ -1556,18 +1565,21 @@
     }
   });
   document.addEventListener('DOMContentLoaded', () => {
-    const loaders = [loadPixelData(), loadMetaData()];
-    if (mapMode !== 'sea') loaders.push(loadOptions());
-    Promise.all(loaders).then(() => {
-      if (baseMap.complete) {
+    const baseMapLoaded = baseMap.complete
+      ? Promise.resolve()
+      : new Promise(res => (baseMap.onload = res));
+    baseMapLoaded.then(() => {
+      mapWidth = baseMap.naturalWidth;
+      mapHeight = baseMap.naturalHeight;
+      pixelCanvas.width = mapWidth;
+      pixelCanvas.height = mapHeight;
+      pixelMap = Array.from({ length: mapHeight }, () => new Array(mapWidth).fill(0));
+      const loaders = [loadPixelData(), loadMetaData()];
+      if (mapMode !== 'sea') loaders.push(loadOptions());
+      Promise.all(loaders).then(() => {
         init();
         applyFilter(filterSelect ? filterSelect.value : '');
-      } else {
-        baseMap.onload = () => {
-          init();
-          applyFilter(filterSelect ? filterSelect.value : '');
-        };
-      }
+      });
     });
   });
 })();
