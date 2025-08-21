@@ -115,12 +115,12 @@
             colorMap[id] = [...terrainColor, 100];
             return;
           }
-          canonicalPatterns[id] = rIds.map(rid => {
-            if (!groupColors[rid]) {
-              const col = hexToRgb(data.religionMap[rid]?.color) || generateColor(String(rid)).slice(0, 3);
-              groupColors[rid] = { color: col, name: data.religionMap[rid]?.name || 'N/A' };
+          canonicalPatterns[id] = rIds.map(cid => {
+            if (!groupColors[cid]) {
+              const col = generateColor(String(cid)).slice(0, 3);
+              groupColors[cid] = { color: col, name: data.baronyMeta[cid]?.name || 'N/A' };
             }
-            return groupColors[rid].color;
+            return groupColors[cid].color;
           });
           const first = canonicalPatterns[id][0];
           colorMap[id] = [first[0], first[1], first[2], 100];

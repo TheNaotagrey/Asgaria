@@ -42,7 +42,8 @@
   const editIdInput = document.getElementById('editId');
   const editNameInput = document.getElementById('editName');
   const editReligionPopSelect = document.getElementById('editReligionPop');
-  const sanctuaryReligionSelect = document.getElementById('sanctuaryReligion');
+  const editSanctuariesBtn = document.getElementById('editSanctuaries');
+  const editCanonicalBtn = document.getElementById('editCanonical');
   const editPrioryReligionSelect = document.getElementById('editPrioryReligion');
   const editChurchReligionSelect = document.getElementById('editChurchReligion');
   const editCathedralReligionSelect = document.getElementById('editCathedralReligion');
@@ -103,13 +104,12 @@
   });
 
   function populateReligionSelects() {
-    const selects = [
-      editReligionPopSelect,
-      sanctuaryReligionSelect,
-      editPrioryReligionSelect,
-      editChurchReligionSelect,
-      editCathedralReligionSelect
-    ].filter(Boolean);
+      const selects = [
+        editReligionPopSelect,
+        editPrioryReligionSelect,
+        editChurchReligionSelect,
+        editCathedralReligionSelect
+      ].filter(Boolean);
     selects.forEach(sel => {
       const placeholder = sel.firstElementChild ? sel.firstElementChild.cloneNode(true) : null;
       sel.innerHTML = '';
@@ -206,6 +206,180 @@
   if (editBishopCheckbox) {
     editBishopCheckbox.addEventListener('change', () => {
       saveBaronyFields({ bishop: editBishopCheckbox.checked ? 1 : 0 });
+    });
+  }
+
+  if (editSanctuariesBtn) {
+    editSanctuariesBtn.addEventListener('click', () => {
+      if (!currentSelectedId) return;
+      const overlay = document.createElement('div');
+      overlay.className = 'popup-overlay';
+      const popup = document.createElement('div');
+      popup.className = 'popup';
+      const list = document.createElement('div');
+
+      function addRow(data = { id: null, religion_id: '', active: 0 }) {
+        const row = document.createElement('div');
+        row.className = 'cost-row';
+        const sel = document.createElement('select');
+        const blank = document.createElement('option');
+        blank.value = '';
+        sel.appendChild(blank);
+        Object.values(religionMap).forEach(r => {
+          const opt = document.createElement('option');
+          opt.value = r.id;
+          opt.textContent = r.name;
+          sel.appendChild(opt);
+        });
+        sel.value = data.religion_id || '';
+        const chk = document.createElement('input');
+        chk.type = 'checkbox';
+        chk.checked = !!data.active;
+
+        sel.addEventListener('change', () => {
+          const rid = parseInt(sel.value, 10);
+          if (!rid) return;
+          if (data.id) {
+            fetch(`${API_BASE}/api/sanctuaries/${data.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ barony_id: currentSelectedId, religion_id: rid, active: data.active ? 1 : 0 })
+            }).then(() => {
+              data.religion_id = rid;
+              if (filterManager && filterSelect && filterSelect.value === 'sanctuary') filterManager.applyFilter('sanctuary');
+            });
+          } else {
+            fetch(`${API_BASE}/api/sanctuaries`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ barony_id: currentSelectedId, religion_id: rid, active: data.active ? 1 : 0 })
+            }).then(r => r.json()).then(res => {
+              data.id = res.id;
+              data.religion_id = rid;
+              if (!sanctuaryMap[currentSelectedId]) sanctuaryMap[currentSelectedId] = [];
+              sanctuaryMap[currentSelectedId].push(data);
+              if (filterManager && filterSelect && filterSelect.value === 'sanctuary') filterManager.applyFilter('sanctuary');
+            });
+          }
+        });
+
+        chk.addEventListener('change', () => {
+          data.active = chk.checked ? 1 : 0;
+          if (!data.id) return;
+          fetch(`${API_BASE}/api/sanctuaries/${data.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ barony_id: currentSelectedId, religion_id: data.religion_id, active: data.active })
+          }).then(() => {
+            if (filterManager && filterSelect && filterSelect.value === 'sanctuary') filterManager.applyFilter('sanctuary');
+          });
+        });
+
+        const delBtn = document.createElement('button');
+        delBtn.textContent = '-';
+        delBtn.addEventListener('click', () => {
+          if (data.id) {
+            fetch(`${API_BASE}/api/sanctuaries/${data.id}`, { method: 'DELETE' });
+          }
+          sanctuaryMap[currentSelectedId] = (sanctuaryMap[currentSelectedId] || []).filter(s => s !== data && s.id !== data.id);
+          row.remove();
+          if (filterManager && filterSelect && filterSelect.value === 'sanctuary') filterManager.applyFilter('sanctuary');
+        });
+
+        row.appendChild(sel);
+        row.appendChild(chk);
+        row.appendChild(delBtn);
+        list.appendChild(row);
+      }
+
+      (sanctuaryMap[currentSelectedId] || []).forEach(s => addRow({ ...s }));
+      const addBtn = document.createElement('button');
+      addBtn.textContent = '+';
+      addBtn.addEventListener('click', () => addRow());
+      const closeBtn = document.createElement('button');
+      closeBtn.textContent = 'Fermer';
+      closeBtn.addEventListener('click', () => overlay.remove());
+      popup.appendChild(list);
+      popup.appendChild(addBtn);
+      popup.appendChild(closeBtn);
+      overlay.appendChild(popup);
+      document.body.appendChild(overlay);
+    });
+  }
+
+  if (editCanonicalBtn) {
+    editCanonicalBtn.addEventListener('click', () => {
+      if (!currentSelectedId) return;
+      const overlay = document.createElement('div');
+      overlay.className = 'popup-overlay';
+      const popup = document.createElement('div');
+      popup.className = 'popup';
+      const list = document.createElement('div');
+
+      function addRow(val = '') {
+        const row = document.createElement('div');
+        row.className = 'cost-row';
+        const sel = document.createElement('select');
+        const blank = document.createElement('option');
+        blank.value = '';
+        sel.appendChild(blank);
+        Object.values(baronyMeta).forEach(b => {
+          const opt = document.createElement('option');
+          opt.value = b.id;
+          opt.textContent = `${b.id} - ${b.name}`;
+          sel.appendChild(opt);
+        });
+        sel.value = val;
+        row.dataset.canonicalId = val;
+        sel.addEventListener('change', () => {
+          const newId = parseInt(sel.value, 10);
+          const oldId = parseInt(row.dataset.canonicalId || '0', 10);
+          if (oldId) {
+            fetch(`${API_BASE}/api/canonical_lands?barony_id=${currentSelectedId}&canonical_barony_id=${oldId}`, { method: 'DELETE' });
+            if (canonicalLandMap[currentSelectedId]) canonicalLandMap[currentSelectedId] = canonicalLandMap[currentSelectedId].filter(id => id !== oldId);
+          }
+          if (newId) {
+            fetch(`${API_BASE}/api/canonical_lands`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ barony_id: currentSelectedId, canonical_barony_id: newId })
+            });
+            if (!canonicalLandMap[currentSelectedId]) canonicalLandMap[currentSelectedId] = [];
+            canonicalLandMap[currentSelectedId].push(newId);
+          }
+          row.dataset.canonicalId = newId;
+          if (filterManager && filterSelect && filterSelect.value === 'canonical') filterManager.applyFilter('canonical');
+        });
+
+        const delBtn = document.createElement('button');
+        delBtn.textContent = '-';
+        delBtn.addEventListener('click', () => {
+          const oldId = parseInt(row.dataset.canonicalId || '0', 10);
+          if (oldId) {
+            fetch(`${API_BASE}/api/canonical_lands?barony_id=${currentSelectedId}&canonical_barony_id=${oldId}`, { method: 'DELETE' });
+            if (canonicalLandMap[currentSelectedId]) canonicalLandMap[currentSelectedId] = canonicalLandMap[currentSelectedId].filter(id => id !== oldId);
+          }
+          row.remove();
+          if (filterManager && filterSelect && filterSelect.value === 'canonical') filterManager.applyFilter('canonical');
+        });
+
+        row.appendChild(sel);
+        row.appendChild(delBtn);
+        list.appendChild(row);
+      }
+
+      (canonicalLandMap[currentSelectedId] || []).forEach(id => addRow(id));
+      const addBtn = document.createElement('button');
+      addBtn.textContent = '+';
+      addBtn.addEventListener('click', () => addRow());
+      const closeBtn = document.createElement('button');
+      closeBtn.textContent = 'Fermer';
+      closeBtn.addEventListener('click', () => overlay.remove());
+      popup.appendChild(list);
+      popup.appendChild(addBtn);
+      popup.appendChild(closeBtn);
+      overlay.appendChild(popup);
+      document.body.appendChild(overlay);
     });
   }
 
@@ -312,16 +486,16 @@
       empireMap = {};
       seigneurToEmpire = {};
       empires.forEach(e => { empireMap[e.id] = e; if (e.seigneur_id) seigneurToEmpire[e.seigneur_id] = e.id; });
-      canonicalLandMap = {};
-      canonicalLands.forEach(cl => {
-        if (!canonicalLandMap[cl.barony_id]) canonicalLandMap[cl.barony_id] = [];
-        canonicalLandMap[cl.barony_id].push(cl.religion_id);
-      });
-      sanctuaryMap = {};
-      sanctuaries.forEach(s => {
-        if (!sanctuaryMap[s.barony_id]) sanctuaryMap[s.barony_id] = [];
-        sanctuaryMap[s.barony_id].push({ religion_id: s.religion_id, active: !!s.active });
-      });
+        canonicalLandMap = {};
+        canonicalLands.forEach(cl => {
+          if (!canonicalLandMap[cl.barony_id]) canonicalLandMap[cl.barony_id] = [];
+          canonicalLandMap[cl.barony_id].push(cl.canonical_barony_id);
+        });
+        sanctuaryMap = {};
+        sanctuaries.forEach(s => {
+          if (!sanctuaryMap[s.barony_id]) sanctuaryMap[s.barony_id] = [];
+          sanctuaryMap[s.barony_id].push({ id: s.id, religion_id: s.religion_id, active: !!s.active });
+        });
       baronyAdjacency = {};
       connections.forEach(c => {
         if (!baronyAdjacency[c.barony_id_1]) baronyAdjacency[c.barony_id_1] = [];
