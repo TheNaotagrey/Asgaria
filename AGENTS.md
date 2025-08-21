@@ -11,6 +11,7 @@ Ce dépôt propose un serveur Express/Node.js avec une base SQLite et plusieurs 
 - **auth.js** : script inclus sur les pages client pour la connexion, la déconnexion et la navigation conditionnelle.
 - **viewer.js** : affiche la carte en lecture seule.
 - **script.js** : éditeur de carte permettant de modifier les baronnies et d'enregistrer les pixels.
+- **src/mapCore.js** : fonctions communes de rendu/zoom/filtrage utilisées par `viewer.js` et `script.js`.
 - **admin.js** : interface d'administration des empires, royaumes, duchés, etc.
 - **gestion.js** : gestion des seigneuries, ressources et sorts côté joueur.
 - **profile.js** : modification du profil utilisateur.
