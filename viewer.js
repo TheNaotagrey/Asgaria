@@ -23,6 +23,7 @@
   let empireMap = {};
   let seigneurToViscounty = {}, seigneurToCounty = {}, seigneurToMarquisate = {}, seigneurToDuchy = {}, seigneurToArchduchy = {}, seigneurToKingdom = {}, seigneurToEmpire = {};
   let canonicalLandMap = {};
+  let sanctuaryMap = {};
   let baronyAdjacency = {};
   let mapData = {};
 
@@ -104,10 +105,11 @@
     infoKingdom.textContent = kingdom ? kingdom.name : '';
     const empire = kingdom ? empireMap[kingdom.empire_id] : null;
     infoEmpire.textContent = empire ? empire.name : '';
-    infoSanctuary.textContent = info.has_sanctuary ? 'Oui' : 'Non';
-    infoPriory.textContent = info.has_priory ? 'Oui' : 'Non';
-    infoChurch.textContent = info.has_church ? 'Oui' : 'Non';
-    infoCathedral.textContent = info.has_cathedral ? 'Oui' : 'Non';
+    const sancts = sanctuaryMap[id] || [];
+    infoSanctuary.textContent = sancts.length > 0 ? sancts.map(s => `${religionMap[s.religion_id]?.name || ''}${s.active ? ' (actif)' : ' (inactif)'}`).join(', ') : 'Aucun';
+    infoPriory.textContent = religionMap[info.priory_religion_id]?.name || 'Aucun';
+    infoChurch.textContent = religionMap[info.church_religion_id]?.name || 'Aucune';
+    infoCathedral.textContent = religionMap[info.cathedral_religion_id]?.name || 'Aucune';
     infoPlayer.textContent = info.player ? 'Oui' : 'Non';
     infoCanonical.textContent = (canonicalLandMap[id] || []).map(rid => religionMap[rid]?.name || '').join(', ');
     if (filterManager && filterSelect) {
@@ -135,7 +137,7 @@
       mapData = { pixelData, baronyMeta, baronyAdjacency, mapWidth, mapHeight, mapMode };
       return mapData;
     }
-    const [baronies, seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires, canonicalLands, connections] = await Promise.all([
+    const [baronies, seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires, canonicalLands, sanctuaries, connections] = await Promise.all([
       fetch(API_BASE + '/api/baronies').then(r => r.json()),
       fetch(API_BASE + '/api/seigneurs').then(r => r.json()),
       fetch(API_BASE + '/api/religions').then(r => r.json()),
@@ -148,6 +150,7 @@
       fetch(API_BASE + '/api/archduchies').then(r => r.json()),
       fetch(API_BASE + '/api/empires').then(r => r.json()),
       fetch(API_BASE + '/api/canonical_lands').then(r => r.json()),
+      fetch(API_BASE + '/api/sanctuaries').then(r => r.json()),
       fetch(API_BASE + '/api/barony_connections').then(r => r.json())
     ]);
     baronyMeta = {};
@@ -184,6 +187,11 @@
       if (!canonicalLandMap[cl.barony_id]) canonicalLandMap[cl.barony_id] = [];
       canonicalLandMap[cl.barony_id].push(cl.religion_id);
     });
+    sanctuaryMap = {};
+    sanctuaries.forEach(s => {
+      if (!sanctuaryMap[s.barony_id]) sanctuaryMap[s.barony_id] = [];
+      sanctuaryMap[s.barony_id].push({ religion_id: s.religion_id, active: !!s.active });
+    });
     baronyAdjacency = {};
     connections.forEach(c => {
       if (!baronyAdjacency[c.barony_id_1]) baronyAdjacency[c.barony_id_1] = [];
@@ -205,6 +213,7 @@
       archduchyMap,
       empireMap,
       canonicalLandMap,
+      sanctuaryMap,
       baronyAdjacency,
       seigneurToViscounty,
       seigneurToCounty,

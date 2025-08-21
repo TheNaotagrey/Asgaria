@@ -85,10 +85,20 @@
       <select id="editSeigneur"></select>
       <label for="editReligionPop">Religion population&nbsp;:</label>
       <select id="editReligionPop"></select>
-      <label class="checkbox-label"><input type="checkbox" id="editSanctuary"> Sanctuaire</label>
-      <label class="checkbox-label"><input type="checkbox" id="editPriory"> Prieuré</label>
-      <label class="checkbox-label"><input type="checkbox" id="editChurch"> Église</label>
-      <label class="checkbox-label"><input type="checkbox" id="editCathedral"> Cathédrale</label>
+
+      <label>Sanctuaires&nbsp;:</label>
+      <div id="sanctuaryList"></div>
+      <select id="sanctuaryReligion"><option value="">Religion</option></select>
+      <label class="checkbox-label"><input type="checkbox" id="sanctuaryActive"> Actif</label>
+      <button id="addSanctuary" class="control-btn">Ajouter</button>
+
+      <label for="editPrioryReligion">Prieuré&nbsp;:</label>
+      <select id="editPrioryReligion"><option value="">Aucun</option></select>
+      <label for="editChurchReligion">Église&nbsp;:</label>
+      <select id="editChurchReligion"><option value="">Aucune</option></select>
+      <label for="editCathedralReligion">Cathédrale&nbsp;:</label>
+      <select id="editCathedralReligion"><option value="">Aucune</option></select>
+
       <label class="checkbox-label"><input type="checkbox" id="editPlayer"> Joueur</label>
       <label for="editCulture">Culture&nbsp;:</label>
       <select id="editCulture"></select>
