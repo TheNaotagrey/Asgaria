@@ -100,14 +100,17 @@
       });
     }
 
+    function hslToRgb(h, s, l) {
+      s /= 100; l /= 100;
+      const k = n => (n + h / 30) % 12;
+      const a = s * Math.min(l, 1 - l);
+      const f = n => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+      return [Math.round(255 * f(0)), Math.round(255 * f(8)), Math.round(255 * f(4))];
+    }
+
     function generateColor(str) {
-      let hash = 0;
-      for (let i = 0; i < str.length; i++) {
-        hash = str.charCodeAt(i) + ((hash << 5) - hash);
-      }
-      const r = (hash >> 16) & 255;
-      const g = (hash >> 8) & 255;
-      const b = hash & 255;
+      const hue = Math.floor(Math.random() * 360);
+      const [r, g, b] = hslToRgb(hue, 65, 65);
       return [r, g, b, 100];
     }
 
