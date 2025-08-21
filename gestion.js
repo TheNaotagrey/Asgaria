@@ -12,10 +12,14 @@ const luxuryResources = [
   ['encens', 'Encens'], ['vin', 'Vin'], ['pierre_precieuse', 'Pierres précieuses']
 ];
 
+const militaryResources = [
+  ['hommes_darmes', "Hommes d'armes"], ['chevaux', 'Chevaux'], ['trebuchets', 'Trébuchets'],
+];
+
 const extraResources = [
   ['esclaves', 'Esclaves'], ['prestige', 'Prestige'], ['renommee', 'Renommée'],
 ];
-const resourceLabels = Object.fromEntries([...basicResources, ...luxuryResources, ...extraResources]);
+const resourceLabels = Object.fromEntries([...basicResources, ...luxuryResources, ...militaryResources, ...extraResources]);
 const resourceSelect = Object.entries(resourceLabels).map(([id, name]) => ({ id, name }));
 const pageSelect = [{ id: 'magie', name: 'Magie' }];
 
@@ -257,6 +261,10 @@ async function loadAndRender(seigneurieId) {
           <h2>Ressources de Luxe</h2>
           <table id="luxuryResourcesTable" class="admin-table"></table>
         </div>
+        <div class="resource-table-container">
+          <h2>Ressources Militaires</h2>
+          <table id="militaryResourcesTable" class="admin-table"></table>
+        </div>
       </div>
     `;
 
@@ -358,11 +366,28 @@ async function loadAndRender(seigneurieId) {
       });
     }
 
+    const ostPanel = document.getElementById('tab-ost');
+    if (ostPanel && !document.getElementById('ostMilitaryResourcesTable')) {
+      ostPanel.innerHTML = `
+        <div class="resource-tables">
+          <div class="resource-table-container">
+            <h2>Ressources Militaires</h2>
+            <table id="ostMilitaryResourcesTable" class="admin-table"></table>
+          </div>
+        </div>`;
+    }
+
     const basicTable = document.getElementById('basicResourcesTable');
     const luxuryTable = document.getElementById('luxuryResourcesTable');
+    const militaryTable = document.getElementById('militaryResourcesTable');
+    const ostTable = document.getElementById('ostMilitaryResourcesTable');
 
     basicTable.innerHTML = buildTable(basicResources, true, inv, production, productionDetails, capacities, isAdmin);
     luxuryTable.innerHTML = buildTable(luxuryResources, false, inv, production, productionDetails, capacities, isAdmin);
+    militaryTable.innerHTML = buildTable(militaryResources, true, inv, production, productionDetails, capacities, isAdmin);
+    if (ostTable) {
+      ostTable.innerHTML = buildTable(militaryResources, true, inv, production, productionDetails, capacities, isAdmin);
+    }
 
     if(isAdmin){
       document.querySelectorAll('.resource-input').forEach(inp => {
