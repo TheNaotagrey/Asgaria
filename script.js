@@ -38,6 +38,11 @@
   const infoPanel = document.getElementById('infoPanel');
   const editIdInput = document.getElementById('editId');
   const editNameInput = document.getElementById('editName');
+  const editReligionPopSelect = document.getElementById('editReligionPop');
+  const sanctuaryReligionSelect = document.getElementById('sanctuaryReligion');
+  const editPrioryReligionSelect = document.getElementById('editPrioryReligion');
+  const editChurchReligionSelect = document.getElementById('editChurchReligion');
+  const editCathedralReligionSelect = document.getElementById('editCathedralReligion');
 
   function updateLegend(groups) {
     if (!legendDiv) return;
@@ -65,6 +70,27 @@
   let core = null;
   let currentSelectedId = null;
 
+  function populateReligionSelects() {
+    const selects = [
+      editReligionPopSelect,
+      sanctuaryReligionSelect,
+      editPrioryReligionSelect,
+      editChurchReligionSelect,
+      editCathedralReligionSelect
+    ].filter(Boolean);
+    selects.forEach(sel => {
+      const placeholder = sel.firstElementChild ? sel.firstElementChild.cloneNode(true) : null;
+      sel.innerHTML = '';
+      if (placeholder) sel.appendChild(placeholder);
+      Object.values(religionMap).forEach(r => {
+        const opt = document.createElement('option');
+        opt.value = r.id;
+        opt.textContent = r.name;
+        sel.appendChild(opt);
+      });
+    });
+  }
+
   function handleSelect(id) {
     currentSelectedId = id;
     if (!id) {
@@ -74,6 +100,10 @@
     if (infoPanel) infoPanel.style.display = 'block';
     if (editIdInput) editIdInput.value = id;
     if (editNameInput) editNameInput.value = baronyMeta[id]?.name || '';
+    if (editReligionPopSelect) editReligionPopSelect.value = baronyMeta[id]?.religion_pop_id || '';
+    if (editPrioryReligionSelect) editPrioryReligionSelect.value = baronyMeta[id]?.priory_religion_id || '';
+    if (editChurchReligionSelect) editChurchReligionSelect.value = baronyMeta[id]?.church_religion_id || '';
+    if (editCathedralReligionSelect) editCathedralReligionSelect.value = baronyMeta[id]?.cathedral_religion_id || '';
     if (filterManager && filterSelect) {
       filterManager.applyFilter(filterSelect.value);
     }
@@ -104,6 +134,7 @@
       seigneurs.forEach(s => { seigneurMap[s.id] = s; });
       religionMap = {};
       religions.forEach(r => { religionMap[r.id] = r; });
+      populateReligionSelects();
       cultureMapInfo = {};
       cultures.forEach(c => { cultureMapInfo[c.id] = c; });
       countyMap = {};
