@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Carte statique</title>
+  <style>
+    #mapContainer {
+      position: relative;
+      width: 1000px;
+      height: 800px;
+      margin: 0 auto;
+      background: #333;
+    }
+    #mapContainer img,
+    #mapContainer canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+  </style>
+</head>
+<body>
+  <div id="mapContainer">
+    <img id="baseMap" src="../Asgaria.png" alt="Carte" />
+    <canvas id="pixelCanvas"></canvas>
+  </div>
+  <script src="../src/mapCore.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const width = 800;
+      const height = 600;
+      const baseMap = document.getElementById('baseMap');
+      baseMap.style.width = width + 'px';
+      baseMap.style.height = height + 'px';
+      mapCore.init({
+        canvas: document.getElementById('pixelCanvas'),
+        width,
+        height,
+        enablePan: false,
+        enableZoom: false,
+        fetchData: async () => ({ mapWidth: width, mapHeight: height, pixelData: {} })
+      });
+    });
+  </script>
+</body>
+</html>

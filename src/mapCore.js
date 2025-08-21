@@ -6,6 +6,8 @@
    * @param {string} [opts.mapId='pixelCanvas'] Id du canvas à récupérer dans le DOM.
    * @param {boolean} [opts.enablePan=true] Active le déplacement de la carte à la souris.
    * @param {boolean} [opts.enableZoom=true] Active le zoom via la molette.
+   * @param {number} [opts.width] Largeur fixe du canvas.
+   * @param {number} [opts.height] Hauteur fixe du canvas.
    * @param {Function} [opts.fetchData] Fonction asynchrone de récupération des données.
    * @param {Function} [opts.onSelect] Callback lors de la sélection d'une baronnie.
    * @param {Function} [opts.drawOverlay] Fonction de dessin d'une surcouche.
@@ -17,6 +19,8 @@
       mapId = 'pixelCanvas',
       enablePan = true,
       enableZoom = true,
+      width,
+      height,
       fetchData = async () => ({}),
       onSelect = () => {},
       drawOverlay = () => {},
@@ -25,6 +29,15 @@
 
     const canvas = passedCanvas || document.getElementById(mapId);
     if (!canvas) throw new Error('No canvas element provided or found');
+
+    if (width) {
+      canvas.width = width;
+      canvas.style.width = width + 'px';
+    }
+    if (height) {
+      canvas.height = height;
+      canvas.style.height = height + 'px';
+    }
 
     const group = canvas.parentElement;
     const container = group.parentElement;
@@ -65,6 +78,15 @@
 
     function applyTransform() {
       group.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${scale})`;
+    }
+
+    function centerMap() {
+      const contW = container.clientWidth;
+      const contH = container.clientHeight;
+      scale = 1;
+      offsetX = (contW - mapWidth * scale) / 2;
+      offsetY = (contH - mapHeight * scale) / 2;
+      applyTransform();
     }
 
     function rebuildPixelMap() {
@@ -194,6 +216,8 @@
     }
 
 
+    const positionMap = (!enablePan && !enableZoom) ? centerMap : fitToContainer;
+
     if (enableZoom) {
       canvas.addEventListener('wheel', handleWheel, { passive: false });
     }
@@ -205,7 +229,7 @@
     canvas.addEventListener('click', handleCanvasClick);
 
     window.addEventListener('resize', () => {
-      fitToContainer();
+      positionMap();
       drawAll();
     });
 
@@ -235,7 +259,7 @@
       seigneurToKingdom = data.seigneurToKingdom || {};
       seigneurToEmpire = data.seigneurToEmpire || {};
       rebuildPixelMap();
-      fitToContainer();
+      positionMap();
       drawAll();
     }
     const ready = load();
