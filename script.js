@@ -154,6 +154,9 @@
     }).then(res => {
       if (res.ok) {
         baronyMeta[currentSelectedId] = { ...baronyMeta[currentSelectedId], ...fields };
+        if (filterManager && filterSelect && filterSelect.value) {
+          filterManager.applyFilter(filterSelect.value);
+        }
       }
     });
   }
