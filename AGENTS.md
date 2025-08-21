@@ -1,0 +1,25 @@
+# AGENTS
+
+## Contexte
+Ce dépôt propose un serveur Express/Node.js avec une base SQLite et plusieurs interfaces web pour le projet Asgaria (visualisation de la carte, édition, gestion et administration).
+
+## Scripts et relations principales
+- **server.js** : point d'entrée du serveur. Expose l'API REST, gère l'authentification, les transactions et les effets. Requiert `handleError.js`, `logger.js`, `effects.js`, `transactions.js` et `services/buildingService.js`.
+- **effects.js** : définit les classes d'effets appliquées par le serveur (production, stockage, sorts, etc.).
+- **transactions.js** : applique les débits/crédits de ressources dans la base de données.
+- **services/buildingService.js** : utilitaires pour consommer les ressources lors des constructions.
+- **auth.js** : script inclus sur les pages client pour la connexion, la déconnexion et la navigation conditionnelle.
+- **viewer.js** : affiche la carte en lecture seule.
+- **script.js** : éditeur de carte permettant de modifier les baronnies et d'enregistrer les pixels.
+- **admin.js** : interface d'administration des empires, royaumes, duchés, etc.
+- **gestion.js** : gestion des seigneuries, ressources et sorts côté joueur.
+- **profile.js** : modification du profil utilisateur.
+- **handleError.js** et **logger.js** : gestion des erreurs et du logging.
+- Les pages HTML (`index.html`, `mapEditor.html`, `admin.html`, `gestion.html`, `profile.html`) chargent ces scripts selon leur rôle.
+- Les scripts client communiquent avec l'API du serveur via `fetch`.
+
+## Instructions
+- Garder ce fichier à jour : toute modification importante de l'architecture, des dépendances ou des relations entre scripts doit être répercutée ici.
+- Ajouter ou supprimer des scripts majeurs nécessite d'actualiser la section "Scripts et relations principales".
+- Les développements se font en JavaScript (CommonJS côté serveur, scripts front-end sans bundler) avec Node.js ≥14.
+- Après toute modification du code, exécuter les vérifications disponibles (`npm test`, même si aucun test n'est défini) et corriger les erreurs le cas échéant.
