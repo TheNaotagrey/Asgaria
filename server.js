@@ -136,11 +136,11 @@ CREATE TABLE IF NOT EXISTS sanctuaries (
   FOREIGN KEY(religion_id) REFERENCES religions(id)
 );
 CREATE TABLE IF NOT EXISTS canonical_lands (
-  religion_id INTEGER,
   barony_id INTEGER,
-  PRIMARY KEY(religion_id, barony_id),
-  FOREIGN KEY(religion_id) REFERENCES religions(id),
-  FOREIGN KEY(barony_id) REFERENCES baronies(id)
+  canonical_barony_id INTEGER,
+  PRIMARY KEY(barony_id, canonical_barony_id),
+  FOREIGN KEY(barony_id) REFERENCES baronies(id),
+  FOREIGN KEY(canonical_barony_id) REFERENCES baronies(id)
 );
 CREATE TABLE IF NOT EXISTS barony_connections (
   barony_id_1 INTEGER NOT NULL,
@@ -2156,10 +2156,10 @@ app.post('/api/infrastructure/assign_workers', (req,res) => {
   });
 });
 app.get('/api/canonical_lands', list('canonical_lands'));
-app.post('/api/canonical_lands', create('canonical_lands',['religion_id','barony_id']));
+app.post('/api/canonical_lands', create('canonical_lands',['barony_id','canonical_barony_id']));
 app.delete('/api/canonical_lands', (req, res) => {
-  const { religion_id, barony_id } = req.query;
-  db.run('DELETE FROM canonical_lands WHERE religion_id=? AND barony_id=?', [religion_id, barony_id], function(err){
+  const { barony_id, canonical_barony_id } = req.query;
+  db.run('DELETE FROM canonical_lands WHERE barony_id=? AND canonical_barony_id=?', [barony_id, canonical_barony_id], function(err){
     if(err) return handleError(res, err);
     res.json({deleted: this.changes});
   });

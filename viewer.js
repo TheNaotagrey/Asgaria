@@ -113,7 +113,7 @@
     infoCathedral.textContent = religionMap[info.cathedral_religion_id]?.name || 'Aucune';
     infoPlayer.textContent = info.player ? 'Oui' : 'Non';
     infoBishop.textContent = info.bishop ? 'Oui' : 'Non';
-    infoCanonical.textContent = (canonicalLandMap[id] || []).map(rid => religionMap[rid]?.name || '').join(', ');
+      infoCanonical.textContent = (canonicalLandMap[id] || []).map(rid => baronyMeta[rid]?.name || '').join(', ');
     if (filterManager && filterSelect && filterSelect.value) {
       filterManager.applyFilter(filterSelect.value);
     }
@@ -184,11 +184,11 @@
     empireMap = {};
     seigneurToEmpire = {};
     empires.forEach(e => { empireMap[e.id] = e; if (e.seigneur_id) seigneurToEmpire[e.seigneur_id] = e.id; });
-    canonicalLandMap = {};
-    canonicalLands.forEach(cl => {
-      if (!canonicalLandMap[cl.barony_id]) canonicalLandMap[cl.barony_id] = [];
-      canonicalLandMap[cl.barony_id].push(cl.religion_id);
-    });
+      canonicalLandMap = {};
+      canonicalLands.forEach(cl => {
+        if (!canonicalLandMap[cl.barony_id]) canonicalLandMap[cl.barony_id] = [];
+        canonicalLandMap[cl.barony_id].push(cl.canonical_barony_id);
+      });
     sanctuaryMap = {};
     sanctuaries.forEach(s => {
       if (!sanctuaryMap[s.barony_id]) sanctuaryMap[s.barony_id] = [];
