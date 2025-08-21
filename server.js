@@ -116,6 +116,7 @@ CREATE TABLE IF NOT EXISTS baronies (
   church_religion_id INTEGER,
   cathedral_religion_id INTEGER,
   player INTEGER DEFAULT 0,
+  bishop INTEGER DEFAULT 0,
   FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id) ON DELETE SET NULL,
   FOREIGN KEY(religion_pop_id) REFERENCES religions(id),
   FOREIGN KEY(county_id) REFERENCES counties(id),
@@ -364,6 +365,9 @@ db.exec(initSql, () => {
     }
     if (!rows.some(r => r.name === 'player')) {
       db.run('ALTER TABLE baronies ADD COLUMN player INTEGER DEFAULT 0');
+    }
+    if (!rows.some(r => r.name === 'bishop')) {
+      db.run('ALTER TABLE baronies ADD COLUMN bishop INTEGER DEFAULT 0');
     }
   });
   db.all("PRAGMA table_info(counties)", (err, rows) => {
@@ -1234,11 +1238,11 @@ app.get('/api/baronies', (req, res) => {
 });
 app.post('/api/baronies', create('baronies',[
   'id','name','seigneur_id','religion_pop_id','county_id','viscounty_id','culture_id',
-  'priory_religion_id','church_religion_id','cathedral_religion_id','player'
+  'priory_religion_id','church_religion_id','cathedral_religion_id','player','bishop'
 ]));
 app.put('/api/baronies/:id', update('baronies',[
   'name','seigneur_id','religion_pop_id','county_id','viscounty_id','culture_id',
-  'priory_religion_id','church_religion_id','cathedral_religion_id','player'
+  'priory_religion_id','church_religion_id','cathedral_religion_id','player','bishop'
 ]));
 app.delete('/api/baronies/:id', (req,res)=>{
   db.run('DELETE FROM baronies WHERE id=?',[req.params.id], function(err){
