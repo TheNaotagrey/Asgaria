@@ -148,9 +148,7 @@
   const toggleEditBtn = document.getElementById('toggleEdit');
   const randomBtn = document.getElementById('randomColors');
   const saveBtn = document.getElementById('saveToFile');
-  const offsetXInput = document.getElementById('offsetX');
-  const offsetYInput = document.getElementById('offsetY');
-  const applyOffsetBtn = document.getElementById('applyOffset');
+  const offsetBtn = document.getElementById('offsetBtn');
   const deleteBtn = document.getElementById('deleteBarony');
   const selectBtn = document.getElementById('selectBarony');
   const linkBtn = document.getElementById('linkBarony');
@@ -314,28 +312,64 @@
 
   // Save pixels to the server
   if (saveBtn) saveBtn.addEventListener('click', () => {
-    const dx = parseInt(offsetXInput.value) || 0;
-    const dy = parseInt(offsetYInput.value) || 0;
-    if (dx !== 0 || dy !== 0) {
-      shiftAllPixels(dx, dy);
-      offsetXInput.value = '0';
-      offsetYInput.value = '0';
-    }
     fetch(API_BASE + pixelEndpoint, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(pixelData)
     });
   });
-  if (applyOffsetBtn) applyOffsetBtn.addEventListener('click', () => {
-    const dx = parseInt(offsetXInput.value) || 0;
-    const dy = parseInt(offsetYInput.value) || 0;
-    if (dx !== 0 || dy !== 0) {
-      shiftAllPixels(dx, dy);
-      offsetXInput.value = '0';
-      offsetYInput.value = '0';
-    }
-  });
+
+  function openOffsetPopup() {
+    const overlay = document.createElement('div');
+    overlay.className = 'popup-overlay';
+    const popup = document.createElement('div');
+    popup.className = 'popup';
+
+    const xDiv = document.createElement('div');
+    const xLabel = document.createElement('label');
+    xLabel.textContent = 'Décalage X';
+    const xInput = document.createElement('input');
+    xInput.type = 'number';
+    xInput.value = '0';
+    xDiv.appendChild(xLabel);
+    xDiv.appendChild(xInput);
+
+    const yDiv = document.createElement('div');
+    const yLabel = document.createElement('label');
+    yLabel.textContent = 'Décalage Y';
+    const yInput = document.createElement('input');
+    yInput.type = 'number';
+    yInput.value = '0';
+    yDiv.appendChild(yLabel);
+    yDiv.appendChild(yInput);
+
+    const btnRow = document.createElement('div');
+    const applyBtn = document.createElement('button');
+    applyBtn.type = 'button';
+    applyBtn.textContent = 'Appliquer';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.textContent = 'Annuler';
+    btnRow.appendChild(applyBtn);
+    btnRow.appendChild(cancelBtn);
+
+    popup.appendChild(xDiv);
+    popup.appendChild(yDiv);
+    popup.appendChild(btnRow);
+    overlay.appendChild(popup);
+    document.body.appendChild(overlay);
+
+    cancelBtn.addEventListener('click', () => overlay.remove());
+    applyBtn.addEventListener('click', () => {
+      const dx = parseInt(xInput.value) || 0;
+      const dy = parseInt(yInput.value) || 0;
+      if (dx !== 0 || dy !== 0) {
+        shiftAllPixels(dx, dy);
+      }
+      overlay.remove();
+    });
+  }
+  if (offsetBtn) offsetBtn.addEventListener('click', openOffsetPopup);
   if (linkBtn) linkBtn.addEventListener('click', () => {
     if (currentSelectedId) linkMode = 'link';
   });
