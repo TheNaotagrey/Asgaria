@@ -1653,8 +1653,13 @@
     baseMapLoaded.then(() => {
       mapWidth = baseMap.naturalWidth;
       mapHeight = baseMap.naturalHeight;
+      baseMap.style.width = mapWidth + 'px';
+      baseMap.style.height = mapHeight + 'px';
       pixelCanvas.width = mapWidth;
       pixelCanvas.height = mapHeight;
+      pixelCanvas.style.width = mapWidth + 'px';
+      pixelCanvas.style.height = mapHeight + 'px';
+      ctx.imageSmoothingEnabled = false;
       pixelMap = Array.from({ length: mapHeight }, () => new Array(mapWidth).fill(0));
       const loaders = [loadPixelData(), loadMetaData()];
       if (mapMode !== 'sea') loaders.push(loadOptions());
