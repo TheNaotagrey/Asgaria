@@ -400,6 +400,19 @@ db.exec(initSql, () => {
       }
     }
   });
+  db.all("PRAGMA table_info(canonical_lands)", (err, rows) => {
+    if (!err && rows && !rows.some(r => r.name === 'canonical_barony_id')) {
+      db.run('DROP TABLE IF EXISTS canonical_lands', () => {
+        db.run(`CREATE TABLE canonical_lands (
+  barony_id INTEGER,
+  canonical_barony_id INTEGER,
+  PRIMARY KEY(barony_id, canonical_barony_id),
+  FOREIGN KEY(barony_id) REFERENCES baronies(id),
+  FOREIGN KEY(canonical_barony_id) REFERENCES baronies(id)
+)`);
+      });
+    }
+  });
   db.all("PRAGMA table_info(building_properties)", (err, rows) => {
     if (err || !rows) return;
     if (!rows.some(r => r.name === 'label')) {
