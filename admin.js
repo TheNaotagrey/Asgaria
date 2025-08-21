@@ -14,12 +14,16 @@ const luxuryResources = [
   ['encens', 'Encens'], ['vin', 'Vin'], ['pierre_precieuse', 'Pierres précieuses'],
 ];
 
+const militaryResources = [
+  ['hommes_darmes', "Hommes d'armes"], ['chevaux', 'Chevaux'], ['trebuchets', 'Trébuchets'],
+];
+
 const extraResources = [
   ['esclaves', 'Esclaves'], ['prestige', 'Prestige'], ['renommee', 'Renommée'],
 ];
 
-const inventaireFields = [...basicResources, ...luxuryResources, ...extraResources].map(([k]) => k);
-const inventaireLabels = Object.fromEntries([...basicResources, ...luxuryResources, ...extraResources]);
+const inventaireFields = [...basicResources, ...luxuryResources, ...militaryResources, ...extraResources].map(([k]) => k);
+const inventaireLabels = Object.fromEntries([...basicResources, ...luxuryResources, ...militaryResources, ...extraResources]);
 
 const yesNoSelect = [{id:1,name:'Oui'},{id:0,name:'Non'}];
 const baronyPropBoolFields = ['water_access','sea_access','has_or','has_argent','has_fer','has_pierre','has_epices','has_perle','has_encens','has_huiles','has_pierre_precieuses','has_soie','has_sel','has_fourrure','has_teinture','has_ivoire','has_vin'];

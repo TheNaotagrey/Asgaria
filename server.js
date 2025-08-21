@@ -165,6 +165,9 @@ CREATE TABLE IF NOT EXISTS inventaire (
   maitres_oeuvre INTEGER DEFAULT 0,
   maitre_espions INTEGER DEFAULT 0,
   points_magique INTEGER DEFAULT 0,
+  hommes_darmes INTEGER DEFAULT 0,
+  chevaux INTEGER DEFAULT 0,
+  trebuchets INTEGER DEFAULT 0,
   fourrure INTEGER DEFAULT 0,
   ivoire INTEGER DEFAULT 0,
   soie INTEGER DEFAULT 0,
@@ -772,8 +775,11 @@ app.get('/api/my_seigneurie', (req, res) => {
           let fields = { built: 0, active: 0 };
           const production = {};
           const productionDetails = {};
-          let employed = 0;
+          let employed = inventaire.hommes_darmes || 0;
           const employmentDetails = [];
+          if (inventaire.hommes_darmes) {
+            employmentDetails.push({ label: "Hommes d'armes", amount: inventaire.hommes_darmes, source: inventaire.hommes_darmes });
+          }
           for (const bp of props) {
             const info = buildings[bp.id] || { built: 0, active: 0 };
             const active = info.active || 0;
@@ -796,7 +802,7 @@ app.get('/api/my_seigneurie', (req, res) => {
           db.all('SELECT * FROM infrastructure_properties', [], (errI, iprops) => {
             if (errI) return handleError(res, errI);
             const infraList = iprops || [];
-            const capacities = { vivres: 500, points_magique: 2000 };
+            const capacities = { vivres: 500, points_magique: 2000, hommes_darmes: 0, chevaux: 0, trebuchets: 0 };
             const currentMonth = new Date().toISOString().slice(0,7);
             let spellsCast = s.spells_cast || 0;
             if (s.spell_month !== currentMonth) spellsCast = 0;
@@ -1693,12 +1699,14 @@ app.post('/api/building/activate', (req,res)=>{
       if(qty > built) return res.status(400).json({ error: 'Quantité supérieure au construit' });
       db.all('SELECT id, label, workers_per_building, effects FROM infrastructure_properties', [], (errI, iprops) => {
         if(errI) return handleError(res, errI);
-        db.get('SELECT esclaves FROM inventaire WHERE id=?', [srow.inventaire_id], (err3, inv)=>{
+        db.get('SELECT esclaves, hommes_darmes FROM inventaire WHERE id=?', [srow.inventaire_id], (err3, inv)=>{
           if(err3) return handleError(res, err3);
           const slaves = inv ? (inv.esclaves || 0) : 0;
+          const menAtArms = inv ? (inv.hommes_darmes || 0) : 0;
           const totalPop = srow.population + slaves;
-          let employed = 0;
+          let employed = menAtArms;
           const employmentDetails = [];
+          if (menAtArms) employmentDetails.push({ label: "Hommes d'armes", amount: menAtArms, source: menAtArms });
           for(const bp of bprops || []){
             const info = buildings[bp.id] || { built: 0, active: 0 };
             const active = (bp.id === id) ? qty : (info.active || 0);
@@ -1778,12 +1786,14 @@ app.post('/api/building/destroy', (req,res)=>{
       }
       db.all('SELECT id, label, workers_per_building, effects FROM infrastructure_properties', [], (errI, iprops) => {
         if(errI) return handleError(res, errI);
-        db.get('SELECT esclaves FROM inventaire WHERE id=?', [srow.inventaire_id], (err3, inv)=>{
+        db.get('SELECT esclaves, hommes_darmes FROM inventaire WHERE id=?', [srow.inventaire_id], (err3, inv)=>{
           if(err3) return handleError(res, err3);
           const slaves = inv ? (inv.esclaves || 0) : 0;
+          const menAtArms = inv ? (inv.hommes_darmes || 0) : 0;
           const totalPop = srow.population + slaves;
-          let employed = 0;
+          let employed = menAtArms;
           const employmentDetails = [];
+          if (menAtArms) employmentDetails.push({ label: "Hommes d'armes", amount: menAtArms, source: menAtArms });
           for(const bp of bprops || []){
             const info = buildings[bp.id] || { built: 0, active: 0 };
             const workers = (info.active || 0) * (bp.workers_per_building || 0);
@@ -1866,12 +1876,14 @@ app.post('/api/infrastructure/destroy', (req,res)=>{
       db.all('SELECT id, label, workers_per_building, effects FROM building_properties', [], (errB, bprops)=>{
         if(errB) return handleError(res, errB);
         const buildings = safeParse(srow.buildings, {});
-        db.get('SELECT esclaves FROM inventaire WHERE id=?', [srow.inventaire_id], (err3, inv)=>{
+        db.get('SELECT esclaves, hommes_darmes FROM inventaire WHERE id=?', [srow.inventaire_id], (err3, inv)=>{
           if(err3) return handleError(res, err3);
           const slaves = inv ? (inv.esclaves || 0) : 0;
+          const menAtArms = inv ? (inv.hommes_darmes || 0) : 0;
           const totalPop = srow.population + slaves;
-          let employed = 0;
+          let employed = menAtArms;
           const employmentDetails = [];
+          if (menAtArms) employmentDetails.push({ label: "Hommes d'armes", amount: menAtArms, source: menAtArms });
           for(const bp of bprops || []){
             const info = buildings[bp.id] || { built: 0, active: 0 };
             const workers = (info.active || 0) * (bp.workers_per_building || 0);
@@ -2021,9 +2033,12 @@ app.post('/api/infrastructure/assign_workers', (req,res) => {
             }
           });
         }
-        db.get('SELECT esclaves FROM inventaire WHERE id=?', [srow.inventaire_id], (err4, inv) => {
+        db.get('SELECT esclaves, hommes_darmes FROM inventaire WHERE id=?', [srow.inventaire_id], (err4, inv) => {
           if(err4) return handleError(res, err4);
           const slaves = inv ? (inv.esclaves || 0) : 0;
+          const menAtArms = inv ? (inv.hommes_darmes || 0) : 0;
+          employed += menAtArms;
+          if (menAtArms) employmentDetails.push({ label: "Hommes d'armes", amount: menAtArms, source: menAtArms });
           const totalPop = srow.population + slaves;
           if(employed > totalPop) return res.status(400).json({ error: 'Travailleurs insuffisants' });
           if(slaves) employmentDetails.push({ label: 'Esclaves', amount: -slaves, source: slaves });

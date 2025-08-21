@@ -1,5 +1,6 @@
 const inventaireFields = [
   'or_','pierre','fer','lingot_or','antidote','armureries','rhum','grague','vivres','architectes','charpentiers','maitres_oeuvre','maitre_espions','points_magique',
+  'hommes_darmes','chevaux','trebuchets',
   'fourrure','ivoire','soie','huile','teinture','epices','sel','perle','encens','vin','pierre_precieuse','esclaves','prestige','renommee'
 ];
 
