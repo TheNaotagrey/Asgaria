@@ -242,15 +242,35 @@
           const sancts = data.sanctuaryMap[id] || [];
           if (sancts.length > 0) {
             canonicalPatterns[id] = [];
+            let hasActive = false;
             sancts.forEach(s => {
               if (!groupColors[s.religion_id]) {
-                const col = hexToRgb(data.religionMap[s.religion_id]?.color) || generateColor(String(s.religion_id)).slice(0,3);
-                groupColors[s.religion_id] = { color: col, name: data.religionMap[s.religion_id]?.name || 'N/A' };
+                const col =
+                  hexToRgb(data.religionMap[s.religion_id]?.color) ||
+                  generateColor(String(s.religion_id)).slice(0, 3);
+                groupColors[s.religion_id] = {
+                  color: col,
+                  name: data.religionMap[s.religion_id]?.name || 'N/A'
+                };
               }
               const col = groupColors[s.religion_id].color;
               const repeat = s.active ? 3 : 1;
+              if (s.active) hasActive = true;
               for (let i = 0; i < repeat; i++) canonicalPatterns[id].push(col);
             });
+            if (!hasActive) {
+              if (!groupColors.background) {
+                groupColors.background = {
+                  color: terrainColor,
+                  name: 'Aucun sanctuaire actif'
+                };
+              }
+              canonicalPatterns[id].unshift(
+                groupColors.background.color,
+                groupColors.background.color,
+                groupColors.background.color
+              );
+            }
             const first = canonicalPatterns[id][0];
             colorMap[id] = [first[0], first[1], first[2], 100];
             return;
