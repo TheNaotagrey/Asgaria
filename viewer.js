@@ -34,44 +34,14 @@
   const pixelCanvas = document.getElementById('pixelCanvas');
   const mapContainer = document.getElementById('mapContainer');
   const infoPanel = document.getElementById('infoPanel');
-  const infoIdRow = document.getElementById('infoIdRow');
-  const infoId = document.getElementById('infoId');
-  const infoNameRow = document.getElementById('infoNameRow');
-  const infoName = document.getElementById('infoName');
-  const infoSeigneurRow = document.getElementById('infoSeigneurRow');
-  const infoSeigneur = document.getElementById('infoSeigneur');
-  const infoCultureRow = document.getElementById('infoCultureRow');
-  const infoCulture = document.getElementById('infoCulture');
-  const infoPlayerRow = document.getElementById('infoPlayerRow');
-  const infoPlayer = document.getElementById('infoPlayer');
-  const infoViscountyRow = document.getElementById('infoViscountyRow');
-  const infoViscounty = document.getElementById('infoViscounty');
-  const infoCountyRow = document.getElementById('infoCountyRow');
-  const infoCounty = document.getElementById('infoCounty');
-  const infoMarquisateRow = document.getElementById('infoMarquisateRow');
-  const infoMarquisate = document.getElementById('infoMarquisate');
-  const infoDuchyRow = document.getElementById('infoDuchyRow');
-  const infoDuchy = document.getElementById('infoDuchy');
-  const infoArchduchyRow = document.getElementById('infoArchduchyRow');
-  const infoArchduchy = document.getElementById('infoArchduchy');
-  const infoKingdomRow = document.getElementById('infoKingdomRow');
-  const infoKingdom = document.getElementById('infoKingdom');
-  const infoEmpireRow = document.getElementById('infoEmpireRow');
-  const infoEmpire = document.getElementById('infoEmpire');
-  const infoReligionRow = document.getElementById('infoReligionRow');
-  const infoReligion = document.getElementById('infoReligion');
-  const infoSanctuaryRow = document.getElementById('infoSanctuaryRow');
-  const infoSanctuaryList = document.getElementById('infoSanctuaryList');
-  const infoPrioryRow = document.getElementById('infoPrioryRow');
-  const infoPriory = document.getElementById('infoPriory');
-  const infoChurchRow = document.getElementById('infoChurchRow');
-  const infoChurch = document.getElementById('infoChurch');
-  const infoCathedralRow = document.getElementById('infoCathedralRow');
-  const infoCathedral = document.getElementById('infoCathedral');
-  const infoBishopRow = document.getElementById('infoBishopRow');
-  const infoBishop = document.getElementById('infoBishop');
-  const infoCanonicalRow = document.getElementById('infoCanonicalRow');
-  const infoCanonicalList = document.getElementById('infoCanonicalList');
+  const infoBaronyLine = document.getElementById('infoBaronyLine');
+  const infoOwnerLine = document.getElementById('infoOwnerLine');
+  const infoReligionLine = document.getElementById('infoReligionLine');
+  const infoCultureLine = document.getElementById('infoCultureLine');
+  const feudalSection = document.getElementById('feudalSection');
+  const infoFeudalList = document.getElementById('infoFeudalList');
+  const religiousSection = document.getElementById('religiousBuildingsSection');
+  const infoReligiousList = document.getElementById('infoReligiousList');
   const seaInfoPanel = document.getElementById('seaInfoPanel');
   const seaInfoId = document.getElementById('seaInfoId');
   const seaInfoName = document.getElementById('seaInfoName');
@@ -79,29 +49,29 @@
   const filterSelect = document.getElementById('filterSelect');
   const randomBtn = document.getElementById('randomBtn');
 
-  function setRow(row, span, value) {
-    if (!row || !span) return;
-    if (value !== undefined && value !== null && value !== '') {
-      row.style.display = 'block';
-      span.textContent = value;
+  function setLine(elem, text) {
+    if (!elem) return;
+    if (text) {
+      elem.style.display = 'block';
+      elem.textContent = text;
     } else {
-      row.style.display = 'none';
-      span.textContent = '';
+      elem.style.display = 'none';
+      elem.textContent = '';
     }
   }
 
-  function setList(row, list, items) {
-    if (!row || !list) return;
+  function setList(section, list, items) {
+    if (!section || !list) return;
     list.innerHTML = '';
     if (items && items.length > 0) {
-      row.style.display = 'block';
+      section.style.display = 'block';
       items.forEach(text => {
         const li = document.createElement('li');
         li.textContent = text;
         list.appendChild(li);
       });
     } else {
-      row.style.display = 'none';
+      section.style.display = 'none';
     }
   }
 
@@ -194,33 +164,37 @@
     const info = baronyMeta[id] || {};
     if (infoPanel) infoPanel.style.display = 'block';
     if (seaInfoPanel) seaInfoPanel.style.display = 'none';
-    setRow(infoIdRow, infoId, info.id);
-    setRow(infoNameRow, infoName, info.name);
-    setRow(infoSeigneurRow, infoSeigneur, seigneurMap[info.seigneur_id]?.name);
-    setRow(infoCultureRow, infoCulture, cultureMapInfo[info.culture_id]?.name);
-    setRow(infoPlayerRow, infoPlayer, info.player ? 'Oui' : '');
+    setLine(infoBaronyLine, `Baronnie: ${info.name || ''} (#${info.id || ''})`);
+    setLine(infoOwnerLine, info.seigneur_id ? `Propriétaire: ${seigneurMap[info.seigneur_id]?.name || ''}` : '');
+    setLine(infoReligionLine, info.religion_pop_id ? `Religion: ${religionMap[info.religion_pop_id]?.name || ''}` : '');
+    setLine(infoCultureLine, info.culture_id ? `Culture: ${cultureMapInfo[info.culture_id]?.name || ''}` : '');
     const viscounty = viscountyMap[info.viscounty_id];
-    setRow(infoViscountyRow, infoViscounty, viscounty?.name);
     const county = countyMap[info.county_id];
-    setRow(infoCountyRow, infoCounty, county?.name);
     const marquisate = county ? marquisateMap[county.marquisate_id] : null;
-    setRow(infoMarquisateRow, infoMarquisate, marquisate?.name);
     const duchy = county ? duchyMap[county.duchy_id] : null;
-    setRow(infoDuchyRow, infoDuchy, duchy?.name);
     const archduchy = duchy ? archduchyMap[duchy.archduchy_id] : null;
-    setRow(infoArchduchyRow, infoArchduchy, archduchy?.name);
     const kingdom = duchy ? kingdomMap[duchy.kingdom_id] : null;
-    setRow(infoKingdomRow, infoKingdom, kingdom?.name);
     const empire = kingdom ? empireMap[kingdom.empire_id] : null;
-    setRow(infoEmpireRow, infoEmpire, empire?.name);
-    setRow(infoReligionRow, infoReligion, religionMap[info.religion_pop_id]?.name);
+    const hierarchy = [];
+    if (viscounty) hierarchy.push(`Vicomté: ${viscounty.name}`);
+    if (county) hierarchy.push(`Comté: ${county.name}`);
+    if (marquisate) hierarchy.push(`Marquisat: ${marquisate.name}`);
+    if (duchy) hierarchy.push(`Duché: ${duchy.name}`);
+    if (archduchy) hierarchy.push(`Archiduché: ${archduchy.name}`);
+    if (kingdom) hierarchy.push(`Royaume: ${kingdom.name}`);
+    if (empire) hierarchy.push(`Empire: ${empire.name}`);
+    setList(feudalSection, infoFeudalList, hierarchy);
     const sancts = sanctuaryMap[id] || [];
-    setList(infoSanctuaryRow, infoSanctuaryList, sancts.map(s => `${religionMap[s.religion_id]?.name || ''}${s.active ? ' (actif)' : ' (inactif)'}`));
-    setRow(infoPrioryRow, infoPriory, religionMap[info.priory_religion_id]?.name);
-    setRow(infoChurchRow, infoChurch, religionMap[info.church_religion_id]?.name);
-    setRow(infoCathedralRow, infoCathedral, religionMap[info.cathedral_religion_id]?.name);
-    setRow(infoBishopRow, infoBishop, info.bishop ? 'Oui' : '');
-    setList(infoCanonicalRow, infoCanonicalList, (canonicalLandMap[id] || []).map(rid => baronyMeta[rid]?.name || ''));
+    const buildings = [];
+    sancts.forEach(s => {
+      const rname = religionMap[s.religion_id]?.name || '';
+      buildings.push(`Sanctuaire: ${rname}${s.active ? ' (actif)' : ' (inactif)'}`);
+    });
+    if (info.priory_religion_id) buildings.push(`Prieuré: ${religionMap[info.priory_religion_id]?.name || ''}`);
+    if (info.church_religion_id) buildings.push(`Église: ${religionMap[info.church_religion_id]?.name || ''}`);
+    if (info.cathedral_religion_id) buildings.push(`Cathédrale: ${religionMap[info.cathedral_religion_id]?.name || ''}`);
+    if (info.bishop) buildings.push('Évêque');
+    setList(religiousSection, infoReligiousList, buildings);
     if (filterManager && filterSelect && filterSelect.value === 'distance') {
       filterManager.applyFilter('distance');
     }

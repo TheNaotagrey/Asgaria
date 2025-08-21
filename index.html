@@ -28,33 +28,17 @@
     </div>
     <aside id="infoPanel" class="info-panel" style="display:none;">
       <h2>Baronnie sélectionnée</h2>
-      <section class="info-group">
-        <h3>Général</h3>
-        <div class="info-row" id="infoIdRow"><strong>ID :</strong> <span id="infoId"></span></div>
-        <div class="info-row" id="infoNameRow"><strong>Nom :</strong> <span id="infoName"></span></div>
-        <div class="info-row" id="infoSeigneurRow"><strong>Seigneur :</strong> <span id="infoSeigneur"></span></div>
-        <div class="info-row" id="infoCultureRow"><strong>Culture :</strong> <span id="infoCulture"></span></div>
-        <div class="info-row" id="infoPlayerRow"><strong>Joueur :</strong> <span id="infoPlayer"></span></div>
-      </section>
-      <section class="info-group">
+      <div class="info-row" id="infoBaronyLine"></div>
+      <div class="info-row" id="infoOwnerLine"></div>
+      <div class="info-row" id="infoReligionLine"></div>
+      <div class="info-row" id="infoCultureLine"></div>
+      <section class="info-group" id="feudalSection">
         <h3>Hiérarchie féodale</h3>
-        <div class="info-row" id="infoViscountyRow"><strong>Vicomté :</strong> <span id="infoViscounty"></span></div>
-        <div class="info-row" id="infoCountyRow"><strong>Comté :</strong> <span id="infoCounty"></span></div>
-        <div class="info-row" id="infoMarquisateRow"><strong>Marquisat :</strong> <span id="infoMarquisate"></span></div>
-        <div class="info-row" id="infoDuchyRow"><strong>Duché :</strong> <span id="infoDuchy"></span></div>
-        <div class="info-row" id="infoArchduchyRow"><strong>Archiduché :</strong> <span id="infoArchduchy"></span></div>
-        <div class="info-row" id="infoKingdomRow"><strong>Royaume :</strong> <span id="infoKingdom"></span></div>
-        <div class="info-row" id="infoEmpireRow"><strong>Empire :</strong> <span id="infoEmpire"></span></div>
+        <ul id="infoFeudalList"></ul>
       </section>
-      <section class="info-group">
-        <h3>Religion</h3>
-        <div class="info-row" id="infoReligionRow"><strong>Religion :</strong> <span id="infoReligion"></span></div>
-        <div class="info-row" id="infoSanctuaryRow"><strong>Sanctuaires :</strong> <ul id="infoSanctuaryList"></ul></div>
-        <div class="info-row" id="infoPrioryRow"><strong>Prieuré :</strong> <span id="infoPriory"></span></div>
-        <div class="info-row" id="infoChurchRow"><strong>Église :</strong> <span id="infoChurch"></span></div>
-        <div class="info-row" id="infoCathedralRow"><strong>Cathédrale :</strong> <span id="infoCathedral"></span></div>
-        <div class="info-row" id="infoBishopRow"><strong>Évêque :</strong> <span id="infoBishop"></span></div>
-        <div class="info-row" id="infoCanonicalRow"><strong>Terres canoniques :</strong> <ul id="infoCanonicalList"></ul></div>
+      <section class="info-group" id="religiousBuildingsSection">
+        <h3>Bâtiments religieux</h3>
+        <ul id="infoReligiousList"></ul>
       </section>
     </aside>
     <aside id="seaInfoPanel" class="info-panel" style="display:none;">
