@@ -1,7 +1,7 @@
 (() => {
   const API_BASE = location.origin === 'null' ? 'http://localhost:3000' : '';
-  const originalWidth = 1724;
-  const originalHeight = 1291;
+  let mapWidth = 0;
+  let mapHeight = 0;
   const terrainColor = [239, 228, 176];
   const playerColor = [82, 190, 128];
   const npcColor = [231, 76, 60];
@@ -31,8 +31,6 @@
     const resp = await fetch(API_BASE + endpoint);
     pixelData = await resp.json();
     rebuildPixelMap();
-    initColorMap();
-    drawAll();
   }
 
   async function loadMetaData() {
@@ -110,18 +108,17 @@
     });
   }
 
-  const pixelMap = Array.from({ length: originalHeight }, () => new Array(originalWidth).fill(0));
+  let pixelMap = [];
   function rebuildPixelMap() {
-    for (let y = 0; y < originalHeight; y++) pixelMap[y].fill(0);
+    pixelMap = Array.from({ length: mapHeight }, () => new Array(mapWidth).fill(0));
     Object.entries(pixelData).forEach(([id, coords]) => {
       coords.forEach(([x, y]) => {
-        if (y >= 0 && y < originalHeight && x >= 0 && x < originalWidth) {
+        if (y >= 0 && y < mapHeight && x >= 0 && x < mapWidth) {
           pixelMap[y][x] = String(id);
         }
       });
     });
   }
-  rebuildPixelMap();
 
   function hslToRgb(h, s, l) {
     s /= 100;
@@ -206,10 +203,7 @@
   const infoPlayer = document.getElementById('infoPlayer');
   const infoCanonical = document.getElementById('infoCanonical');
 
-  const ctx = pixelCanvas.getContext('2d');
-  pixelCanvas.width = originalWidth;
-  pixelCanvas.height = originalHeight;
-  ctx.imageSmoothingEnabled = false;
+  let ctx;
 
   let scale = 1;
   let offsetX = 0;
@@ -228,18 +222,18 @@
   function fitToContainer() {
     const contW = mapContainer.clientWidth;
     const contH = mapContainer.clientHeight;
-    scale = Math.min(contW / originalWidth, contH / originalHeight);
-    offsetX = (contW - originalWidth * scale) / 2;
-    offsetY = (contH - originalHeight * scale) / 2;
+    scale = Math.min(contW / mapWidth, contH / mapHeight);
+    offsetX = (contW - mapWidth * scale) / 2;
+    offsetY = (contH - mapHeight * scale) / 2;
     applyTransform();
   }
 
   function drawAll() {
-    const imageData = ctx.createImageData(originalWidth, originalHeight);
+    const imageData = ctx.createImageData(mapWidth, mapHeight);
     const data = imageData.data;
     let idx = 0;
-    for (let y = 0; y < originalHeight; y++) {
-      for (let x = 0; x < originalWidth; x++) {
+    for (let y = 0; y < mapHeight; y++) {
+      for (let x = 0; x < mapWidth; x++) {
         const id = pixelMap[y][x];
         if (id && (colorMap[id] || (currentFilter === 'canonical' && canonicalPatterns[id]))) {
           if (currentFilter === 'canonical' && canonicalPatterns[id]) {
@@ -368,7 +362,7 @@
   function handleCanvasClick(e) {
     if (panning) return;
     const [x, y] = getMapCoordinates(e);
-    if (x < 0 || y < 0 || x >= originalWidth || y >= originalHeight) return;
+    if (x < 0 || y < 0 || x >= mapWidth || y >= mapHeight) return;
     const idAtPixel = pixelMap[y][x];
     if (idAtPixel) {
       selectBarony(idAtPixel);
@@ -666,18 +660,26 @@
   });
 
   document.addEventListener('DOMContentLoaded', () => {
-    Promise.all([loadPixelData(), loadMetaData()]).then(() => {
-      if (baseMap.complete) {
-        fitToContainer();
+    const baseMapLoaded = baseMap.complete
+      ? Promise.resolve()
+      : new Promise(res => (baseMap.onload = res));
+    baseMapLoaded.then(() => {
+      mapWidth = baseMap.naturalWidth;
+      mapHeight = baseMap.naturalHeight;
+      baseMap.style.width = mapWidth + 'px';
+      baseMap.style.height = mapHeight + 'px';
+      pixelCanvas.width = mapWidth;
+      pixelCanvas.height = mapHeight;
+      pixelCanvas.style.width = mapWidth + 'px';
+      pixelCanvas.style.height = mapHeight + 'px';
+      ctx = pixelCanvas.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+      Promise.all([loadPixelData(), loadMetaData()]).then(() => {
+        initColorMap();
         applyFilter(filterSelect ? filterSelect.value : '');
+        fitToContainer();
         drawAll();
-      } else {
-        baseMap.onload = () => {
-          fitToContainer();
-          applyFilter(filterSelect ? filterSelect.value : '');
-          drawAll();
-        };
-      }
+      });
     });
   });
 })();
