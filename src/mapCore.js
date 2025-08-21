@@ -114,6 +114,12 @@
       return [r, g, b, 100];
     }
 
+    function hashCoords(x, y, seed = 0) {
+      let h = x * 374761393 + y * 668265263 + seed * 982451653;
+      h = (h ^ (h >>> 13)) * 1274126177;
+      return (h ^ (h >>> 16)) >>> 0;
+    }
+
     // color map is expected to be provided externally
 
     function drawAll() {
@@ -126,7 +132,10 @@
           if (id && (colorMap[id] || canonicalPatterns[id])) {
             if (canonicalPatterns[id]) {
               const cols = canonicalPatterns[id];
-              const col = cols[(x + y) % cols.length];
+              const cellSize = 6;
+              const colIndex =
+                hashCoords(Math.floor(x / cellSize), Math.floor(y / cellSize), parseInt(id, 10)) % cols.length;
+              const col = cols[colIndex];
               data[idx++] = col[0];
               data[idx++] = col[1];
               data[idx++] = col[2];
