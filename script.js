@@ -74,7 +74,7 @@
     if (infoPanel) infoPanel.style.display = 'block';
     if (editIdInput) editIdInput.value = id;
     if (editNameInput) editNameInput.value = baronyMeta[id]?.name || '';
-    if (filterManager && filterSelect) {
+    if (filterManager && filterSelect && filterSelect.value) {
       filterManager.applyFilter(filterSelect.value);
     }
   }
