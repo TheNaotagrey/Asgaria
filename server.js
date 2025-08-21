@@ -18,7 +18,8 @@ const VALID_TABLES = new Set([
   'users','religions','cultures','seigneurs','empires','kingdoms','archduchies',
   'duchies','marquisates','counties','viscounties','baronies','barony_pixels',
   'canonical_lands','inventaire','seigneuries','transactions','barony_properties',
-  'building_properties','infrastructure_properties','barony_connections','trade_routes','tags','spells'
+  'building_properties','infrastructure_properties','barony_connections','trade_routes','tags','spells',
+  'maritime_zones','maritime_zone_pixels','maritime_zone_connections','maritime_zone_baronies'
 ]);
 
 // create tables if they do not exist
@@ -148,6 +149,29 @@ CREATE TABLE IF NOT EXISTS trade_routes (
   PRIMARY KEY(barony_id_1, barony_id_2),
   FOREIGN KEY(barony_id_1) REFERENCES baronies(id),
   FOREIGN KEY(barony_id_2) REFERENCES baronies(id)
+);
+CREATE TABLE IF NOT EXISTS maritime_zones (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT
+);
+CREATE TABLE IF NOT EXISTS maritime_zone_pixels (
+  zone_id INTEGER PRIMARY KEY REFERENCES maritime_zones(id),
+  data BLOB
+);
+CREATE TABLE IF NOT EXISTS maritime_zone_connections (
+  zone_id_1 INTEGER NOT NULL,
+  zone_id_2 INTEGER NOT NULL,
+  CHECK (zone_id_1 < zone_id_2),
+  PRIMARY KEY(zone_id_1, zone_id_2),
+  FOREIGN KEY(zone_id_1) REFERENCES maritime_zones(id),
+  FOREIGN KEY(zone_id_2) REFERENCES maritime_zones(id)
+);
+CREATE TABLE IF NOT EXISTS maritime_zone_baronies (
+  zone_id INTEGER NOT NULL,
+  barony_id INTEGER NOT NULL,
+  PRIMARY KEY(zone_id, barony_id),
+  FOREIGN KEY(zone_id) REFERENCES maritime_zones(id),
+  FOREIGN KEY(barony_id) REFERENCES baronies(id)
 );
 CREATE TABLE IF NOT EXISTS inventaire (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2195,6 +2219,60 @@ app.delete('/api/trade_routes', requireAdmin, (req,res)=>{
   });
 });
 
+// Maritime zones CRUD
+const maritimeZoneFields = ['name'];
+app.get('/api/maritime_zones', (req,res)=>{ list('maritime_zones')(req,res); });
+app.post('/api/maritime_zones', requireAdmin, (req,res)=>{ create('maritime_zones', maritimeZoneFields)(req,res); });
+app.put('/api/maritime_zones/:id', requireAdmin, (req,res)=>{ update('maritime_zones', maritimeZoneFields)(req,res); });
+app.delete('/api/maritime_zones/:id', requireAdmin, (req,res)=>{
+  db.run('DELETE FROM maritime_zones WHERE id=?',[req.params.id],function(err){
+    if(err) return handleError(res, err);
+    res.json({deleted: this.changes});
+  });
+});
+
+// Maritime zone adjacency
+app.get('/api/maritime_zone_connections', (req,res)=>{ list('maritime_zone_connections')(req,res); });
+app.post('/api/maritime_zone_connections', requireAdmin, (req,res)=>{
+  let { zone_id_1, zone_id_2 } = req.body;
+  zone_id_1 = parseInt(zone_id_1);
+  zone_id_2 = parseInt(zone_id_2);
+  if(!zone_id_1 || !zone_id_2 || zone_id_1 === zone_id_2){
+    return res.status(400).json({error:'Invalid maritime zone ids'});
+  }
+  const [id1,id2] = zone_id_1 < zone_id_2 ? [zone_id_1, zone_id_2] : [zone_id_2, zone_id_1];
+  db.run('INSERT OR IGNORE INTO maritime_zone_connections (zone_id_1, zone_id_2) VALUES (?,?)',[id1,id2],function(err){
+    if(err) return handleError(res, err);
+    res.json({added: this.changes});
+  });
+});
+app.delete('/api/maritime_zone_connections', requireAdmin, (req,res)=>{
+  let { zone_id_1, zone_id_2 } = req.body;
+  zone_id_1 = parseInt(zone_id_1);
+  zone_id_2 = parseInt(zone_id_2);
+  if(!zone_id_1 || !zone_id_2){
+    return res.status(400).json({error:'Invalid maritime zone ids'});
+  }
+  const [id1,id2] = zone_id_1 < zone_id_2 ? [zone_id_1, zone_id_2] : [zone_id_2, zone_id_1];
+  db.run('DELETE FROM maritime_zone_connections WHERE zone_id_1=? AND zone_id_2=?',[id1,id2],function(err){
+    if(err) return handleError(res, err);
+    res.json({deleted: this.changes});
+  });
+});
+
+// Maritime zone to barony links
+app.get('/api/maritime_zone_baronies', (req,res)=>{ list('maritime_zone_baronies')(req,res); });
+app.post('/api/maritime_zone_baronies', requireAdmin, (req,res)=>{
+  create('maritime_zone_baronies',['zone_id','barony_id'])(req,res);
+});
+app.delete('/api/maritime_zone_baronies', requireAdmin, (req,res)=>{
+  const { zone_id, barony_id } = req.query;
+  db.run('DELETE FROM maritime_zone_baronies WHERE zone_id=? AND barony_id=?',[zone_id,barony_id],function(err){
+    if(err) return handleError(res, err);
+    res.json({deleted: this.changes});
+  });
+});
+
 // Trade partners API
 app.get('/api/trade_partners', (req, res) => {
   const baronyId = parseInt(req.query.barony_id, 10);
@@ -2251,6 +2329,49 @@ app.put('/api/barony_pixels', (req, res) => {
   const data = req.body || {};
   db.serialize(() => {
     const stmt = db.prepare('INSERT OR REPLACE INTO barony_pixels(barony_id,data) VALUES (?,?)');
+    for (const [id, coords] of Object.entries(data)) {
+      const buf = zlib.gzipSync(JSON.stringify(coords));
+      stmt.run(id, buf);
+    }
+    stmt.finalize(err => {
+      if (err) return handleError(res, err);
+      res.json({ok: true});
+    });
+  });
+});
+
+app.get('/api/maritime_zone_pixels', (req, res) => {
+  const id = req.query.id;
+  if (id) {
+    db.get('SELECT data FROM maritime_zone_pixels WHERE zone_id=?', [id], (err, row) => {
+      if (err) return handleError(res, err);
+      if (!row) return res.json([]);
+      try {
+        const json = zlib.gunzipSync(row.data).toString();
+        res.json(JSON.parse(json));
+      } catch(e){
+        handleError(res, e);
+      }
+    });
+  } else {
+    db.all('SELECT zone_id, data FROM maritime_zone_pixels', [], (err, rows) => {
+      if (err) return handleError(res, err);
+      const out = {};
+      rows.forEach(r => {
+        try {
+          const json = zlib.gunzipSync(r.data).toString();
+          out[r.zone_id] = JSON.parse(json);
+        } catch {}
+      });
+      res.json(out);
+    });
+  }
+});
+
+app.put('/api/maritime_zone_pixels', (req, res) => {
+  const data = req.body || {};
+  db.serialize(() => {
+    const stmt = db.prepare('INSERT OR REPLACE INTO maritime_zone_pixels(zone_id,data) VALUES (?,?)');
     for (const [id, coords] of Object.entries(data)) {
       const buf = zlib.gzipSync(JSON.stringify(coords));
       stmt.run(id, buf);
