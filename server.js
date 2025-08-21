@@ -1627,8 +1627,15 @@ app.post('/api/building', (req,res)=>{
         const uses = {};
         (info.effects || []).forEach((eff, idx) => {
           if (eff.type === 'instant_production' && eff.uses_per_month != null) {
-            const existRem = existing[`effect_${idx}_remaining`] || 0;
-            uses[`effect_${idx}_remaining`] = existRem + (eff.uses_per_month * qty);
+            const key = `effect_${idx}_remaining`;
+            const existRem = existing[key] || 0;
+            if (eff.per_building === false) {
+              const builtBefore = existing.built || 0;
+              const add = builtBefore > 0 ? 0 : eff.uses_per_month;
+              if (add || existRem) uses[key] = existRem + add;
+            } else {
+              uses[key] = existRem + (eff.uses_per_month * qty);
+            }
           }
         });
         buildings[bId] = { ...existing, ...uses, ...(props || {}), built: newBuilt, active: newActive };
@@ -1663,8 +1670,15 @@ app.post('/api/infrastructure', (req,res)=>{
         const uses = {};
         (info.effects || []).forEach((eff, idx) => {
           if (eff.type === 'instant_production' && eff.uses_per_month != null) {
-            const existRem = existing[`effect_${idx}_remaining`] || 0;
-            uses[`effect_${idx}_remaining`] = existRem + (eff.uses_per_month * qty);
+            const key = `effect_${idx}_remaining`;
+            const existRem = existing[key] || 0;
+            if (eff.per_building === false) {
+              const builtBefore = existing.built || 0;
+              const add = builtBefore > 0 ? 0 : eff.uses_per_month;
+              if (add || existRem) uses[key] = existRem + add;
+            } else {
+              uses[key] = existRem + (eff.uses_per_month * qty);
+            }
           }
         });
         infrastructures[iId] = { ...existing, ...uses, ...(props || {}), built: newBuilt };
@@ -1774,8 +1788,12 @@ app.post('/api/building/destroy', (req,res)=>{
         effects.forEach((eff, idx) => {
           if (eff.type === 'instant_production' && eff.uses_per_month != null) {
             const key = `effect_${idx}_remaining`;
-            const rem = (binfo[key] || 0) - eff.uses_per_month;
-            if (rem > 0) updated[key] = rem; else delete updated[key];
+            if (eff.per_building === false) {
+              if (built <= 0) delete updated[key];
+            } else {
+              const rem = (binfo[key] || 0) - eff.uses_per_month;
+              if (rem > 0) updated[key] = rem; else delete updated[key];
+            }
           }
         });
       } catch {}
@@ -1856,8 +1874,12 @@ app.post('/api/infrastructure/destroy', (req,res)=>{
         effects.forEach((eff, idx) => {
           if (eff.type === 'instant_production' && eff.uses_per_month != null) {
             const key = `effect_${idx}_remaining`;
-            const rem = (entry[key] || 0) - (eff.uses_per_month || 0);
-            if (rem > 0) updated[key] = rem; else delete updated[key];
+            if (eff.per_building === false) {
+              if ((updated.built || 0) <= 0) delete updated[key];
+            } else {
+              const rem = (entry[key] || 0) - (eff.uses_per_month || 0);
+              if (rem > 0) updated[key] = rem; else delete updated[key];
+            }
           }
           if (eff.type === 'variable_workers') {
             const key = `effect_${idx}_workers`;

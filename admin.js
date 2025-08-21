@@ -256,6 +256,15 @@ function openInstantProductionPopup(initial, onSave) {
   usesDiv.appendChild(usesLabel);
   usesDiv.appendChild(usesInput);
 
+  const perDiv = document.createElement('div');
+  const perLabel = document.createElement('label');
+  perLabel.textContent = 'Par bâtiment';
+  const perInput = document.createElement('input');
+  perInput.type = 'checkbox';
+  perInput.checked = initial.per_building !== false;
+  perDiv.appendChild(perLabel);
+  perDiv.appendChild(perInput);
+
   const costDiv = document.createElement('div');
   const costLabel = document.createElement('label');
   costLabel.textContent = 'Coûts';
@@ -266,6 +275,7 @@ function openInstantProductionPopup(initial, onSave) {
   popup.appendChild(resDiv);
   popup.appendChild(amtDiv);
   popup.appendChild(usesDiv);
+  popup.appendChild(perDiv);
   popup.appendChild(costDiv);
 
   const btnRow = document.createElement('div');
@@ -294,6 +304,7 @@ function openInstantProductionPopup(initial, onSave) {
       resource: resSel.value,
       amount: parseInt(amtInput.value, 10) || 0,
       uses_per_month: parseInt(usesInput.value, 10) || 0,
+      per_building: perInput.checked,
       costs,
     });
     overlay.remove();
@@ -690,8 +701,9 @@ function makeEffectsInput(val, allowedTypes){
           if(d.resource && d.amount){
             const resObj = resourceSelect.find(r=>r.id === d.resource);
             const costCount = d.costs ? Object.keys(d.costs).length : 0;
+            const usesTxt = d.uses_per_month ? `, ${d.uses_per_month}/mois${d.per_building === false ? ' total' : '/bât'}` : '';
             summarySpan.textContent = `${d.amount} ${resObj ? resObj.name : d.resource}` +
-              (d.uses_per_month ? `, ${d.uses_per_month}/mois` : '') +
+              usesTxt +
               (costCount ? `, coûts: ${costCount}` : '');
           }
         }else if(typeSel.value === 'variable_workers'){
@@ -837,7 +849,14 @@ function makeEffectsInput(val, allowedTypes){
         let data = {};
         try{ data = JSON.parse(rw.querySelector('input[data-role="data"]').value || '{}'); }catch(e){ data = {}; }
         if(data.resource && data.amount){
-          res.push({type, resource: data.resource, amount: data.amount, uses_per_month: data.uses_per_month || 0, costs: data.costs || {}});
+          res.push({
+            type,
+            resource: data.resource,
+            amount: data.amount,
+            uses_per_month: data.uses_per_month || 0,
+            per_building: data.per_building !== false,
+            costs: data.costs || {}
+          });
         }
       }else if(type === 'variable_workers'){
         let data = {};
