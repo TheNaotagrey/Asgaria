@@ -310,6 +310,10 @@
   const brushSizeInput = document.getElementById('brushSize');
   const brushSizeValue = document.getElementById('brushSizeValue');
 
+  if (newBaronyBtn && mapMode === 'sea') {
+    newBaronyBtn.title = 'Nouvelle zone maritime';
+  }
+
   // Save pixels to the server
   if (saveBtn) saveBtn.addEventListener('click', () => {
     fetch(API_BASE + pixelEndpoint, {
@@ -901,9 +905,13 @@
     saveEntityToServer(newId, { name: newName });
   }
 
-  function saveEntityToServer(id, data) {
-    fetch(API_BASE + entityEndpoint + '/' + id, {
-      method: 'PUT',
+  function saveEntityToServer(id, data, method = 'PUT') {
+    const url = method === 'POST'
+      ? API_BASE + entityEndpoint
+      : API_BASE + entityEndpoint + '/' + id;
+    if (method === 'POST') data.id = id;
+    fetch(url, {
+      method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
     });
@@ -1354,7 +1362,8 @@
   if (filterSelect) filterSelect.addEventListener('change', () => applyFilter(filterSelect.value));
   if (deleteBtn) deleteBtn.addEventListener('click', deleteBarony);
   if (selectBtn) selectBtn.addEventListener('click', () => {
-    const id = prompt('ID de la baronnie à sélectionner ?');
+    const label = mapMode === 'sea' ? 'zone maritime' : 'baronnie';
+    const id = prompt(`ID de la ${label} à sélectionner ?`);
     if (id) selectBarony(id.trim());
   });
   if (addCanonicalBtn) addCanonicalBtn.addEventListener('click', () => {
@@ -1415,21 +1424,60 @@
   if (newBaronyBtn)
     newBaronyBtn.addEventListener('click', () => {
       if (!editMode) return;
-      const newId = createNewId();
-      // Enregistrer création pour l’undo
-      undoStack.push({ type: 'create', id: newId });
-      pixelData[newId] = [];
       if (mapMode === 'sea') {
-        baronyMeta[newId] = { id: newId, name: '' };
-        saveEntityToServer(newId, { name: '' });
+        fetch(API_BASE + entityEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: '' })
+        })
+          .then(r => r.json())
+          .then(res => {
+            const newId = String(res.id);
+            undoStack.push({ type: 'create', id: newId });
+            pixelData[newId] = [];
+            baronyMeta[newId] = { id: newId, name: '' };
+            colorMap[newId] = generateColor(newId);
+            currentSelectedId = newId;
+            selectBarony(newId);
+            setActiveTool('brush');
+          });
       } else {
-        baronyMeta[newId] = { id: newId, name: '', seigneur_id: null, religion_pop_id: null, county_id: null, viscounty_id: null, culture_id: null, has_sanctuary: 0, has_priory: 0, has_church: 0, has_cathedral: 0, player: 0 };
-        saveEntityToServer(newId, { name: '', seigneur_id: null, religion_pop_id: null, county_id: null, viscounty_id: null, culture_id: null, has_sanctuary: 0, has_priory: 0, has_church: 0, has_cathedral: 0, player: 0 });
+        const newId = createNewId();
+        // Enregistrer création pour l’undo
+        undoStack.push({ type: 'create', id: newId });
+        pixelData[newId] = [];
+        baronyMeta[newId] = {
+          id: newId,
+          name: '',
+          seigneur_id: null,
+          religion_pop_id: null,
+          county_id: null,
+          viscounty_id: null,
+          culture_id: null,
+          has_sanctuary: 0,
+          has_priory: 0,
+          has_church: 0,
+          has_cathedral: 0,
+          player: 0
+        };
+        saveEntityToServer(newId, {
+          name: '',
+          seigneur_id: null,
+          religion_pop_id: null,
+          county_id: null,
+          viscounty_id: null,
+          culture_id: null,
+          has_sanctuary: 0,
+          has_priory: 0,
+          has_church: 0,
+          has_cathedral: 0,
+          player: 0
+        }, 'POST');
+        colorMap[newId] = generateColor(newId);
+        currentSelectedId = newId;
+        selectBarony(newId);
+        setActiveTool('brush');
       }
-      colorMap[newId] = generateColor(newId);
-      currentSelectedId = newId;
-      selectBarony(newId);
-      setActiveTool('brush');
     });
   if (brushSizeInput)
     brushSizeInput.addEventListener('input', () => {
