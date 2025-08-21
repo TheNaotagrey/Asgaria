@@ -159,6 +159,16 @@
   initColorMap();
 
   function randomizeColors() {
+    if (mapMode === 'sea') {
+      colorMap = {};
+      Object.keys(pixelData).forEach(id => {
+        const hue = Math.floor(Math.random() * 360);
+        const [r, g, b] = hslToRgb(hue, 65, 65);
+        colorMap[id] = [r, g, b, 100];
+      });
+      drawAll();
+      return;
+    }
     if (filterSelect && filterSelect.value) {
       applyFilter(filterSelect.value, true);
       return;
