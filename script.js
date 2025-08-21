@@ -46,6 +46,11 @@
   const editPrioryReligionSelect = document.getElementById('editPrioryReligion');
   const editChurchReligionSelect = document.getElementById('editChurchReligion');
   const editCathedralReligionSelect = document.getElementById('editCathedralReligion');
+  const editSeigneurSelect = document.getElementById('editSeigneur');
+  const editCultureSelect = document.getElementById('editCulture');
+  const editViscountySelect = document.getElementById('editViscounty');
+  const editCountySelect = document.getElementById('editCounty');
+  const editPlayerCheckbox = document.getElementById('editPlayer');
 
   function updateLegend(groups) {
     if (!legendDiv) return;
@@ -117,6 +122,87 @@
     });
   }
 
+  function populateSelect(select, map, placeholder) {
+    if (!select) return;
+    const base = select.firstElementChild ? select.firstElementChild.cloneNode(true) : null;
+    select.innerHTML = '';
+    if (base) {
+      select.appendChild(base);
+    } else if (placeholder) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = placeholder;
+      select.appendChild(opt);
+    }
+    Object.values(map).forEach(obj => {
+      const opt = document.createElement('option');
+      opt.value = obj.id;
+      opt.textContent = obj.name;
+      select.appendChild(opt);
+    });
+  }
+
+  function saveBaronyFields(fields) {
+    if (!currentSelectedId) return;
+    const payload = { ...baronyMeta[currentSelectedId], ...fields };
+    delete payload.id;
+    fetch(`${API_BASE}/api/baronies/${currentSelectedId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then(res => {
+      if (res.ok) {
+        baronyMeta[currentSelectedId] = { ...baronyMeta[currentSelectedId], ...fields };
+      }
+    });
+  }
+
+  if (editSeigneurSelect) {
+    editSeigneurSelect.addEventListener('change', () => {
+      saveBaronyFields({ seigneur_id: parseInt(editSeigneurSelect.value, 10) || null });
+    });
+  }
+  if (editReligionPopSelect) {
+    editReligionPopSelect.addEventListener('change', () => {
+      saveBaronyFields({ religion_pop_id: parseInt(editReligionPopSelect.value, 10) || null });
+    });
+  }
+  if (editPrioryReligionSelect) {
+    editPrioryReligionSelect.addEventListener('change', () => {
+      saveBaronyFields({ priory_religion_id: parseInt(editPrioryReligionSelect.value, 10) || null });
+    });
+  }
+  if (editChurchReligionSelect) {
+    editChurchReligionSelect.addEventListener('change', () => {
+      saveBaronyFields({ church_religion_id: parseInt(editChurchReligionSelect.value, 10) || null });
+    });
+  }
+  if (editCathedralReligionSelect) {
+    editCathedralReligionSelect.addEventListener('change', () => {
+      saveBaronyFields({ cathedral_religion_id: parseInt(editCathedralReligionSelect.value, 10) || null });
+    });
+  }
+  if (editCultureSelect) {
+    editCultureSelect.addEventListener('change', () => {
+      saveBaronyFields({ culture_id: parseInt(editCultureSelect.value, 10) || null });
+    });
+  }
+  if (editViscountySelect) {
+    editViscountySelect.addEventListener('change', () => {
+      saveBaronyFields({ viscounty_id: parseInt(editViscountySelect.value, 10) || null });
+    });
+  }
+  if (editCountySelect) {
+    editCountySelect.addEventListener('change', () => {
+      saveBaronyFields({ county_id: parseInt(editCountySelect.value, 10) || null });
+    });
+  }
+  if (editPlayerCheckbox) {
+    editPlayerCheckbox.addEventListener('change', () => {
+      saveBaronyFields({ player: editPlayerCheckbox.checked ? 1 : 0 });
+    });
+  }
+
   function handleSelect(id) {
     if (pendingAction && pendingLinkId && id && id !== pendingLinkId) {
       const sourceId = pendingLinkId;
@@ -155,6 +241,11 @@
     if (editPrioryReligionSelect) editPrioryReligionSelect.value = baronyMeta[id]?.priory_religion_id || '';
     if (editChurchReligionSelect) editChurchReligionSelect.value = baronyMeta[id]?.church_religion_id || '';
     if (editCathedralReligionSelect) editCathedralReligionSelect.value = baronyMeta[id]?.cathedral_religion_id || '';
+    if (editSeigneurSelect) editSeigneurSelect.value = baronyMeta[id]?.seigneur_id || '';
+    if (editCultureSelect) editCultureSelect.value = baronyMeta[id]?.culture_id || '';
+    if (editViscountySelect) editViscountySelect.value = baronyMeta[id]?.viscounty_id || '';
+    if (editCountySelect) editCountySelect.value = baronyMeta[id]?.county_id || '';
+    if (editPlayerCheckbox) editPlayerCheckbox.checked = !!baronyMeta[id]?.player;
 
     if (filterManager && filterSelect && filterSelect.value) {
       filterManager.applyFilter(filterSelect.value);
@@ -184,14 +275,17 @@
       ]);
       seigneurMap = {};
       seigneurs.forEach(s => { seigneurMap[s.id] = s; });
+      populateSelect(editSeigneurSelect, seigneurMap, 'Aucun');
       religionMap = {};
       religions.forEach(r => { religionMap[r.id] = r; });
       populateReligionSelects();
       cultureMapInfo = {};
       cultures.forEach(c => { cultureMapInfo[c.id] = c; });
+      populateSelect(editCultureSelect, cultureMapInfo, 'Aucune');
       countyMap = {};
       seigneurToCounty = {};
       counties.forEach(c => { countyMap[c.id] = c; if (c.seigneur_id) seigneurToCounty[c.seigneur_id] = c.id; });
+      populateSelect(editCountySelect, countyMap, 'Aucun');
       duchyMap = {};
       seigneurToDuchy = {};
       duchies.forEach(d => { duchyMap[d.id] = d; if (d.seigneur_id) seigneurToDuchy[d.seigneur_id] = d.id; });
@@ -201,6 +295,7 @@
       viscountyMap = {};
       seigneurToViscounty = {};
       viscounties.forEach(v => { viscountyMap[v.id] = v; if (v.seigneur_id) seigneurToViscounty[v.seigneur_id] = v.id; });
+      populateSelect(editViscountySelect, viscountyMap, 'Aucune');
       marquisateMap = {};
       seigneurToMarquisate = {};
       marquisates.forEach(m => { marquisateMap[m.id] = m; if (m.seigneur_id) seigneurToMarquisate[m.seigneur_id] = m.id; });
