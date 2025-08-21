@@ -930,20 +930,28 @@
         }
       }
     } else {
-      // Clic sur un pixel sans baronnie : remplir la zone contiguë de pixels vides.
+      // Clic sur un pixel sans baronnie : remplir la zone contiguë de pixels vides
+      // dont la couleur de fond est identique à celle du pixel cliqué.
       const queue = [[x, y]];
       const visited = new Set();
       const deltas = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+      const targetColor =
+        backgroundColors && backgroundColors[y] ? backgroundColors[y][x] : null;
       while (queue.length > 0) {
         const [cx, cy] = queue.pop();
         if (cx < 0 || cy < 0 || cx >= originalWidth || cy >= originalHeight) continue;
         const key = cy * originalWidth + cx;
         if (visited.has(key)) continue;
         visited.add(key);
-        // Stopper au niveau des barrières (eau, montagnes, frontières grises)
+        // Stopper au niveau des barrières (eau, montagnes, etc.)
         if (barrierMask && barrierMask[cy][cx]) continue;
         // Ne remplir que les pixels sans baronnie
         if (pixelMap[cy][cx] !== 0) continue;
+        // Vérifier que la couleur de fond correspond à celle d'origine
+        if (targetColor && backgroundColors) {
+          const bg = backgroundColors[cy][cx];
+          if (!bg || bg[0] !== targetColor[0] || bg[1] !== targetColor[1] || bg[2] !== targetColor[2]) continue;
+        }
         if (changes) changes.push({ x: cx, y: cy, oldId: null, newId: currentSelectedId });
         pixelMap[cy][cx] = currentSelectedId;
         if (!pixelData[currentSelectedId]) pixelData[currentSelectedId] = [];
