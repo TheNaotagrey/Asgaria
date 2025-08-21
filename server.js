@@ -1626,15 +1626,16 @@ app.post('/api/building', (req,res)=>{
         const existing = buildings[bId] || {};
         const uses = {};
         (info.effects || []).forEach((eff, idx) => {
-          if (eff.type === 'instant_production' && eff.uses_per_month != null) {
+          const upm = parseInt(eff.uses_per_month, 10);
+          if (eff.type === 'instant_production' && upm > 0) {
             const key = `effect_${idx}_remaining`;
             const existRem = existing[key] || 0;
             if (eff.per_building === false) {
               const builtBefore = existing.built || 0;
-              const add = builtBefore > 0 ? 0 : eff.uses_per_month;
+              const add = builtBefore > 0 ? 0 : upm;
               if (add || existRem) uses[key] = existRem + add;
             } else {
-              uses[key] = existRem + (eff.uses_per_month * qty);
+              uses[key] = existRem + (upm * qty);
             }
           }
         });
@@ -1669,15 +1670,16 @@ app.post('/api/infrastructure', (req,res)=>{
         const existing = infrastructures[iId] || {};
         const uses = {};
         (info.effects || []).forEach((eff, idx) => {
-          if (eff.type === 'instant_production' && eff.uses_per_month != null) {
+          const upm = parseInt(eff.uses_per_month, 10);
+          if (eff.type === 'instant_production' && upm > 0) {
             const key = `effect_${idx}_remaining`;
             const existRem = existing[key] || 0;
             if (eff.per_building === false) {
               const builtBefore = existing.built || 0;
-              const add = builtBefore > 0 ? 0 : eff.uses_per_month;
+              const add = builtBefore > 0 ? 0 : upm;
               if (add || existRem) uses[key] = existRem + add;
             } else {
-              uses[key] = existRem + (eff.uses_per_month * qty);
+              uses[key] = existRem + (upm * qty);
             }
           }
         });
@@ -1786,12 +1788,13 @@ app.post('/api/building/destroy', (req,res)=>{
       try {
         const effects = bprop.effects ? JSON.parse(bprop.effects) : [];
         effects.forEach((eff, idx) => {
-          if (eff.type === 'instant_production' && eff.uses_per_month != null) {
+          const upm = parseInt(eff.uses_per_month, 10);
+          if (eff.type === 'instant_production' && upm > 0) {
             const key = `effect_${idx}_remaining`;
             if (eff.per_building === false) {
               if (built <= 0) delete updated[key];
             } else {
-              const rem = (binfo[key] || 0) - eff.uses_per_month;
+              const rem = (binfo[key] || 0) - upm;
               if (rem > 0) updated[key] = rem; else delete updated[key];
             }
           }
@@ -1872,12 +1875,13 @@ app.post('/api/infrastructure/destroy', (req,res)=>{
       try {
         const effects = iprop.effects ? JSON.parse(iprop.effects) : [];
         effects.forEach((eff, idx) => {
-          if (eff.type === 'instant_production' && eff.uses_per_month != null) {
+          const upm = parseInt(eff.uses_per_month, 10);
+          if (eff.type === 'instant_production' && upm > 0) {
             const key = `effect_${idx}_remaining`;
             if (eff.per_building === false) {
               if ((updated.built || 0) <= 0) delete updated[key];
             } else {
-              const rem = (entry[key] || 0) - (eff.uses_per_month || 0);
+              const rem = (entry[key] || 0) - upm;
               if (rem > 0) updated[key] = rem; else delete updated[key];
             }
           }
@@ -1953,7 +1957,7 @@ app.post('/api/infrastructure/instant_production', (req,res)=>{
   const idx = Number.parseInt(index, 10);
   const qty = Number.parseInt(quantity, 10) || 0;
   if (Number.isNaN(iId) || Number.isNaN(idx) || qty <= 0) return res.status(400).json({ error: 'Quantité invalide' });
-  getSeigneurie(req, 'seigneuries.id as id, seigneuries.inventaire_id, seigneuries.infrastructures', (err, srow) => {
+  getSeigneurie(req, 'seigneuries.id as id, seigneuries.population, seigneuries.inventaire_id, seigneuries.infrastructures, seigneuries.buildings', (err, srow) => {
     if(err) return handleError(res, err);
     if(!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
     db.get('SELECT effects FROM infrastructure_properties WHERE id=?', [iId], (err2, iprop) => {
@@ -1964,34 +1968,77 @@ app.post('/api/infrastructure/instant_production', (req,res)=>{
       const infra = safeParse(srow.infrastructures, {});
       const entry = infra[iId] || infra[String(iId)] || {};
       const key = `effect_${idx}_remaining`;
+      const upm = parseInt(eff.uses_per_month, 10);
       const remaining = entry[key] || 0;
-      if(qty > remaining) return res.status(400).json({ error: 'Utilisations insuffisantes' });
+      if (upm > 0) {
+        if(qty > remaining) return res.status(400).json({ error: 'Utilisations insuffisantes' });
+      } else {
+        delete entry[key];
+      }
       const totalCosts = {};
       const costObj = eff.costs || {};
       for(const [resName, amt] of Object.entries(costObj)){
         totalCosts[resName] = (parseInt(amt,10) || 0) * qty;
       }
+      const produced = (parseInt(eff.amount,10) || 0) * qty;
       db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err3, inv)=>{
         if(err3) return handleError(res, err3);
         for(const [resName, amt] of Object.entries(totalCosts)){
           if((inv[resName] || 0) < amt) return res.status(400).json({ error: 'Ressources insuffisantes' });
         }
-        consumeResources(db, srow.id, totalCosts, err4 => {
-          if(err4) return handleError(res, err4);
-          const amount = (parseInt(eff.amount,10) || 0) * qty;
-          performTransaction(db, srow.id, eff.resource, amount, err5 => {
-            if(err5) return handleError(res, err5);
-            entry[key] = remaining - qty;
-            infra[iId] = entry;
-            db.run('UPDATE seigneuries SET infrastructures=? WHERE id=?', [JSON.stringify(infra), srow.id], function(err6){
-              if(err6) return handleError(res, err6);
-              db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err7, inventaire)=>{
-                if(err7) return handleError(res, err7);
-                res.json({ infrastructures: infra, inventaire });
+        const proceed = () => {
+          consumeResources(db, srow.id, totalCosts, err4 => {
+            if(err4) return handleError(res, err4);
+            performTransaction(db, srow.id, eff.resource, produced, err5 => {
+              if(err5) return handleError(res, err5);
+              if (upm > 0) entry[key] = remaining - qty; else delete entry[key];
+              infra[iId] = entry;
+              db.run('UPDATE seigneuries SET infrastructures=? WHERE id=?', [JSON.stringify(infra), srow.id], function(err6){
+                if(err6) return handleError(res, err6);
+                db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err7, inventaire)=>{
+                  if(err7) return handleError(res, err7);
+                  res.json({ infrastructures: infra, inventaire });
+                });
               });
             });
           });
-        });
+        };
+        if (eff.resource === 'hommes_darmes') {
+          db.all('SELECT id, workers_per_building FROM building_properties', [], (errB, bprops) => {
+            if (errB) return handleError(res, errB);
+            db.all('SELECT id, workers_per_building, effects FROM infrastructure_properties', [], (errI, iprops) => {
+              if (errI) return handleError(res, errI);
+              const buildings = safeParse(srow.buildings, {});
+              const infrastructures = safeParse(srow.infrastructures, {});
+              let employed = inv ? (inv.hommes_darmes || 0) : 0;
+              (bprops || []).forEach(bp => {
+                const info = buildings[bp.id] || { built:0, active:0 };
+                employed += (info.active || 0) * (bp.workers_per_building || 0);
+              });
+              (iprops || []).forEach(ip => {
+                const ent = infrastructures[ip.id] || infrastructures[String(ip.id)] || 0;
+                const count = typeof ent === 'object' ? (ent.built || 0) : ent;
+                if (count) {
+                  employed += count * (ip.workers_per_building || 0);
+                  const entObj = typeof ent === 'object' ? ent : {};
+                  const effs = safeParse(ip.effects, []);
+                  effs.forEach((ef, eidx) => {
+                    if (ef.type === 'variable_workers') {
+                      employed += entObj[`effect_${eidx}_workers`] || 0;
+                    }
+                  });
+                }
+              });
+              const population = srow.population || 0;
+              const menAtArms = inv ? (inv.hommes_darmes || 0) : 0;
+              if (menAtArms + produced > population) return res.status(400).json({ error: 'Population insuffisante' });
+              if (employed + produced > population) return res.status(400).json({ error: 'Travailleurs insuffisants' });
+              proceed();
+            });
+          });
+        } else {
+          proceed();
+        }
       });
     });
   });

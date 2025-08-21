@@ -91,7 +91,7 @@ class InfraProductionEffect extends Effect {
 }
 
 class InstantProductionEffect extends Effect {
-  constructor(resource, amount, costs = {}, usesPerMonth = 0, perBuilding = true) {
+  constructor(resource, amount, costs = {}, usesPerMonth = null, perBuilding = true) {
     super();
     this.resource = resource;
     this.amount = amount;
