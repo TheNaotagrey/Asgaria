@@ -34,7 +34,7 @@
   const pixelCanvas = document.getElementById('pixelCanvas');
   const mapContainer = document.getElementById('mapContainer');
   const infoPanel = document.getElementById('infoPanel');
-  const infoBaronyLine = document.getElementById('infoBaronyLine');
+  const baronyTitle = document.getElementById('baronyTitle');
   const infoOwnerLine = document.getElementById('infoOwnerLine');
   const infoReligionLine = document.getElementById('infoReligionLine');
   const infoCultureLine = document.getElementById('infoCultureLine');
@@ -164,7 +164,9 @@
     const info = baronyMeta[id] || {};
     if (infoPanel) infoPanel.style.display = 'block';
     if (seaInfoPanel) seaInfoPanel.style.display = 'none';
-    setLine(infoBaronyLine, `Baronnie: ${info.name || ''} (#${info.id || ''})`);
+    if (baronyTitle) {
+      baronyTitle.textContent = `Baronnie: ${info.name || ''} (#${info.id || ''})`;
+    }
     setLine(infoOwnerLine, info.seigneur_id ? `Propriétaire: ${seigneurMap[info.seigneur_id]?.name || ''}` : '');
     setLine(infoReligionLine, info.religion_pop_id ? `Religion: ${religionMap[info.religion_pop_id]?.name || ''}` : '');
     setLine(infoCultureLine, info.culture_id ? `Culture: ${cultureMapInfo[info.culture_id]?.name || ''}` : '');
