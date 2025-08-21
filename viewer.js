@@ -24,6 +24,9 @@
   let seigneurToViscounty = {}, seigneurToCounty = {}, seigneurToMarquisate = {}, seigneurToDuchy = {}, seigneurToArchduchy = {}, seigneurToKingdom = {}, seigneurToEmpire = {};
   let canonicalLandMap = {};
   let baronyAdjacency = {};
+  let mapData = {};
+
+  let filterManager = null;
 
   const baseMap = document.getElementById('baseMap');
   if (mapMode === 'sea' && baseMap) baseMap.src = 'zones_maritimes.png';
@@ -107,6 +110,9 @@
     infoCathedral.textContent = info.has_cathedral ? 'Oui' : 'Non';
     infoPlayer.textContent = info.player ? 'Oui' : 'Non';
     infoCanonical.textContent = (canonicalLandMap[id] || []).map(rid => religionMap[rid]?.name || '').join(', ');
+    if (filterManager && filterSelect) {
+      filterManager.applyFilter(filterSelect.value);
+    }
   }
 
   async function fetchData() {
@@ -126,7 +132,8 @@
         baronyAdjacency[c.zone_id_1].push(c.zone_id_2);
         baronyAdjacency[c.zone_id_2].push(c.zone_id_1);
       });
-      return { pixelData, baronyMeta, baronyAdjacency, mapWidth, mapHeight, mapMode };
+      mapData = { pixelData, baronyMeta, baronyAdjacency, mapWidth, mapHeight, mapMode };
+      return mapData;
     }
     const [baronies, seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires, canonicalLands, connections] = await Promise.all([
       fetch(API_BASE + '/api/baronies').then(r => r.json()),
@@ -184,7 +191,7 @@
       baronyAdjacency[c.barony_id_1].push(c.barony_id_2);
       baronyAdjacency[c.barony_id_2].push(c.barony_id_1);
     });
-    return {
+    mapData = {
       pixelData,
       baronyMeta,
       seigneurMap,
@@ -210,6 +217,7 @@
       mapHeight,
       mapMode
     };
+    return mapData;
   }
 
   document.addEventListener('DOMContentLoaded', () => {
@@ -227,11 +235,16 @@
         fetchData,
         onSelect: handleSelect,
         drawOverlay: () => {},
-        mapMode,
-        updateLegend
+        mapMode
       });
-      if (filterSelect) filterSelect.addEventListener('change', () => core.applyFilter(filterSelect.value));
-      if (randomBtn) randomBtn.addEventListener('click', () => core.randomizeColors());
+      core.ready.then(() => {
+        filterManager = mapFilters.init(core, mapData, { updateLegend });
+        if (filterSelect) {
+          filterSelect.addEventListener('change', () => filterManager.applyFilter(filterSelect.value));
+          filterManager.applyFilter(filterSelect.value);
+        }
+        if (randomBtn) randomBtn.addEventListener('click', () => filterManager.randomizeColors());
+      });
     });
   });
 })();

@@ -23,6 +23,9 @@
   let seigneurToCounty = {}, seigneurToDuchy = {}, seigneurToKingdom = {}, seigneurToViscounty = {}, seigneurToMarquisate = {}, seigneurToArchduchy = {}, seigneurToEmpire = {};
   let canonicalLandMap = {};
   let baronyAdjacency = {};
+  let mapData = {};
+
+  let filterManager = null;
 
   const baseMap = document.getElementById('baseMap');
   if (mapMode === 'sea' && baseMap) baseMap.src = 'zones_maritimes.png';
@@ -70,6 +73,9 @@
     if (infoPanel) infoPanel.style.display = 'block';
     if (editIdInput) editIdInput.value = id;
     if (editNameInput) editNameInput.value = baronyMeta[id]?.name || '';
+    if (filterManager && filterSelect) {
+      filterManager.applyFilter(filterSelect.value);
+    }
   }
 
   async function fetchData() {
@@ -132,7 +138,7 @@
         baronyAdjacency[c.barony_id_2].push(c.barony_id_1);
       });
     }
-    return {
+    mapData = {
       pixelData,
       baronyMeta,
       seigneurMap,
@@ -158,6 +164,7 @@
       mapHeight,
       mapMode
     };
+    return mapData;
   }
 
   document.addEventListener('DOMContentLoaded', () => {
@@ -175,11 +182,16 @@
         fetchData,
         onSelect: handleSelect,
         drawOverlay: () => {},
-        mapMode,
-        updateLegend
+        mapMode
       });
-      if (filterSelect) filterSelect.addEventListener('change', () => core.applyFilter(filterSelect.value));
-      if (randomBtn) randomBtn.addEventListener('click', () => core.randomizeColors());
+      core.ready.then(() => {
+        filterManager = mapFilters.init(core, mapData, { updateLegend });
+        if (filterSelect) {
+          filterSelect.addEventListener('change', () => filterManager.applyFilter(filterSelect.value));
+          filterManager.applyFilter(filterSelect.value);
+        }
+        if (randomBtn) randomBtn.addEventListener('click', () => filterManager.randomizeColors());
+      });
     });
   });
 
