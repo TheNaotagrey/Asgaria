@@ -1,38 +1,14 @@
 (() => {
   const API_BASE = location.origin === 'null' ? 'http://localhost:3000' : '';
-  let mapWidth = 0;
-  let mapHeight = 0;
-  const terrainColor = [239, 228, 176];
-  const playerColor = [82, 190, 128];
-  const npcColor = [231, 76, 60];
   const params = new URLSearchParams(location.search);
   const mapMode = params.get('mode') === 'sea' ? 'sea' : 'land';
   const pixelEndpoint = mapMode === 'sea' ? '/api/maritime_zone_pixels' : '/api/barony_pixels';
   const entityEndpoint = mapMode === 'sea' ? '/api/maritime_zones' : '/api/baronies';
 
-  // Pixel data loaded from the server
-  let pixelData = {};
+  let mapWidth = 0;
+  let mapHeight = 0;
 
-  async function loadPixelData() {
-    const resp = await fetch(API_BASE + pixelEndpoint);
-    pixelData = await resp.json();
-    Object.keys(pixelData).forEach(id => {
-      if (!baronyMeta[id]) {
-        baronyMeta[id] = { id, name: '' };
-      }
-    });
-    pixelMap = Array.from({ length: mapHeight }, () => new Array(mapWidth).fill(0));
-    Object.entries(pixelData).forEach(([id, coords]) => {
-      coords.forEach(([x, y]) => {
-        if (y >= 0 && y < mapHeight && x >= 0 && x < mapWidth) {
-          pixelMap[y][x] = String(id);
-        }
-      });
-    });
-    initColorMap();
-    drawAll();
-  }
-  // Métadonnées par baronnie : id et nom
+  let pixelData = {};
   let baronyMeta = {};
   let seigneurMap = {};
   let religionMap = {};
@@ -44,438 +20,20 @@
   let marquisateMap = {};
   let archduchyMap = {};
   let empireMap = {};
-  let seigneurToCounty = {}, seigneurToDuchy = {}, seigneurToKingdom = {};
+  let seigneurToCounty = {}, seigneurToDuchy = {}, seigneurToKingdom = {}, seigneurToViscounty = {}, seigneurToMarquisate = {}, seigneurToArchduchy = {}, seigneurToEmpire = {};
   let canonicalLandMap = {};
-  let canonicalPatterns = {};
   let baronyAdjacency = {};
-  let currentFilter = '';
 
-  function addConnection(a,b){
-    if(!baronyAdjacency[a]) baronyAdjacency[a]=[];
-    if(!baronyAdjacency[b]) baronyAdjacency[b]=[];
-    if(!baronyAdjacency[a].includes(b)) baronyAdjacency[a].push(b);
-    if(!baronyAdjacency[b].includes(a)) baronyAdjacency[b].push(a);
-  }
-  function removeConnection(a,b){
-    if(baronyAdjacency[a]) baronyAdjacency[a]=baronyAdjacency[a].filter(x=>x!==b);
-    if(baronyAdjacency[b]) baronyAdjacency[b]=baronyAdjacency[b].filter(x=>x!==a);
-  }
-
-  function shiftAllPixels(dx, dy) {
-    Object.entries(pixelData).forEach(([id, coords]) => {
-      pixelData[id] = coords
-        .map(([x, y]) => [x + dx, y + dy])
-        .filter(([x, y]) => x >= 0 && y >= 0 && x < mapWidth && y < mapHeight);
-    });
-    pixelMap = Array.from({ length: mapHeight }, () => new Array(mapWidth).fill(0));
-    Object.entries(pixelData).forEach(([id, coords]) => {
-      coords.forEach(([x, y]) => {
-        pixelMap[y][x] = String(id);
-      });
-    });
-    drawAll();
-  }
-
-  // Carte de correspondance pixel : pixelMap[y][x] = id (ou 0 si aucun)
-  let pixelMap = [];
-
-  // Convertisseur HSL→RGB (déterministe pour attribuer des couleurs aux baronnies)
-  function hslToRgb(h, s, l) {
-    s /= 100;
-    l /= 100;
-    const k = (n) => (n + h / 30) % 12;
-    const a = s * Math.min(l, 1 - l);
-    const f = (n) => {
-      const color = l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
-      return Math.round(255 * color);
-    };
-    return [f(0), f(8), f(4)];
-  }
-  function hexToRgb(hex) {
-    if (!hex) return null;
-    const m = hex.trim().match(/^#?([a-fA-F0-9]{6})$/);
-    if (!m) return null;
-    const num = parseInt(m[1], 16);
-    return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
-  }
-  function generateColor(id) {
-    const num = parseInt(id, 10);
-    const hue = (num * 137) % 360;
-    const [r, g, b] = hslToRgb(hue, 65, 65);
-    // Couleur légèrement translucide par défaut (alpha 100)
-    return [r, g, b, 100];
-  }
-
-  // Palette de couleurs courante pour chaque baronnie
-  let colorMap = {};
-
-  function initColorMap() {
-    colorMap = {};
-    canonicalPatterns = {};
-    Object.keys(pixelData).forEach((id) => {
-      if (!colorMap[id]) {
-        colorMap[id] = generateColor(id);
-      }
-    });
-    if (currentSelectedId && colorMap[currentSelectedId]) {
-      colorMap[currentSelectedId][3] = 180;
-    }
-  }
-
-  function randomizeColors() {
-    if (currentFilter) {
-      applyFilter(currentFilter, true);
-      return;
-    }
-    colorMap = {};
-    Object.keys(pixelData).forEach((id) => {
-      const hue = Math.floor(Math.random() * 360);
-      const [r, g, b] = hslToRgb(hue, 65, 65);
-      colorMap[id] = [r, g, b, 100];
-    });
-    if (currentSelectedId && colorMap[currentSelectedId]) {
-      colorMap[currentSelectedId][3] = 180;
-    }
-    drawAll();
-  }
-
-  // Sélecteurs DOM
   const baseMap = document.getElementById('baseMap');
   if (mapMode === 'sea' && baseMap) baseMap.src = 'zones_maritimes.png';
   const pixelCanvas = document.getElementById('pixelCanvas');
-  const panZoomGroup = document.getElementById('panZoomGroup');
-  const mapContainer = document.getElementById('mapContainer');
-  const toggleEditBtn = document.getElementById('toggleEdit');
-  const randomBtn = document.getElementById('randomColors');
-  const saveBtn = document.getElementById('saveToFile');
-  const offsetBtn = document.getElementById('offsetBtn');
-  const deleteBtn = document.getElementById('deleteBarony');
-  const selectBtn = document.getElementById('selectBarony');
-  const linkBtn = document.getElementById('linkBarony');
-  const unlinkBtn = document.getElementById('unlinkBarony');
-  const infoPanel = mapMode === 'sea' ? document.getElementById('seaInfoPanel') : document.getElementById('infoPanel');
-  const editIdInput = mapMode === 'sea' ? document.getElementById('seaEditId') : document.getElementById('editId');
-  const editNameInput = mapMode === 'sea' ? document.getElementById('seaEditName') : document.getElementById('editName');
-  const editSeigneur = mapMode === 'sea' ? null : document.getElementById('editSeigneur');
-  const editReligionPop = mapMode === 'sea' ? null : document.getElementById('editReligionPop');
-  const editCulture = mapMode === 'sea' ? null : document.getElementById('editCulture');
-  const editViscounty = mapMode === 'sea' ? null : document.getElementById('editViscounty');
-  const editCounty = mapMode === 'sea' ? null : document.getElementById('editCounty');
-  const editSanctuary = mapMode === 'sea' ? null : document.getElementById('editSanctuary');
-  const editPriory = mapMode === 'sea' ? null : document.getElementById('editPriory');
-  const editChurch = mapMode === 'sea' ? null : document.getElementById('editChurch');
-  const editCathedral = mapMode === 'sea' ? null : document.getElementById('editCathedral');
-  const editPlayer = mapMode === 'sea' ? null : document.getElementById('editPlayer');
-  const canonicalListDiv = mapMode === 'sea' ? null : document.getElementById('canonicalList');
-  const addCanonicalSelect = mapMode === 'sea' ? null : document.getElementById('addCanonicalSelect');
-  const addCanonicalBtn = mapMode === 'sea' ? null : document.getElementById('addCanonical');
-  const filterSelect = document.getElementById('colorFilter');
+  const filterSelect = document.getElementById('filterSelect');
+  const randomBtn = document.getElementById('randomBtn');
   const legendDiv = document.getElementById('legend');
-  if (mapMode === 'sea' && filterSelect) {
-    filterSelect.innerHTML = '<option value="sea">Zones Maritimes</option>';
-  }
 
-  let seigneurOptions = [];
-  let religionOptions = [];
-  let cultureOptions = [];
-  let countyOptions = [];
-  let viscountyOptions = [];
-  let linkMode = null;
-
-  async function loadOptions() {
-    const [seigneurs, religions, cultures, counties, viscounties] = await Promise.all([
-      fetch(API_BASE + '/api/seigneurs').then(r => r.json()),
-      fetch(API_BASE + '/api/religions').then(r => r.json()),
-      fetch(API_BASE + '/api/cultures').then(r => r.json()),
-      fetch(API_BASE + '/api/counties').then(r => r.json()),
-      fetch(API_BASE + '/api/viscounties').then(r => r.json()),
-    ]);
-    seigneurOptions = seigneurs.slice().sort((a, b) => a.name.localeCompare(b.name));
-    religionOptions = religions.slice().sort((a, b) => a.name.localeCompare(b.name));
-    cultureOptions = cultures.slice().sort((a, b) => a.name.localeCompare(b.name));
-    countyOptions = counties.slice().sort((a, b) => a.name.localeCompare(b.name));
-    viscountyOptions = viscounties.slice().sort((a, b) => a.name.localeCompare(b.name));
-    const blankOpt = '<option value=""></option>';
-    if (editSeigneur) {
-      editSeigneur.innerHTML = blankOpt + seigneurOptions.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
-    }
-    if (editReligionPop) {
-      editReligionPop.innerHTML = blankOpt + religionOptions.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
-    }
-    // No religion selection needed for buildings; presence is handled via checkboxes
-    if (addCanonicalSelect) {
-      addCanonicalSelect.innerHTML = blankOpt + religionOptions.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
-    }
-    if (editCulture) editCulture.innerHTML = cultureOptions.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
-    if (editViscounty) editViscounty.innerHTML = blankOpt + viscountyOptions.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
-    if (editCounty) editCounty.innerHTML = countyOptions.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
-  }
-
-  async function loadMetaData() {
-    if (mapMode === 'sea') {
-      const [zones, connections] = await Promise.all([
-        fetch(API_BASE + '/api/maritime_zones').then(r => r.json()),
-        fetch(API_BASE + '/api/maritime_zone_connections').then(r => r.json())
-      ]);
-      baronyMeta = {};
-      zones.forEach(z => { baronyMeta[z.id] = z; });
-      baronyAdjacency = {};
-      connections.forEach(c => {
-        if (!baronyAdjacency[c.zone_id_1]) baronyAdjacency[c.zone_id_1] = [];
-        if (!baronyAdjacency[c.zone_id_2]) baronyAdjacency[c.zone_id_2] = [];
-        baronyAdjacency[c.zone_id_1].push(c.zone_id_2);
-        baronyAdjacency[c.zone_id_2].push(c.zone_id_1);
-      });
-      return;
-    }
-    const [baronies, seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires, canonicalLands, connections] = await Promise.all([
-      fetch(API_BASE + '/api/baronies').then(r => r.json()),
-      fetch(API_BASE + '/api/seigneurs').then(r => r.json()),
-      fetch(API_BASE + '/api/religions').then(r => r.json()),
-      fetch(API_BASE + '/api/cultures').then(r => r.json()),
-      fetch(API_BASE + '/api/counties').then(r => r.json()),
-      fetch(API_BASE + '/api/duchies').then(r => r.json()),
-      fetch(API_BASE + '/api/kingdoms').then(r => r.json()),
-      fetch(API_BASE + '/api/viscounties').then(r => r.json()),
-      fetch(API_BASE + '/api/marquisates').then(r => r.json()),
-      fetch(API_BASE + '/api/archduchies').then(r => r.json()),
-      fetch(API_BASE + '/api/empires').then(r => r.json()),
-      fetch(API_BASE + '/api/canonical_lands').then(r => r.json()),
-      fetch(API_BASE + '/api/barony_connections').then(r => r.json())
-    ]);
-    baronyMeta = {};
-    baronies.forEach(b => { baronyMeta[b.id] = b; });
-    seigneurMap = {};
-    seigneurs.forEach(s => { seigneurMap[s.id] = s; });
-    religionMap = {};
-    religions.forEach(r => { religionMap[r.id] = r; });
-    cultureMapInfo = {};
-    cultures.forEach(c => { cultureMapInfo[c.id] = c; });
-    countyMap = {};
-    seigneurToCounty = {};
-    counties.forEach(c => { countyMap[c.id] = c; if (c.seigneur_id) seigneurToCounty[c.seigneur_id] = c.id; });
-    duchyMap = {};
-    seigneurToDuchy = {};
-    duchies.forEach(d => { duchyMap[d.id] = d; if (d.seigneur_id) seigneurToDuchy[d.seigneur_id] = d.id; });
-    kingdomMap = {};
-    seigneurToKingdom = {};
-    kingdoms.forEach(k => { kingdomMap[k.id] = k; if (k.seigneur_id) seigneurToKingdom[k.seigneur_id] = k.id; });
-    viscountyMap = {};
-    viscounties.forEach(v => { viscountyMap[v.id] = v; });
-    marquisateMap = {};
-    marquisates.forEach(m => { marquisateMap[m.id] = m; });
-    archduchyMap = {};
-    archduchies.forEach(a => { archduchyMap[a.id] = a; });
-    empireMap = {};
-    empires.forEach(e => { empireMap[e.id] = e; });
-    canonicalLandMap = {};
-    canonicalLands.forEach(cl => {
-      if (!canonicalLandMap[cl.barony_id]) canonicalLandMap[cl.barony_id] = [];
-      canonicalLandMap[cl.barony_id].push(cl.religion_id);
-    });
-    baronyAdjacency = {};
-    connections.forEach(c => {
-      if (!baronyAdjacency[c.barony_id_1]) baronyAdjacency[c.barony_id_1] = [];
-      if (!baronyAdjacency[c.barony_id_2]) baronyAdjacency[c.barony_id_2] = [];
-      baronyAdjacency[c.barony_id_1].push(c.barony_id_2);
-      baronyAdjacency[c.barony_id_2].push(c.barony_id_1);
-    });
-  }
-
-  function refreshCanonicalList(baronyId) {
-    if (!canonicalListDiv) return;
-    canonicalListDiv.innerHTML = '';
-    const rIds = canonicalLandMap[baronyId] || [];
-    rIds.forEach(rid => {
-      const item = document.createElement('div');
-      item.textContent = religionMap[rid]?.name || String(rid);
-      const btn = document.createElement('button');
-      btn.textContent = 'Retirer';
-      btn.addEventListener('click', () => {
-        fetch(`${API_BASE}/api/canonical_lands?religion_id=${rid}&barony_id=${baronyId}`, { method: 'DELETE' }).then(() => {
-          canonicalLandMap[baronyId] = (canonicalLandMap[baronyId] || []).filter(id => id !== rid);
-          refreshCanonicalList(baronyId);
-          if (currentFilter === 'canonical') applyFilter('canonical'); else drawAll();
-        });
-      });
-      item.appendChild(btn);
-      canonicalListDiv.appendChild(item);
-    });
-  }
-  // Outils
-  const brushToolBtn = document.getElementById('brushTool');
-  const eraserToolBtn = document.getElementById('eraserTool');
-  const bucketToolBtn = document.getElementById('bucketTool');
-  const newBaronyBtn = document.getElementById('newBarony');
-  const brushSizeInput = document.getElementById('brushSize');
-  const brushSizeValue = document.getElementById('brushSizeValue');
-
-  if (newBaronyBtn && mapMode === 'sea') {
-    newBaronyBtn.title = 'Nouvelle zone maritime';
-  }
-
-  // Save pixels to the server
-  if (saveBtn) saveBtn.addEventListener('click', () => {
-    fetch(API_BASE + pixelEndpoint, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(pixelData)
-    });
-  });
-
-  function openOffsetPopup() {
-    const overlay = document.createElement('div');
-    overlay.className = 'popup-overlay';
-    const popup = document.createElement('div');
-    popup.className = 'popup';
-
-    const xDiv = document.createElement('div');
-    const xLabel = document.createElement('label');
-    xLabel.textContent = 'Décalage X';
-    const xInput = document.createElement('input');
-    xInput.type = 'number';
-    xInput.value = '0';
-    xDiv.appendChild(xLabel);
-    xDiv.appendChild(xInput);
-
-    const yDiv = document.createElement('div');
-    const yLabel = document.createElement('label');
-    yLabel.textContent = 'Décalage Y';
-    const yInput = document.createElement('input');
-    yInput.type = 'number';
-    yInput.value = '0';
-    yDiv.appendChild(yLabel);
-    yDiv.appendChild(yInput);
-
-    const btnRow = document.createElement('div');
-    const applyBtn = document.createElement('button');
-    applyBtn.type = 'button';
-    applyBtn.textContent = 'Appliquer';
-    const cancelBtn = document.createElement('button');
-    cancelBtn.type = 'button';
-    cancelBtn.textContent = 'Annuler';
-    btnRow.appendChild(applyBtn);
-    btnRow.appendChild(cancelBtn);
-
-    popup.appendChild(xDiv);
-    popup.appendChild(yDiv);
-    popup.appendChild(btnRow);
-    overlay.appendChild(popup);
-    document.body.appendChild(overlay);
-
-    cancelBtn.addEventListener('click', () => overlay.remove());
-    applyBtn.addEventListener('click', () => {
-      const dx = parseInt(xInput.value) || 0;
-      const dy = parseInt(yInput.value) || 0;
-      if (dx !== 0 || dy !== 0) {
-        shiftAllPixels(dx, dy);
-      }
-      overlay.remove();
-    });
-  }
-  if (offsetBtn) offsetBtn.addEventListener('click', openOffsetPopup);
-  if (linkBtn) linkBtn.addEventListener('click', () => {
-    if (currentSelectedId) linkMode = 'link';
-  });
-  if (unlinkBtn) unlinkBtn.addEventListener('click', () => {
-    if (currentSelectedId) linkMode = 'unlink';
-  });
-
-  // Raccourcis clavier : Ctrl pour lier, Ctrl+Alt pour délier
-  function updateLinkModeByKeys(e) {
-    if (e.ctrlKey && e.altKey) {
-      linkMode = currentSelectedId ? 'unlink' : null;
-    } else if (e.ctrlKey) {
-      linkMode = currentSelectedId ? 'link' : null;
-    } else {
-      linkMode = null;
-    }
-  }
-  window.addEventListener('keydown', updateLinkModeByKeys);
-  window.addEventListener('keyup', updateLinkModeByKeys);
-
-  // Canvas context
-  const ctx = pixelCanvas.getContext('2d');
-  ctx.imageSmoothingEnabled = false;
-
-  // État de l’interface
-  const defaultEditMode = window.defaultEditMode || false;
-  let editMode = defaultEditMode;
-  let currentTool = null;
-  let brushSize = 1;
-  if (brushSizeValue) brushSizeValue.textContent = brushSize;
-  let painting = false;
-  let currentSelectedId = null;
-  let mergeMode = false;
-  let mergeBaseId = null;
-
-  // Historique des opérations pour l’undo
-  const undoStack = [];
-
-  // Couleurs de fond (r,g,b) pour chaque pixel, selon la carte active
-  let backgroundColors = null;
-
-  // Pan/zoom
-  let scale = 1;
-  let offsetX = 0;
-  let offsetY = 0;
-
-  function applyTransform() {
-    panZoomGroup.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${scale})`;
-  }
-  function fitToContainer() {
-    const contW = mapContainer.clientWidth;
-    const contH = mapContainer.clientHeight;
-    scale = Math.min(contW / mapWidth, contH / mapHeight);
-    offsetX = (contW - mapWidth * scale) / 2;
-    offsetY = (contH - mapHeight * scale) / 2;
-    applyTransform();
-  }
-
-  // Dessiner la carte complète
-  function drawAll() {
-    const imageData = ctx.createImageData(mapWidth, mapHeight);
-    const data = imageData.data;
-    let idx = 0;
-    for (let y = 0; y < mapHeight; y++) {
-      for (let x = 0; x < mapWidth; x++) {
-        const id = pixelMap[y][x];
-        if (id && (colorMap[id] || (currentFilter === 'canonical' && canonicalPatterns[id]))) {
-          if (currentFilter === 'canonical' && canonicalPatterns[id]) {
-            const cols = canonicalPatterns[id];
-            const col = cols[(x + y) % cols.length];
-            data[idx++] = col[0];
-            data[idx++] = col[1];
-            data[idx++] = col[2];
-            data[idx++] = 100;
-          } else {
-            const col = colorMap[id];
-            data[idx++] = col[0];
-            data[idx++] = col[1];
-            data[idx++] = col[2];
-            data[idx++] = col[3];
-          }
-        } else {
-          data[idx++] = 0;
-          data[idx++] = 0;
-          data[idx++] = 0;
-          data[idx++] = 0;
-        }
-      }
-    }
-    ctx.putImageData(imageData, 0, 0);
-  }
-
-  function drawPixel(x, y, id) {
-    if (!colorMap[id]) {
-      colorMap[id] = generateColor(id);
-    }
-    const col = colorMap[id];
-    // Utiliser l'alpha s'il est défini dans la couleur (col[3])
-    const alpha = col.length > 3 ? col[3] / 255 : 1;
-    ctx.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},${alpha})`;
-    ctx.fillRect(x, y, 1, 1);
-  }
+  const infoPanel = document.getElementById('infoPanel');
+  const editIdInput = document.getElementById('editId');
+  const editNameInput = document.getElementById('editName');
 
   function updateLegend(groups) {
     if (!legendDiv) return;
@@ -500,1156 +58,110 @@
     legendDiv.style.display = 'block';
   }
 
-  function applyFilter(type, randomize = false) {
-    if (mapMode === 'sea') {
-      randomizeColors();
-      return;
-    }
-    currentFilter = type || '';
-    canonicalPatterns = {};
-    if (!type) {
-      initColorMap();
-      updateLegend(null);
-      if (currentSelectedId && colorMap[currentSelectedId]) colorMap[currentSelectedId][3] = 180;
-      drawAll();
-      return;
-    }
-    if (type === 'distance') {
-      colorMap = {};
-      if (!currentSelectedId) {
-        drawAll();
-        return;
-      }
-      const distances = {};
-      const queue = [currentSelectedId];
-      distances[currentSelectedId] = 0;
-      while (queue.length > 0) {
-        const cur = queue.shift();
-        const next = baronyAdjacency[cur] || [];
-        next.forEach(n => {
-          if (distances[n] === undefined) {
-            distances[n] = distances[cur] + 1;
-            queue.push(n);
-          }
-        });
-      }
-      Object.keys(baronyMeta).forEach(id => {
-        const d = distances[id];
-        if (d === undefined) return;
-        const hue = (d * 40) % 360;
-        const [r, g, b] = hslToRgb(hue, 65, 65);
-        colorMap[id] = [r, g, b, 100];
-      });
-      if (currentSelectedId && colorMap[currentSelectedId]) colorMap[currentSelectedId][3] = 180;
-      updateLegend(null);
-      drawAll();
-      return;
-    }
-    const groupColors = {};
-    colorMap = {};
-    Object.entries(baronyMeta).forEach(([id, info]) => {
-      let groupId = null;
-      let groupName = '';
-      if (type === 'canonical') {
-        const rIds = canonicalLandMap[id] || [];
-        if (rIds.length === 0) {
-          colorMap[id] = [...terrainColor, 100];
-          return;
-        }
-        canonicalPatterns[id] = rIds.map(rid => {
-          if (!groupColors[rid]) {
-            const col = hexToRgb(religionMap[rid]?.color) || generateColor(String(rid)).slice(0,3);
-            groupColors[rid] = { color: col, name: religionMap[rid]?.name || 'N/A' };
-          }
-          return groupColors[rid].color;
-        });
-        const first = canonicalPatterns[id][0];
-        colorMap[id] = [first[0], first[1], first[2], 100];
-        return;
-      } else if (type === 'religion') {
-        groupId = info.religion_pop_id;
-        groupName = religionMap[groupId]?.name || '';
-      } else if (type === 'culture') {
-        groupId = info.culture_id;
-        groupName = cultureMapInfo[groupId]?.name || '';
-      } else if (type === 'viscounty') {
-        groupId = info.viscounty_id;
-        groupName = viscountyMap[groupId]?.name || '';
-      } else if (type === 'county') {
-        groupId = info.county_id;
-        groupName = countyMap[groupId]?.name || '';
-      } else if (type === 'county_defacto') {
-        let sid = info.seigneur_id;
-        while (sid) {
-          const cId = seigneurToCounty[sid];
-          if (cId) {
-            groupId = cId;
-            groupName = countyMap[cId]?.name || '';
-            break;
-          }
-          sid = seigneurMap[sid]?.overlord_id;
-        }
-      } else if (type === 'marquisate') {
-        const county = countyMap[info.county_id];
-        groupId = county ? county.marquisate_id : null;
-        groupName = marquisateMap[groupId]?.name || '';
-      } else if (type === 'duchy') {
-        const county = countyMap[info.county_id];
-        groupId = county ? county.duchy_id : null;
-        groupName = duchyMap[groupId]?.name || '';
-      } else if (type === 'duchy_defacto') {
-        let sid = info.seigneur_id;
-        while (sid) {
-          const dId = seigneurToDuchy[sid];
-          if (dId) {
-            groupId = dId;
-            groupName = duchyMap[dId]?.name || '';
-            break;
-          }
-          sid = seigneurMap[sid]?.overlord_id;
-        }
-      } else if (type === 'archduchy') {
-        const county = countyMap[info.county_id];
-        const duchy = county ? duchyMap[county.duchy_id] : null;
-        groupId = duchy ? duchy.archduchy_id : null;
-        groupName = archduchyMap[groupId]?.name || '';
-      } else if (type === 'kingdom') {
-        const county = countyMap[info.county_id];
-        const duchy = county ? duchyMap[county.duchy_id] : null;
-        groupId = duchy ? duchy.kingdom_id : null;
-        groupName = kingdomMap[groupId]?.name || '';
-      } else if (type === 'kingdom_defacto') {
-        let sid = info.seigneur_id;
-        while (sid) {
-          const kId = seigneurToKingdom[sid];
-          if (kId) {
-            groupId = kId;
-            groupName = kingdomMap[kId]?.name || '';
-            break;
-          }
-          sid = seigneurMap[sid]?.overlord_id;
-        }
-      } else if (type === 'empire') {
-        const county = countyMap[info.county_id];
-        const duchy = county ? duchyMap[county.duchy_id] : null;
-        const kingdom = duchy ? kingdomMap[duchy.kingdom_id] : null;
-        groupId = kingdom ? kingdom.empire_id : null;
-        groupName = empireMap[groupId]?.name || '';
-      } else if (type === 'sanctuary') {
-        if (info.has_sanctuary) {
-          groupId = info.religion_pop_id;
-          groupName = religionMap[groupId]?.name || '';
-        }
-      } else if (type === 'priory') {
-        if (info.has_priory) {
-          groupId = info.religion_pop_id;
-          groupName = religionMap[groupId]?.name || '';
-        }
-      } else if (type === 'church') {
-        if (info.has_church) {
-          groupId = info.religion_pop_id;
-          groupName = religionMap[groupId]?.name || '';
-        }
-      } else if (type === 'cathedral') {
-        if (info.has_cathedral) {
-          groupId = info.religion_pop_id;
-          groupName = religionMap[groupId]?.name || '';
-        }
-      } else if (type === 'occupation') {
-        if (!info.seigneur_id) {
-          groupId = 'unoccupied';
-          groupName = 'Non occupée';
-        } else if (info.player) {
-          groupId = 'player';
-          groupName = 'Joueur';
-        } else {
-          groupId = 'npc';
-          groupName = 'PNJ';
-        }
-      }
-      if (groupId == null) {
-        colorMap[id] = [...terrainColor, 100];
-        return;
-      }
-      if (!groupColors[groupId]) {
-        let col;
-        if (type === 'occupation') {
-          if (groupId === 'player') col = playerColor;
-          else if (groupId === 'npc') col = npcColor;
-          else col = terrainColor;
-        } else if (randomize) {
-          const hue = Math.floor(Math.random() * 360);
-          col = hslToRgb(hue, 65, 65);
-        } else {
-          if (
-            type === 'religion' ||
-            type === 'sanctuary' ||
-            type === 'priory' ||
-            type === 'church' ||
-            type === 'cathedral'
-          ) {
-            col = hexToRgb(religionMap[groupId]?.color);
-          } else if (type === 'culture') {
-            col = hexToRgb(cultureMapInfo[groupId]?.color);
-          }
-          if (!col) {
-            col = generateColor(String(groupId || 0)).slice(0, 3);
-          }
-        }
-        groupColors[groupId] = { color: col, name: groupName || 'N/A' };
-      }
-      const col = groupColors[groupId].color;
-      colorMap[id] = [col[0], col[1], col[2], 100];
-    });
-    if (currentSelectedId && colorMap[currentSelectedId]) {
-      colorMap[currentSelectedId][3] = 180;
-    }
-    updateLegend(groupColors);
-    drawAll();
-  }
+  let core = null;
+  let currentSelectedId = null;
 
-  // Gestion de la sélection
-  function selectBarony(id) {
-    // remettre l'opacité par défaut sur l'ancienne sélection
-    if (currentSelectedId && colorMap[currentSelectedId]) {
-      // Rétablir l'opacité normale
-      colorMap[currentSelectedId][3] = 100;
-    }
+  function handleSelect(id) {
     currentSelectedId = id;
     if (!id) {
       if (infoPanel) infoPanel.style.display = 'none';
-      if (currentFilter) applyFilter(currentFilter); else drawAll();
       return;
     }
-    if (!baronyMeta[id]) {
-      baronyMeta[id] = { id: id, name: '' };
-    }
-    // s'assurer que la baronnie a une couleur puis la mettre en valeur
-    if (!colorMap[id]) {
-      colorMap[id] = generateColor(id);
-    }
-    colorMap[id][3] = 180;
-    if (infoPanel) {
-      infoPanel.style.display = 'block';
-    }
-    if (editIdInput) editIdInput.value = baronyMeta[id].id;
-    if (editNameInput) editNameInput.value = baronyMeta[id].name || '';
-    refreshCanonicalList(id);
-    fetch(`${API_BASE}${entityEndpoint}?id=${id}`).then(r=>r.json()).then(list=>{
-      const info = list.find(b=>String(b.id)===String(id));
-      if(!info) return;
-      if (editNameInput) editNameInput.value = info.name || '';
-      baronyMeta[id].name = info.name || '';
-      if (mapMode !== 'sea') {
-        if (editSeigneur) editSeigneur.value = info.seigneur_id || '';
-        if (editReligionPop) editReligionPop.value = info.religion_pop_id || '';
-        if (editCulture) editCulture.value = info.culture_id || '';
-        if (editViscounty) editViscounty.value = info.viscounty_id || '';
-        if (editCounty) editCounty.value = info.county_id || '';
-        if (editSanctuary) editSanctuary.checked = !!info.has_sanctuary;
-        if (editPriory) editPriory.checked = !!info.has_priory;
-        if (editChurch) editChurch.checked = !!info.has_church;
-        if (editCathedral) editCathedral.checked = !!info.has_cathedral;
-        if (editPlayer) editPlayer.checked = !!info.player;
-      }
-    }).finally(()=>{
-      if (currentFilter) applyFilter(currentFilter); else drawAll();
-    });
+    if (infoPanel) infoPanel.style.display = 'block';
+    if (editIdInput) editIdInput.value = id;
+    if (editNameInput) editNameInput.value = baronyMeta[id]?.name || '';
   }
 
-  // Mettre à jour ID/nom de la baronnie sélectionnée
-  function updateBarony() {
-    if (!currentSelectedId) return;
-    const oldId = currentSelectedId;
-    const newId = editIdInput.value.trim();
-    const newName = editNameInput.value.trim();
+  async function fetchData() {
+    pixelData = await fetch(API_BASE + pixelEndpoint).then(r => r.json());
+    const entities = await fetch(API_BASE + entityEndpoint).then(r => r.json());
+    baronyMeta = {};
+    entities.forEach(e => { baronyMeta[e.id] = e; });
     if (mapMode !== 'sea') {
-      const seigneurId = editSeigneur ? parseInt(editSeigneur.value || '') || null : null;
-      const relPop = editReligionPop ? parseInt(editReligionPop.value || '') || null : null;
-      const cultureId = editCulture ? parseInt(editCulture.value || '') || null : null;
-      const viscountyId = editViscounty ? parseInt(editViscounty.value || '') || null : null;
-      const countyId = editCounty ? parseInt(editCounty.value || '') || null : null;
-      const hasSanctuary = editSanctuary ? editSanctuary.checked : false;
-      const hasPriory = editPriory ? editPriory.checked : false;
-      const hasChurch = editChurch ? editChurch.checked : false;
-      const hasCathedral = editCathedral ? editCathedral.checked : false;
-      const playerFlag = editPlayer ? (editPlayer.checked ? 1 : 0) : 0;
-      if (newId === '') return;
-    if (newId === oldId) {
-      // seulement le nom change
-      const op = { type: 'rename', oldId: oldId, newId: oldId, oldName: baronyMeta[oldId].name || '', newName: newName, coords: [] };
-      undoStack.push(op);
-      if (baronyMeta[oldId]) {
-        Object.assign(baronyMeta[oldId], {
-          name: newName,
-          seigneur_id: seigneurId,
-          religion_pop_id: relPop,
-          county_id: countyId,
-          viscounty_id: viscountyId,
-          culture_id: cultureId,
-          has_sanctuary: hasSanctuary ? 1 : 0,
-          has_priory: hasPriory ? 1 : 0,
-          has_church: hasChurch ? 1 : 0,
-          has_cathedral: hasCathedral ? 1 : 0,
-          player: playerFlag
-        });
-      }
-      saveEntityToServer(oldId, { name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId, has_sanctuary: hasSanctuary ? 1 : 0, has_priory: hasPriory ? 1 : 0, has_church: hasChurch ? 1 : 0, has_cathedral: hasCathedral ? 1 : 0, player: playerFlag });
-      return;
-    }
-    // Si un identifiant existe déjà, échanger les baronnies
-    if (pixelData[newId]) {
-      const coordsOld = pixelData[oldId] || [];
-      const coordsNew = pixelData[newId] || [];
-      // Enregistrer l'opération pour undo
-      const changes = [];
-      coordsOld.forEach(([x, y]) => {
-        changes.push({ x, y, oldId: oldId, newId: newId });
+      const [seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires, canonicalLands, connections] = await Promise.all([
+        fetch(API_BASE + '/api/seigneurs').then(r => r.json()),
+        fetch(API_BASE + '/api/religions').then(r => r.json()),
+        fetch(API_BASE + '/api/cultures').then(r => r.json()),
+        fetch(API_BASE + '/api/counties').then(r => r.json()),
+        fetch(API_BASE + '/api/duchies').then(r => r.json()),
+        fetch(API_BASE + '/api/kingdoms').then(r => r.json()),
+        fetch(API_BASE + '/api/viscounties').then(r => r.json()),
+        fetch(API_BASE + '/api/marquisates').then(r => r.json()),
+        fetch(API_BASE + '/api/archduchies').then(r => r.json()),
+        fetch(API_BASE + '/api/empires').then(r => r.json()),
+        fetch(API_BASE + '/api/canonical_lands').then(r => r.json()),
+        fetch(API_BASE + '/api/barony_connections').then(r => r.json())
+      ]);
+      seigneurMap = {};
+      seigneurs.forEach(s => { seigneurMap[s.id] = s; });
+      religionMap = {};
+      religions.forEach(r => { religionMap[r.id] = r; });
+      cultureMapInfo = {};
+      cultures.forEach(c => { cultureMapInfo[c.id] = c; });
+      countyMap = {};
+      seigneurToCounty = {};
+      counties.forEach(c => { countyMap[c.id] = c; if (c.seigneur_id) seigneurToCounty[c.seigneur_id] = c.id; });
+      duchyMap = {};
+      seigneurToDuchy = {};
+      duchies.forEach(d => { duchyMap[d.id] = d; if (d.seigneur_id) seigneurToDuchy[d.seigneur_id] = d.id; });
+      kingdomMap = {};
+      seigneurToKingdom = {};
+      kingdoms.forEach(k => { kingdomMap[k.id] = k; if (k.seigneur_id) seigneurToKingdom[k.seigneur_id] = k.id; });
+      viscountyMap = {};
+      seigneurToViscounty = {};
+      viscounties.forEach(v => { viscountyMap[v.id] = v; if (v.seigneur_id) seigneurToViscounty[v.seigneur_id] = v.id; });
+      marquisateMap = {};
+      seigneurToMarquisate = {};
+      marquisates.forEach(m => { marquisateMap[m.id] = m; if (m.seigneur_id) seigneurToMarquisate[m.seigneur_id] = m.id; });
+      archduchyMap = {};
+      seigneurToArchduchy = {};
+      archduchies.forEach(a => { archduchyMap[a.id] = a; if (a.seigneur_id) seigneurToArchduchy[a.seigneur_id] = a.id; });
+      empireMap = {};
+      seigneurToEmpire = {};
+      empires.forEach(e => { empireMap[e.id] = e; if (e.seigneur_id) seigneurToEmpire[e.seigneur_id] = e.id; });
+      canonicalLandMap = {};
+      canonicalLands.forEach(cl => {
+        if (!canonicalLandMap[cl.barony_id]) canonicalLandMap[cl.barony_id] = [];
+        canonicalLandMap[cl.barony_id].push(cl.religion_id);
       });
-      coordsNew.forEach(([x, y]) => {
-        changes.push({ x, y, oldId: newId, newId: oldId });
+      baronyAdjacency = {};
+      connections.forEach(c => {
+        if (!baronyAdjacency[c.barony_id_1]) baronyAdjacency[c.barony_id_1] = [];
+        if (!baronyAdjacency[c.barony_id_2]) baronyAdjacency[c.barony_id_2] = [];
+        baronyAdjacency[c.barony_id_1].push(c.barony_id_2);
+        baronyAdjacency[c.barony_id_2].push(c.barony_id_1);
       });
-      undoStack.push({ type: 'swap', id1: oldId, id2: newId, changes: changes, oldName: baronyMeta[oldId] ? baronyMeta[oldId].name : '', newName: baronyMeta[newId] ? baronyMeta[newId].name : '' });
-      // Échanger les coordonnées
-      pixelData[oldId] = coordsNew;
-      pixelData[newId] = coordsOld;
-      // Mettre à jour les noms : l'ancien id prend l'ancien nom de newId ; le nouvel id prend le nouveau nom saisi
-      const tempName = baronyMeta[newId] ? baronyMeta[newId].name : '';
-      baronyMeta[oldId] = { id: oldId, name: tempName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId, has_sanctuary: hasSanctuary ? 1 : 0, has_priory: hasPriory ? 1 : 0, has_church: hasChurch ? 1 : 0, has_cathedral: hasCathedral ? 1 : 0, player: playerFlag };
-      baronyMeta[newId] = { id: newId, name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId, has_sanctuary: hasSanctuary ? 1 : 0, has_priory: hasPriory ? 1 : 0, has_church: hasChurch ? 1 : 0, has_cathedral: hasCathedral ? 1 : 0, player: playerFlag };
-      // Mettre à jour pixelMap
-      coordsOld.forEach(([x, y]) => {
-        pixelMap[y][x] = newId;
-      });
-      coordsNew.forEach(([x, y]) => {
-        pixelMap[y][x] = oldId;
-      });
-      // Mettre à jour la sélection
-      currentSelectedId = newId;
-      colorMap[newId] = generateColor(newId);
-      colorMap[oldId] = generateColor(oldId);
-      drawAll();
-      selectBarony(newId);
-      saveEntityToServer(newId, { name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId, has_sanctuary: hasSanctuary ? 1 : 0, has_priory: hasPriory ? 1 : 0, has_church: hasChurch ? 1 : 0, has_cathedral: hasCathedral ? 1 : 0, player: playerFlag });
-      saveEntityToServer(oldId, { name: tempName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId, has_sanctuary: hasSanctuary ? 1 : 0, has_priory: hasPriory ? 1 : 0, has_church: hasChurch ? 1 : 0, has_cathedral: hasCathedral ? 1 : 0, player: playerFlag });
-      return;
     }
-    const coords = pixelData[oldId] || [];
-    // enregistrer l'opération
-    const op = { type: 'rename', oldId: oldId, newId: newId, oldName: baronyMeta[oldId] ? baronyMeta[oldId].name : '', newName: newName, coords: coords.slice() };
-    undoStack.push(op);
-    pixelData[newId] = coords;
-    baronyMeta[newId] = { id: newId, name: newName };
-    coords.forEach(([x, y]) => {
-      pixelMap[y][x] = newId;
-      drawPixel(x, y, newId);
-    });
-    delete pixelData[oldId];
-    delete baronyMeta[oldId];
-    currentSelectedId = newId;
-    colorMap[newId] = generateColor(newId);
-    drawAll();
-    selectBarony(newId);
-    saveEntityToServer(newId, { name: newName, seigneur_id: seigneurId, religion_pop_id: relPop, county_id: countyId, viscounty_id: viscountyId, culture_id: cultureId, has_sanctuary: hasSanctuary ? 1 : 0, has_priory: hasPriory ? 1 : 0, has_church: hasChurch ? 1 : 0, has_cathedral: hasCathedral ? 1 : 0, player: playerFlag });
-    return;
-    }
-    // --- Mode maritime ---
-    if (newId === '') return;
-    if (newId === oldId) {
-      const op = { type: 'rename', oldId: oldId, newId: oldId, oldName: baronyMeta[oldId].name || '', newName: newName, coords: [] };
-      undoStack.push(op);
-      if (baronyMeta[oldId]) {
-        baronyMeta[oldId].name = newName;
-      }
-      saveEntityToServer(oldId, { name: newName });
-      return;
-    }
-    if (pixelData[newId]) {
-      const coordsOld = pixelData[oldId] || [];
-      const coordsNew = pixelData[newId] || [];
-      const changes = [];
-      coordsOld.forEach(([x, y]) => { changes.push({ x, y, oldId: oldId, newId: newId }); });
-      coordsNew.forEach(([x, y]) => { changes.push({ x, y, oldId: newId, newId: oldId }); });
-      undoStack.push({ type: 'swap', id1: oldId, id2: newId, changes: changes, oldName: baronyMeta[oldId] ? baronyMeta[oldId].name : '', newName: baronyMeta[newId] ? baronyMeta[newId].name : '' });
-      pixelData[oldId] = coordsNew;
-      pixelData[newId] = coordsOld;
-      const tempName = baronyMeta[newId] ? baronyMeta[newId].name : '';
-      baronyMeta[oldId] = { id: oldId, name: tempName };
-      baronyMeta[newId] = { id: newId, name: newName };
-      coordsOld.forEach(([x, y]) => { pixelMap[y][x] = newId; });
-      coordsNew.forEach(([x, y]) => { pixelMap[y][x] = oldId; });
-      currentSelectedId = newId;
-      colorMap[newId] = generateColor(newId);
-      colorMap[oldId] = generateColor(oldId);
-      drawAll();
-      selectBarony(newId);
-      saveEntityToServer(newId, { name: newName });
-      saveEntityToServer(oldId, { name: tempName });
-      return;
-    }
-    const coords = pixelData[oldId] || [];
-    const op = { type: 'rename', oldId: oldId, newId: newId, oldName: baronyMeta[oldId] ? baronyMeta[oldId].name : '', newName: newName, coords: coords.slice() };
-    undoStack.push(op);
-    pixelData[newId] = coords;
-    baronyMeta[newId] = { id: newId, name: newName };
-    coords.forEach(([x, y]) => {
-      pixelMap[y][x] = newId;
-      drawPixel(x, y, newId);
-    });
-    delete pixelData[oldId];
-    delete baronyMeta[oldId];
-    currentSelectedId = newId;
-    colorMap[newId] = generateColor(newId);
-    drawAll();
-    selectBarony(newId);
-    saveEntityToServer(newId, { name: newName });
-  }
-
-  function saveEntityToServer(id, data, method = 'PUT') {
-    const url = method === 'POST'
-      ? API_BASE + entityEndpoint
-      : API_BASE + entityEndpoint + '/' + id;
-    if (method === 'POST') data.id = id;
-    fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    });
-  }
-
-  // Supprimer la baronnie sélectionnée
-  function deleteBarony() {
-    if (!currentSelectedId) return;
-    const id = currentSelectedId;
-    const coords = pixelData[id] || [];
-    // Enregistrer l'opération pour undo
-    const op = { type: 'delete', id: id, coords: coords.slice(), name: baronyMeta[id] ? baronyMeta[id].name : '' };
-    undoStack.push(op);
-    coords.forEach(([x, y]) => {
-      pixelMap[y][x] = 0;
-      ctx.clearRect(x, y, 1, 1);
-    });
-    delete pixelData[id];
-    delete baronyMeta[id];
-    delete colorMap[id];
-    currentSelectedId = null;
-    if (infoPanel) infoPanel.style.display = 'none';
-    fetch(API_BASE + entityEndpoint + '/' + id, { method: 'DELETE' });
-  }
-
-  // Créer un nouvel ID unique
-  function createNewId() {
-    let maxId = 0;
-    Object.keys(pixelData).forEach((id) => {
-      const num = parseInt(id, 10);
-      if (!isNaN(num) && num > maxId) maxId = num;
-    });
-    return String(maxId + 1);
-  }
-
-  // Fusion de baronnies
-  function mergeBaronies(baseId, otherId) {
-    if (!baseId || !otherId || baseId === otherId) return;
-    const otherCoords = pixelData[otherId] || [];
-    // Enregistrer l'opération pour undo : liste des pixels déplacés et id supprimé
-    const changes = [];
-    otherCoords.forEach(([x, y]) => {
-      changes.push({ x: x, y: y, oldId: otherId, newId: baseId });
-      pixelMap[y][x] = baseId;
-      pixelData[baseId].push([x, y]);
-      drawPixel(x, y, baseId);
-    });
-    const op = { type: 'merge', baseId: baseId, otherId: otherId, changes: changes, name: baronyMeta[otherId] ? baronyMeta[otherId].name : '' };
-    undoStack.push(op);
-    delete pixelData[otherId];
-    delete baronyMeta[otherId];
-    delete colorMap[otherId];
-    if (currentSelectedId === otherId) currentSelectedId = baseId;
-    selectBarony(baseId);
-  }
-
-  // Calculer les coordonnées de la carte à partir de l’écran
-  function getMapCoordinates(e) {
-    const rect = panZoomGroup.getBoundingClientRect();
-    const x = Math.floor((e.clientX - rect.left) / scale);
-    const y = Math.floor((e.clientY - rect.top) / scale);
-    return [x, y];
-  }
-
-  // Appliquer un pinceau ou gomme
-  function applyBrush(x, y, id, erase = false, changes = null) {
-    const half = Math.floor(brushSize / 2);
-    for (let dy = -half; dy <= half; dy++) {
-      for (let dx = -half; dx <= half; dx++) {
-        const nx = x + dx;
-        const ny = y + dy;
-        if (nx < 0 || ny < 0 || nx >= mapWidth || ny >= mapHeight) continue;
-        const oldId = pixelMap[ny][nx];
-        if (erase) {
-          if (!oldId) continue;
-          // remove pixel from its barony
-          const arr = pixelData[oldId];
-          if (arr) {
-            const index = arr.findIndex(([px, py]) => px === nx && py === ny);
-            if (index >= 0) arr.splice(index, 1);
-          }
-          pixelMap[ny][nx] = 0;
-          ctx.clearRect(nx, ny, 1, 1);
-          if (changes) changes.push({ x: nx, y: ny, oldId: oldId, newId: null });
-        } else {
-          if (oldId === id) continue;
-          // remove from previous id
-          if (oldId) {
-            const arr = pixelData[oldId];
-            if (arr) {
-              const idx2 = arr.findIndex(([px, py]) => px === nx && py === ny);
-              if (idx2 >= 0) arr.splice(idx2, 1);
-            }
-          }
-          pixelMap[ny][nx] = id;
-          if (!pixelData[id]) pixelData[id] = [];
-          pixelData[id].push([nx, ny]);
-          drawPixel(nx, ny, id);
-          if (changes) changes.push({ x: nx, y: ny, oldId: oldId || null, newId: id });
-        }
-      }
-    }
-  }
-
-  // Remplissage par bucket (flood fill) dans la zone contiguë
-  function bucketFill(x, y, changes = null) {
-    if (!currentSelectedId) return;
-    const targetId = pixelMap[y][x];
-    // Si on clique sur une baronnie existante (autre que celle sélectionnée), remplir cette baronnie
-    if (targetId) {
-      if (targetId === currentSelectedId) return;
-      const queue = [[x, y]];
-      const visited = new Set();
-      const deltas = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-      while (queue.length > 0) {
-        const [cx, cy] = queue.pop();
-        if (cx < 0 || cy < 0 || cx >= mapWidth || cy >= mapHeight) continue;
-        const key = cy * mapWidth + cx;
-        if (visited.has(key)) continue;
-        visited.add(key);
-        if (pixelMap[cy][cx] !== targetId) continue;
-        // retirer du précédent id
-        const arr = pixelData[targetId];
-        if (arr) {
-          const idx = arr.findIndex(([px, py]) => px === cx && py === cy);
-          if (idx >= 0) arr.splice(idx, 1);
-        }
-        if (changes) changes.push({ x: cx, y: cy, oldId: targetId, newId: currentSelectedId });
-        pixelMap[cy][cx] = currentSelectedId;
-        if (!pixelData[currentSelectedId]) pixelData[currentSelectedId] = [];
-        pixelData[currentSelectedId].push([cx, cy]);
-        drawPixel(cx, cy, currentSelectedId);
-        for (const [dx, dy] of deltas) {
-          const nx = cx + dx;
-          const ny = cy + dy;
-          if (nx < 0 || ny < 0 || nx >= mapWidth || ny >= mapHeight) continue;
-          const nKey = ny * mapWidth + nx;
-          if (!visited.has(nKey)) queue.push([nx, ny]);
-        }
-      }
-    } else {
-      // Clic sur un pixel sans baronnie : remplir la zone contiguë de pixels vides
-      // dont la couleur de fond est identique à celle du pixel cliqué.
-      const queue = [[x, y]];
-      const visited = new Set();
-      const deltas = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-      const targetColor =
-        backgroundColors && backgroundColors[y] ? backgroundColors[y][x] : null;
-      while (queue.length > 0) {
-        const [cx, cy] = queue.pop();
-        if (cx < 0 || cy < 0 || cx >= mapWidth || cy >= mapHeight) continue;
-        const key = cy * mapWidth + cx;
-        if (visited.has(key)) continue;
-        visited.add(key);
-        // Ne remplir que les pixels sans baronnie
-        if (pixelMap[cy][cx] !== 0) continue;
-        // Vérifier que la couleur de fond correspond à celle d'origine
-        if (targetColor && backgroundColors) {
-          const bg = backgroundColors[cy][cx];
-          if (!bg || bg[0] !== targetColor[0] || bg[1] !== targetColor[1] || bg[2] !== targetColor[2]) continue;
-        }
-        if (changes) changes.push({ x: cx, y: cy, oldId: null, newId: currentSelectedId });
-        pixelMap[cy][cx] = currentSelectedId;
-        if (!pixelData[currentSelectedId]) pixelData[currentSelectedId] = [];
-        pixelData[currentSelectedId].push([cx, cy]);
-        drawPixel(cx, cy, currentSelectedId);
-        for (const [dx, dy] of deltas) {
-          const nx = cx + dx;
-          const ny = cy + dy;
-          if (nx < 0 || ny < 0 || nx >= mapWidth || ny >= mapHeight) continue;
-          const nKey = ny * mapWidth + nx;
-          if (!visited.has(nKey)) queue.push([nx, ny]);
-        }
-      }
-    }
-  }
-
-  // Gestion du clic sur le canevas
-  function handleCanvasClick(e) {
-    const [x, y] = getMapCoordinates(e);
-    if (x < 0 || y < 0 || x >= mapWidth || y >= mapHeight) return;
-    const idAtPixel = pixelMap[y][x];
-    if (linkMode && currentSelectedId && idAtPixel && idAtPixel !== currentSelectedId) {
-      const body = JSON.stringify({ barony_id_1: currentSelectedId, barony_id_2: idAtPixel });
-      if (linkMode === 'link') {
-        fetch(API_BASE + '/api/barony_connections', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body })
-          .then(() => {
-            addConnection(currentSelectedId, idAtPixel);
-            if (currentFilter === 'distance') applyFilter('distance'); else drawAll();
-          });
-      } else if (linkMode === 'unlink') {
-        fetch(API_BASE + '/api/barony_connections', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body })
-          .then(() => {
-            removeConnection(currentSelectedId, idAtPixel);
-            if (currentFilter === 'distance') applyFilter('distance'); else drawAll();
-          });
-      }
-      linkMode = null;
-      return;
-    } else if (linkMode) {
-      linkMode = null;
-    }
-    // Hors mode édition : simplement afficher la baronnie sous le curseur
-    if (!editMode) {
-      if (idAtPixel) {
-        selectBarony(idAtPixel);
-      } else {
-        selectBarony(null);
-      }
-      return;
-    }
-    // En mode édition : appliquer l'outil courant
-    if (currentTool === 'brush') {
-      if (!currentSelectedId) return;
-      const changes = [];
-      applyBrush(x, y, currentSelectedId, false, changes);
-      if (changes.length > 0) undoStack.push({ type: 'paint', changes });
-    } else if (currentTool === 'eraser') {
-      const changes = [];
-      applyBrush(x, y, null, true, changes);
-      if (changes.length > 0) undoStack.push({ type: 'paint', changes });
-    } else if (currentTool === 'bucket') {
-      if (!currentSelectedId) return;
-      const changes = [];
-      bucketFill(x, y, changes);
-      if (changes.length > 0) undoStack.push({ type: 'paint', changes });
-    } else if (mergeMode && mergeBaseId) {
-      if (idAtPixel && idAtPixel !== mergeBaseId) {
-        mergeBaronies(mergeBaseId, idAtPixel);
-        mergeMode = false;
-        mergeBaseId = null;
-      }
-    } else {
-      if (idAtPixel) {
-        selectBarony(idAtPixel);
-      } else {
-        selectBarony(null);
-      }
-    }
-  }
-
-  // Gestion de la peinture continue
-  function handleMouseDown(e) {
-    if (!editMode) return;
-    if (currentTool === 'brush' || currentTool === 'eraser') {
-      painting = true;
-      handleCanvasClick(e);
-    }
-  }
-  function handleMouseMove(e) {
-    if (painting && (currentTool === 'brush' || currentTool === 'eraser') && editMode) {
-      handleCanvasClick(e);
-    }
-  }
-  function handleMouseUp() {
-    painting = false;
-  }
-
-  // Gestion du zoom
-  function handleWheel(e) {
-    e.preventDefault();
-    const factor = e.deltaY < 0 ? 1.1 : 0.9;
-    const rect = panZoomGroup.getBoundingClientRect();
-    const mx = (e.clientX - rect.left) / scale;
-    const my = (e.clientY - rect.top) / scale;
-    const prevScale = scale;
-    scale *= factor;
-    scale = Math.max(0.2, Math.min(scale, 10));
-    offsetX -= (mx * scale - mx * prevScale);
-    offsetY -= (my * scale - my * prevScale);
-    applyTransform();
-  }
-
-  // Gestion du pan
-  let panning = false;
-  let panStartX = 0;
-  let panStartY = 0;
-  function handlePanStart(e) {
-    // Pas de pan pendant que l’on peint
-    if (painting) return;
-    panning = true;
-    panStartX = e.clientX;
-    panStartY = e.clientY;
-  }
-  function handlePanMove(e) {
-    if (!panning) return;
-    const dx = e.clientX - panStartX;
-    const dy = e.clientY - panStartY;
-    offsetX += dx;
-    offsetY += dy;
-    panStartX = e.clientX;
-    panStartY = e.clientY;
-    applyTransform();
-  }
-  function handlePanEnd() {
-    panning = false;
-  }
-
-  // Exportation JSON
-  function exportJson() {
-    const out = {};
-    Object.keys(pixelData).forEach((id) => {
-      out[id] = pixelData[id];
-    });
-    const json = JSON.stringify(out, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'baronnies_pixels.json';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
-
-  // Import JSON
-  function importJson(file) {
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const data = JSON.parse(ev.target.result);
-        pixelData = data;
-        baronyMeta = {};
-        Object.keys(pixelData).forEach((id) => {
-          baronyMeta[id] = { id: id, name: '' };
-        });
-        pixelMap = Array.from({ length: mapHeight }, () => new Array(mapWidth).fill(0));
-        Object.entries(pixelData).forEach(([id, coords]) => {
-          coords.forEach(([px, py]) => {
-            if (py >= 0 && py < mapHeight && px >= 0 && px < mapWidth) {
-              pixelMap[py][px] = id;
-            }
-          });
-        });
-        currentSelectedId = null;
-        if (infoPanel) infoPanel.style.display = 'none';
-        initColorMap();
-        drawAll();
-      } catch (err) {
-        alert('Fichier JSON invalide.');
-      }
+    return {
+      pixelData,
+      baronyMeta,
+      seigneurMap,
+      religionMap,
+      cultureMapInfo,
+      countyMap,
+      duchyMap,
+      kingdomMap,
+      viscountyMap,
+      marquisateMap,
+      archduchyMap,
+      empireMap,
+      canonicalLandMap,
+      baronyAdjacency,
+      seigneurToCounty,
+      seigneurToDuchy,
+      seigneurToKingdom,
+      seigneurToViscounty,
+      seigneurToMarquisate,
+      seigneurToArchduchy,
+      seigneurToEmpire,
+      mapWidth,
+      mapHeight,
+      mapMode
     };
-    reader.readAsText(file);
   }
 
-  // Chargement des couleurs de fond pour le bucket fill.
-  // Cette fonction charge l'image depuis `src` via fetch pour éviter
-  // les problèmes de canvas « tainted » avec des fichiers locaux. Elle crée
-  // ensuite un objet URL et dessine l'image dans un canvas hors écran
-  // afin de récupérer les données des pixels. La couleur de fond est
-  // enregistrée pour chaque pixel afin de permettre au bucket fill de
-  // fonctionner correctement.
-  function loadBackgroundColors(src) {
-    return new Promise((resolve, reject) => {
-      // Si l'URI est un data URI, on peut l'utiliser directement.
-      const loadImage = (imageSrc) => {
-        const img = new Image();
-        img.onload = () => {
-          try {
-            const offCanvas = document.createElement('canvas');
-            offCanvas.width = mapWidth;
-            offCanvas.height = mapHeight;
-            const offCtx = offCanvas.getContext('2d');
-            offCtx.imageSmoothingEnabled = false;
-            offCtx.drawImage(img, 0, 0);
-            const data = offCtx.getImageData(0, 0, mapWidth, mapHeight).data;
-            backgroundColors = Array.from({ length: mapHeight }, () => new Array(mapWidth));
-            for (let y = 0; y < mapHeight; y++) {
-              for (let x = 0; x < mapWidth; x++) {
-                const idx = (y * mapWidth + x) * 4;
-                const r = data[idx];
-                const g = data[idx + 1];
-                const b = data[idx + 2];
-                // Stocker la couleur de fond (r,g,b)
-                backgroundColors[y][x] = [r, g, b];
-              }
-            }
-            resolve();
-          } catch (err) {
-            reject(err);
-          }
-        };
-        img.onerror = (err) => reject(err);
-        img.src = imageSrc;
-      };
-      // Si src est une data URI ou undefined, utiliser directement
-      if (!src || src.startsWith('data:')) {
-        const uri = src || (window.mapSources && window.mapSources.asgaria) || 'Asgaria.png';
-        loadImage(uri);
-      } else {
-        // Charger via fetch pour éviter les problèmes de cross‑origin.
-        fetch(src).then((resp) => resp.blob()).then((blob) => {
-          const url = URL.createObjectURL(blob);
-          loadImage(url);
-          // Révoquer l'URL une fois l'image chargée
-          setTimeout(() => URL.revokeObjectURL(url), 10000);
-        }).catch((err) => {
-          reject(err);
-        });
-      }
-    });
-  }
-
-  // Gestion des outils
-  function setActiveTool(tool) {
-    currentTool = tool;
-    // Réinitialiser toutes les classes actives
-    [brushToolBtn, eraserToolBtn, bucketToolBtn, newBaronyBtn].forEach((btn) => btn.classList.remove('active'));
-    if (tool === 'brush') brushToolBtn.classList.add('active');
-    else if (tool === 'eraser') eraserToolBtn.classList.add('active');
-    else if (tool === 'bucket') bucketToolBtn.classList.add('active');
-    else if (tool === 'new') newBaronyBtn.classList.add('active');
-  }
-
-  // Initialisation
-  function init() {
-    initColorMap();
-    // Déterminer la source initiale : utiliser l'Asgaria de mapSources si disponible
-    let src;
-    if (window.mapSources && window.mapSources.asgaria) {
-      src = window.mapSources.asgaria;
-      baseMap.setAttribute('src', src);
-    } else {
-      src = baseMap.getAttribute('src') || 'Asgaria.png';
-    }
-    loadBackgroundColors(src).then(() => {
-      fitToContainer();
-      drawAll();
-    });
-  }
-
-  /* Écouteurs d’événements */
-  if (toggleEditBtn) toggleEditBtn.addEventListener('click', () => {
-    editMode = !editMode;
-    toggleEditBtn.textContent = editMode ? 'Quitter le mode édition' : 'Mode édition';
-    if (!editMode) {
-      currentTool = null;
-      [brushToolBtn, eraserToolBtn, bucketToolBtn, newBaronyBtn].forEach((btn) => btn.classList.remove('active'));
-      painting = false;
-      mergeMode = false;
-      mergeBaseId = null;
-      currentSelectedId = null;
-      if (infoPanel) infoPanel.style.display = 'none';
-    }
-  });
-  if (randomBtn) randomBtn.addEventListener('click', randomizeColors);
-  if (filterSelect) filterSelect.addEventListener('change', () => applyFilter(filterSelect.value));
-  if (deleteBtn) deleteBtn.addEventListener('click', deleteBarony);
-  if (selectBtn) selectBtn.addEventListener('click', () => {
-    const label = mapMode === 'sea' ? 'zone maritime' : 'baronnie';
-    const id = prompt(`ID de la ${label} à sélectionner ?`);
-    if (id) selectBarony(id.trim());
-  });
-  if (addCanonicalBtn) addCanonicalBtn.addEventListener('click', () => {
-    const rid = parseInt(addCanonicalSelect.value || '') || null;
-    if (!rid || !currentSelectedId) return;
-    fetch(API_BASE + '/api/canonical_lands', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ religion_id: rid, barony_id: currentSelectedId })
-    }).then(() => {
-      if (!canonicalLandMap[currentSelectedId]) canonicalLandMap[currentSelectedId] = [];
-      if (!canonicalLandMap[currentSelectedId].includes(rid)) canonicalLandMap[currentSelectedId].push(rid);
-      refreshCanonicalList(currentSelectedId);
-      if (currentFilter === 'canonical') applyFilter('canonical'); else drawAll();
-    });
-  });
-
-  const autoUpdateElems = [
-    editIdInput,
-    editNameInput,
-    editSeigneur,
-    editReligionPop,
-    editCulture,
-    editViscounty,
-    editCounty,
-    editSanctuary,
-    editPriory,
-    editChurch,
-    editCathedral,
-    editPlayer
-  ];
-  autoUpdateElems.forEach(el => {
-    if (el) el.addEventListener('change', updateBarony);
-  });
-
-  // Outils
-  if (brushToolBtn)
-    brushToolBtn.addEventListener('click', () => {
-      if (!editMode) return;
-      setActiveTool('brush');
-      mergeMode = false;
-      mergeBaseId = null;
-    });
-  if (eraserToolBtn)
-    eraserToolBtn.addEventListener('click', () => {
-      if (!editMode) return;
-      setActiveTool('eraser');
-      mergeMode = false;
-      mergeBaseId = null;
-    });
-  if (bucketToolBtn)
-    bucketToolBtn.addEventListener('click', () => {
-      if (!editMode) return;
-      setActiveTool('bucket');
-      mergeMode = false;
-      mergeBaseId = null;
-    });
-  if (newBaronyBtn)
-    newBaronyBtn.addEventListener('click', () => {
-      if (!editMode) return;
-      if (mapMode === 'sea') {
-        fetch(API_BASE + entityEndpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: '' })
-        })
-          .then(r => r.json())
-          .then(res => {
-            const newId = String(res.id);
-            undoStack.push({ type: 'create', id: newId });
-            pixelData[newId] = [];
-            baronyMeta[newId] = { id: newId, name: '' };
-            colorMap[newId] = generateColor(newId);
-            currentSelectedId = newId;
-            selectBarony(newId);
-            setActiveTool('brush');
-          });
-      } else {
-        const newId = createNewId();
-        // Enregistrer création pour l’undo
-        undoStack.push({ type: 'create', id: newId });
-        pixelData[newId] = [];
-        baronyMeta[newId] = {
-          id: newId,
-          name: '',
-          seigneur_id: null,
-          religion_pop_id: null,
-          county_id: null,
-          viscounty_id: null,
-          culture_id: null,
-          has_sanctuary: 0,
-          has_priory: 0,
-          has_church: 0,
-          has_cathedral: 0,
-          player: 0
-        };
-        saveEntityToServer(newId, {
-          name: '',
-          seigneur_id: null,
-          religion_pop_id: null,
-          county_id: null,
-          viscounty_id: null,
-          culture_id: null,
-          has_sanctuary: 0,
-          has_priory: 0,
-          has_church: 0,
-          has_cathedral: 0,
-          player: 0
-        }, 'POST');
-        colorMap[newId] = generateColor(newId);
-        currentSelectedId = newId;
-        selectBarony(newId);
-        setActiveTool('brush');
-      }
-    });
-  if (brushSizeInput)
-    brushSizeInput.addEventListener('input', () => {
-      const val = parseInt(brushSizeInput.value, 10);
-      brushSize = isNaN(val) ? 1 : val;
-      if (brushSizeValue) brushSizeValue.textContent = brushSize;
-    });
-
-  // Événements souris pour peinture et sélection
-  pixelCanvas.addEventListener('mousedown', handleMouseDown);
-  pixelCanvas.addEventListener('mousemove', handleMouseMove);
-  window.addEventListener('mouseup', handleMouseUp);
-  pixelCanvas.addEventListener('click', handleCanvasClick);
-
-  // Clic droit : effacement quel que soit l'outil (pinceau, bucket, etc.)
-  pixelCanvas.addEventListener('contextmenu', (e) => {
-    e.preventDefault();
-    const [x, y] = getMapCoordinates(e);
-    if (x < 0 || y < 0 || x >= mapWidth || y >= mapHeight) return;
-    const changes = [];
-    applyBrush(x, y, null, true, changes);
-    if (changes.length > 0) undoStack.push({ type: 'paint', changes });
-  });
-
-  // Pan/zoom sur le conteneur
-  mapContainer.addEventListener('wheel', handleWheel, { passive: false });
-  mapContainer.addEventListener('mousedown', handlePanStart);
-  mapContainer.addEventListener('mousemove', handlePanMove);
-  window.addEventListener('mouseup', handlePanEnd);
-  window.addEventListener('resize', fitToContainer);
-
-  // Touche Escape : annuler la sélection et tout mode actif
-  window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      selectBarony(null);
-      painting = false;
-      mergeMode = false;
-      mergeBaseId = null;
-      setActiveTool(null);
-    }
-  });
-
-  // Undo (Ctrl+Z)
-  function undo() {
-    if (undoStack.length === 0) return;
-    const op = undoStack.pop();
-    if (op.type === 'paint') {
-      // revert paint/eraser/bucket changes
-      op.changes.forEach(({ x, y, oldId, newId }) => {
-        const current = pixelMap[y][x];
-        // remove from current id if needed
-        if (current) {
-          const arr = pixelData[current];
-          if (arr) {
-            const idx = arr.findIndex(([px, py]) => px === x && py === y);
-            if (idx >= 0) arr.splice(idx, 1);
-          }
-        }
-        if (oldId) {
-          pixelMap[y][x] = oldId;
-          if (!pixelData[oldId]) pixelData[oldId] = [];
-          pixelData[oldId].push([x, y]);
-          drawPixel(x, y, oldId);
-        } else {
-          pixelMap[y][x] = 0;
-          ctx.clearRect(x, y, 1, 1);
-        }
-      });
-    } else if (op.type === 'delete') {
-      // restore deleted barony
-      const id = op.id;
-      pixelData[id] = op.coords.slice();
-      baronyMeta[id] = { id: id, name: op.name };
-      op.coords.forEach(([x, y]) => {
-        pixelMap[y][x] = id;
-        drawPixel(x, y, id);
-      });
-    } else if (op.type === 'merge') {
-      // revert merging: restore otherId
-      const { baseId, otherId, changes, name } = op;
-      pixelData[otherId] = [];
-      baronyMeta[otherId] = { id: otherId, name: name };
-      changes.forEach(({ x, y }) => {
-        // remove from baseId
-        const arrBase = pixelData[baseId];
-        if (arrBase) {
-          const idx = arrBase.findIndex(([px, py]) => px === x && py === y);
-          if (idx >= 0) arrBase.splice(idx, 1);
-        }
-        pixelMap[y][x] = otherId;
-        pixelData[otherId].push([x, y]);
-        drawPixel(x, y, otherId);
-      });
-    } else if (op.type === 'swap') {
-      // revert swapping of two baronies
-      const { id1, id2, changes, oldName, newName } = op;
-      changes.forEach(({ x, y, oldId, newId }) => {
-        // remove from current assignment (newId)
-        const arr = pixelData[newId];
-        if (arr) {
-          const idx = arr.findIndex(([px, py]) => px === x && py === y);
-          if (idx >= 0) arr.splice(idx, 1);
-        }
-        // restore previous id
-        pixelMap[y][x] = oldId;
-        if (!pixelData[oldId]) pixelData[oldId] = [];
-        pixelData[oldId].push([x, y]);
-        drawPixel(x, y, oldId);
-      });
-      baronyMeta[id1] = { id: id1, name: oldName };
-      baronyMeta[id2] = { id: id2, name: newName };
-      if (currentSelectedId === id2) {
-        currentSelectedId = id1;
-        selectBarony(id1);
-      }
-    } else if (op.type === 'create') {
-      // remove created barony (should have no pixels or few)
-      const id = op.id;
-      const coords = pixelData[id] || [];
-      coords.forEach(([x, y]) => {
-        pixelMap[y][x] = 0;
-        ctx.clearRect(x, y, 1, 1);
-      });
-      delete pixelData[id];
-      delete baronyMeta[id];
-      if (currentSelectedId === id) {
-        currentSelectedId = null;
-        if (infoPanel) infoPanel.style.display = 'none';
-      }
-    } else if (op.type === 'rename') {
-      const { oldId, newId, oldName, newName, coords } = op;
-      if (oldId === newId) {
-        // only name change
-        if (baronyMeta[oldId]) baronyMeta[oldId].name = oldName;
-      } else {
-        // revert id change
-        // remove newId assignment
-        coords.forEach(([x, y]) => {
-          const arrNew = pixelData[newId];
-          if (arrNew) {
-            const idx = arrNew.findIndex(([px, py]) => px === x && py === y);
-            if (idx >= 0) arrNew.splice(idx, 1);
-          }
-          pixelMap[y][x] = oldId;
-          if (!pixelData[oldId]) pixelData[oldId] = [];
-          pixelData[oldId].push([x, y]);
-        });
-        // restore meta
-        baronyMeta[oldId] = { id: oldId, name: oldName };
-        delete pixelData[newId];
-        delete baronyMeta[newId];
-        // update selected id if necessary
-        if (currentSelectedId === newId) {
-          currentSelectedId = oldId;
-          selectBarony(oldId);
-        }
-        drawAll();
-      }
-    }
-  }
-
-  // Raccourci clavier pour l’undo
-  document.addEventListener('keydown', (e) => {
-    if (e.ctrlKey && (e.key === 'z' || e.key === 'Z')) {
-      e.preventDefault();
-      undo();
-    }
-  });
   document.addEventListener('DOMContentLoaded', () => {
-    const baseMapLoaded = baseMap.complete
-      ? Promise.resolve()
-      : new Promise(res => (baseMap.onload = res));
+    const baseMapLoaded = baseMap.complete ? Promise.resolve() : new Promise(res => (baseMap.onload = res));
     baseMapLoaded.then(() => {
       mapWidth = baseMap.naturalWidth;
       mapHeight = baseMap.naturalHeight;
@@ -1659,14 +171,37 @@
       pixelCanvas.height = mapHeight;
       pixelCanvas.style.width = mapWidth + 'px';
       pixelCanvas.style.height = mapHeight + 'px';
-      ctx.imageSmoothingEnabled = false;
-      pixelMap = Array.from({ length: mapHeight }, () => new Array(mapWidth).fill(0));
-      const loaders = [loadPixelData(), loadMetaData()];
-      if (mapMode !== 'sea') loaders.push(loadOptions());
-      Promise.all(loaders).then(() => {
-        init();
-        applyFilter(filterSelect ? filterSelect.value : '');
+      core = mapCore.init(pixelCanvas, {
+        fetchData,
+        onSelect: handleSelect,
+        drawOverlay: () => {},
+        mapMode,
+        updateLegend
       });
+      if (filterSelect) filterSelect.addEventListener('change', () => core.applyFilter(filterSelect.value));
+      if (randomBtn) randomBtn.addEventListener('click', () => core.randomizeColors());
     });
   });
+
+  // Basic editing: updating name/id
+  const saveBtn = document.getElementById('saveBarony');
+  function updateBarony() {
+    if (!currentSelectedId) return;
+    const newId = editIdInput.value.trim();
+    const newName = editNameInput.value.trim();
+    fetch(`${API_BASE}${entityEndpoint}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: currentSelectedId, newId, name: newName })
+    }).then(() => {
+      baronyMeta[newId] = { id: newId, name: newName };
+      if (newId !== currentSelectedId) {
+        core.colorMap[newId] = core.colorMap[currentSelectedId];
+        delete core.colorMap[currentSelectedId];
+        delete pixelData[currentSelectedId];
+      }
+      core.selectBarony(newId);
+    });
+  }
+  if (saveBtn) saveBtn.addEventListener('click', updateBarony);
 })();
