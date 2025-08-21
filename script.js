@@ -343,10 +343,6 @@
   // Historique des opérations pour l’undo
   const undoStack = [];
 
-
-  // Masque des barrières pour le bucket fill (eau, montagnes)
-  let barrierMask = null;
-
   // Couleurs de fond (r,g,b) pour chaque pixel, selon la carte active
   let backgroundColors = null;
 
@@ -908,7 +904,6 @@
         const key = cy * originalWidth + cx;
         if (visited.has(key)) continue;
         visited.add(key);
-        if (barrierMask && barrierMask[cy][cx]) continue;
         if (pixelMap[cy][cx] !== targetId) continue;
         // retirer du précédent id
         const arr = pixelData[targetId];
@@ -943,8 +938,6 @@
         const key = cy * originalWidth + cx;
         if (visited.has(key)) continue;
         visited.add(key);
-        // Stopper au niveau des barrières (eau, montagnes, etc.)
-        if (barrierMask && barrierMask[cy][cx]) continue;
         // Ne remplir que les pixels sans baronnie
         if (pixelMap[cy][cx] !== 0) continue;
         // Vérifier que la couleur de fond correspond à celle d'origine
@@ -1151,20 +1144,20 @@
     }
     baseMap.setAttribute('src', newSrc);
     usingBlankMap = !usingBlankMap;
-    // Recalculer les masques et couleurs de fond pour la nouvelle carte
-    computeBarrierMask(newSrc).then(() => {
-      // rien à faire après recalcul, la carte est redessinée lors des modifications ultérieures
+    // Recharger les couleurs de fond pour la nouvelle carte
+    loadBackgroundColors(newSrc).then(() => {
+      // rien à faire après chargement, la carte est redessinée lors des modifications ultérieures
     });
   }
 
-  // Calcul du masque des barrières (eau et montagnes).
+  // Chargement des couleurs de fond pour le bucket fill.
   // Cette fonction charge l'image depuis `src` via fetch pour éviter
   // les problèmes de canvas « tainted » avec des fichiers locaux. Elle crée
   // ensuite un objet URL et dessine l'image dans un canvas hors écran
-  // afin de récupérer les données des pixels. Les barrières sont l'eau
-  // (#00A2E8, #99D9EA), les montagnes/noir (#000000) et les frontières
-  // grises (#7F7F7F). La couleur de fond est enregistrée pour chaque pixel.
-  function computeBarrierMask(src) {
+  // afin de récupérer les données des pixels. La couleur de fond est
+  // enregistrée pour chaque pixel afin de permettre au bucket fill de
+  // fonctionner correctement.
+  function loadBackgroundColors(src) {
     return new Promise((resolve, reject) => {
       // Si l'URI est un data URI, on peut l'utiliser directement.
       const loadImage = (imageSrc) => {
@@ -1178,7 +1171,6 @@
             offCtx.imageSmoothingEnabled = false;
             offCtx.drawImage(img, 0, 0);
             const data = offCtx.getImageData(0, 0, originalWidth, originalHeight).data;
-            barrierMask = Array.from({ length: originalHeight }, () => new Array(originalWidth).fill(false));
             backgroundColors = Array.from({ length: originalHeight }, () => new Array(originalWidth));
             for (let y = 0; y < originalHeight; y++) {
               for (let x = 0; x < originalWidth; x++) {
@@ -1186,12 +1178,6 @@
                 const r = data[idx];
                 const g = data[idx + 1];
                 const b = data[idx + 2];
-                // Les pixels d’eau (#00A2E8 ou #99D9EA) et les noirs (#000000) forment des barrières.
-                // Les frontières grises (#7F7F7F) sont désormais traitées comme des pixels vides afin que
-                // l’outil “bucket” puisse les remplir. Elles ne sont donc pas considérées comme des barrières.
-                const isWater = (r === 0 && g === 162 && b === 232) || (r === 153 && g === 217 && b === 234);
-                const isBlack = (r === 0 && g === 0 && b === 0);
-                barrierMask[y][x] = isWater || isBlack;
                 // Stocker la couleur de fond (r,g,b)
                 backgroundColors[y][x] = [r, g, b];
               }
@@ -1244,7 +1230,7 @@
     } else {
       src = baseMap.getAttribute('src') || 'Asgaria.png';
     }
-    computeBarrierMask(src).then(() => {
+    loadBackgroundColors(src).then(() => {
       fitToContainer();
       drawAll();
     });
