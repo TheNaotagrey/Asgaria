@@ -9,6 +9,9 @@
   let mapHeight = 0;
 
   let pixelData = {};
+  let seaPixelData = {};
+  let baronyPixelData = {};
+  let maritimeZoneBaronies = {};
   let baronyMeta = {};
   let seigneurMap = {};
   let religionMap = {};
@@ -25,6 +28,10 @@
   let sanctuaryMap = {};
   let baronyAdjacency = {};
   let mapData = {};
+
+  let baronyLinkMode = false;
+  let previousFilter = '';
+  let currentSeaZoneId = null;
 
   let filterManager = null;
 
@@ -62,7 +69,8 @@
   ];
   const seaFilters = [
     { value: '', label: 'Aucun' },
-    { value: 'distance', label: 'Distance' }
+    { value: 'distance', label: 'Distance' },
+    { value: 'baronies', label: 'Baronnies liées' }
   ];
   function populateFilters() {
     if (!filterSelect) return;
@@ -86,6 +94,7 @@
   const editNameInput = document.getElementById('editName');
   const seaEditIdInput = document.getElementById('seaEditId');
   const seaEditNameInput = document.getElementById('seaEditName');
+  const editSeaBaroniesBtn = document.getElementById('editSeaBaronies');
   const editReligionPopSelect = document.getElementById('editReligionPop');
   const editSanctuariesBtn = document.getElementById('editSanctuaries');
   const editCanonicalBtn = document.getElementById('editCanonical');
@@ -120,6 +129,22 @@
       legendDiv.appendChild(item);
     });
     legendDiv.style.display = 'block';
+  }
+
+  function drawOverlay(ctx) {
+    if (mapMode !== 'sea') return;
+    const zoneId = baronyLinkMode ? currentSeaZoneId : core?.currentSelectedId;
+    if (baronyLinkMode && zoneId) {
+      ctx.fillStyle = 'rgba(255,255,0,0.4)';
+      (seaPixelData[zoneId] || []).forEach(([x, y]) => ctx.fillRect(x, y, 1, 1));
+    }
+    const showBaronies = baronyLinkMode || (filterSelect && filterSelect.value === 'baronies');
+    if (showBaronies && zoneId) {
+      ctx.fillStyle = 'rgba(0,0,255,0.4)';
+      (maritimeZoneBaronies[zoneId] || []).forEach(bid => {
+        (baronyPixelData[bid] || []).forEach(([x, y]) => ctx.fillRect(x, y, 1, 1));
+      });
+    }
   }
 
   let core = null;
@@ -431,6 +456,29 @@
     });
   }
 
+  if (editSeaBaroniesBtn) {
+    editSeaBaroniesBtn.addEventListener('click', () => {
+      if (!currentSeaZoneId) return;
+      baronyLinkMode = !baronyLinkMode;
+      if (baronyLinkMode) {
+        previousFilter = filterSelect ? filterSelect.value : '';
+        core.setPixelData(baronyPixelData);
+        const greyMap = {};
+        Object.keys(baronyPixelData).forEach(id => { greyMap[id] = [150, 150, 150, 60]; });
+        core.setColorMap(greyMap);
+        core.selectBarony(null);
+      } else {
+        core.setPixelData(seaPixelData);
+        if (filterManager && filterSelect) {
+          filterManager.applyFilter(filterSelect.value);
+        } else {
+          core.drawAll();
+        }
+      }
+      core.drawAll();
+    });
+  }
+
   function handleSelect(id) {
     if (pendingAction && pendingLinkId && id && id !== pendingLinkId) {
       const sourceId = pendingLinkId;
@@ -461,21 +509,42 @@
       return;
     }
 
-    currentSelectedId = id;
     if (mapMode === 'sea') {
+      if (baronyLinkMode) {
+        if (!id || !currentSeaZoneId) return;
+        const list = maritimeZoneBaronies[currentSeaZoneId] || [];
+        const idx = list.indexOf(id);
+        const method = idx >= 0 ? 'DELETE' : 'POST';
+        fetch(`${API_BASE}/api/maritime_zone_baronies`, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ zone_id: currentSeaZoneId, barony_id: id })
+        }).then(() => {
+          if (idx >= 0) list.splice(idx, 1); else list.push(id);
+          maritimeZoneBaronies[currentSeaZoneId] = list;
+          core.drawAll();
+        });
+        core.selectBarony(null);
+        return;
+      }
+      currentSelectedId = id;
+      currentSeaZoneId = id;
       if (!id) {
         if (seaInfoPanel) seaInfoPanel.style.display = 'none';
+        core.drawAll();
         return;
       }
       if (seaInfoPanel) seaInfoPanel.style.display = 'block';
       if (infoPanel) infoPanel.style.display = 'none';
       if (seaEditIdInput) seaEditIdInput.value = id;
       if (seaEditNameInput) seaEditNameInput.value = baronyMeta[id]?.name || '';
-      if (filterManager && filterSelect && filterSelect.value === 'distance') {
-        filterManager.applyFilter('distance');
+      if (filterManager && filterSelect && (filterSelect.value === 'distance' || filterSelect.value === 'baronies')) {
+        filterManager.applyFilter(filterSelect.value);
       }
+      core.drawAll();
       return;
     }
+    currentSelectedId = id;
 
     if (!id) {
       if (infoPanel) infoPanel.style.display = 'none';
@@ -571,13 +640,24 @@
         baronyAdjacency[c.barony_id_2].push(c.barony_id_1);
       });
     } else {
-      const connections = await fetch(API_BASE + '/api/maritime_zone_connections').then(r => r.json());
+      const [connections, bPixels, zoneBaronies] = await Promise.all([
+        fetch(API_BASE + '/api/maritime_zone_connections').then(r => r.json()),
+        fetch(API_BASE + '/api/barony_pixels').then(r => r.json()),
+        fetch(API_BASE + '/api/maritime_zone_baronies').then(r => r.json())
+      ]);
       baronyAdjacency = {};
       connections.forEach(c => {
         if (!baronyAdjacency[c.zone_id_1]) baronyAdjacency[c.zone_id_1] = [];
         if (!baronyAdjacency[c.zone_id_2]) baronyAdjacency[c.zone_id_2] = [];
         baronyAdjacency[c.zone_id_1].push(c.zone_id_2);
         baronyAdjacency[c.zone_id_2].push(c.zone_id_1);
+      });
+      seaPixelData = pixelData;
+      baronyPixelData = bPixels;
+      maritimeZoneBaronies = {};
+      zoneBaronies.forEach(zb => {
+        if (!maritimeZoneBaronies[zb.zone_id]) maritimeZoneBaronies[zb.zone_id] = [];
+        maritimeZoneBaronies[zb.zone_id].push(zb.barony_id);
       });
     }
     mapData = {
@@ -596,6 +676,8 @@
       canonicalLandMap,
       sanctuaryMap,
       baronyAdjacency,
+      baronyPixels: baronyPixelData,
+      maritimeZoneBaronies,
       seigneurToCounty,
       seigneurToDuchy,
       seigneurToKingdom,
@@ -625,7 +707,7 @@
         canvas: pixelCanvas,
         fetchData,
         onSelect: handleSelect,
-        drawOverlay: () => {},
+        drawOverlay,
         mapMode
       });
       core.ready.then(() => {

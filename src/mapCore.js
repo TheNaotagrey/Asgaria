@@ -289,6 +289,11 @@
         ctx.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},${alpha})`;
         ctx.fillRect(x, y, 1, 1);
       },
+      setPixelData: pd => {
+        pixelData = pd || {};
+        rebuildPixelMap();
+        drawAll();
+      },
       get pixelData() { return pixelData; },
       get pixelMap() { return pixelMap; },
       get colorMap() { return colorMap; },
