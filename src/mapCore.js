@@ -26,7 +26,8 @@
       fetchData = async () => ({}),
       onSelect = () => {},
       drawOverlay = () => {},
-      mapMode = 'land'
+      mapMode = 'land',
+      staticMap = false
     } = opts;
 
     const canvas = passedCanvas || document.getElementById(mapId);
@@ -80,6 +81,13 @@
 
     function applyTransform() {
       group.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${scale})`;
+    }
+
+    function resetView() {
+      scale = 1;
+      offsetX = 0;
+      offsetY = 0;
+      applyTransform();
     }
 
     function centerMap() {
@@ -230,7 +238,7 @@
     }
 
 
-    const positionMap = (!enablePan && !enableZoom) ? centerMap : fitToContainer;
+    const positionMap = staticMap ? resetView : (!enablePan && !enableZoom) ? centerMap : fitToContainer;
 
     if (enableZoom) {
       canvas.addEventListener('wheel', handleWheel, { passive: false });
@@ -282,6 +290,7 @@
       selectBarony,
       drawAll,
       fitToContainer,
+      resetView,
       drawPixel: (x, y, id) => {
         if (!colorMap[id]) {
           colorMap[id] = generateColor(id);

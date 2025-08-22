@@ -575,7 +575,7 @@ th.multi-col {
 }
 
 .trade-map {
-  flex: 1;
+  flex: 2;
   position: relative;
   aspect-ratio: 4 / 3;
 }

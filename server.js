@@ -2251,6 +2251,58 @@ app.delete('/api/trade_routes', requireAdmin, (req,res)=>{
   });
 });
 
+app.post('/api/trade_routes/build', (req, res) => {
+  if (!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
+  const targetId = parseInt(req.body.barony_id, 10);
+  if (!targetId) return res.status(400).json({ error: 'ID invalide' });
+  getSeigneurie(req, 'seigneuries.id as id, seigneuries.baronnie_id, seigneuries.inventaire_id', (err, srow) => {
+    if (err) return handleError(res, err);
+    if (!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
+    const startId = srow.baronnie_id;
+    if (startId === targetId) return res.status(400).json({ error: 'Baronnie identique' });
+    db.get('SELECT seigneur_id, name FROM baronies WHERE id=?', [targetId], (err2, brow) => {
+      if (err2) return handleError(res, err2);
+      if (!brow || !brow.seigneur_id) return res.status(400).json({ error: 'Baronnie invalide' });
+      const [id1, id2] = startId < targetId ? [startId, targetId] : [targetId, startId];
+      db.get('SELECT 1 FROM trade_routes WHERE barony_id_1=? AND barony_id_2=?', [id1, id2], (err3, ex) => {
+        if (err3) return handleError(res, err3);
+        if (ex) return res.status(400).json({ error: 'Route existante' });
+        db.all('SELECT barony_id_1, barony_id_2 FROM barony_connections', [], (err4, rows) => {
+          if (err4) return handleError(res, err4);
+          const adj = {};
+          rows.forEach(r => {
+            (adj[r.barony_id_1] = adj[r.barony_id_1] || []).push(r.barony_id_2);
+            (adj[r.barony_id_2] = adj[r.barony_id_2] || []).push(r.barony_id_1);
+          });
+          const queue = [[startId, 0]];
+          const visited = new Set([startId]);
+          let dist = null;
+          while (queue.length) {
+            const [cur, d] = queue.shift();
+            if (cur === targetId) { dist = d; break; }
+            (adj[cur] || []).forEach(n => {
+              if (!visited.has(n)) { visited.add(n); queue.push([n, d + 1]); }
+            });
+          }
+          if (dist == null) return res.status(400).json({ error: 'Inaccessible' });
+          const cost = dist * 3;
+          db.get('SELECT or_ FROM inventaire WHERE id=?', [srow.inventaire_id], (err5, inv) => {
+            if (err5) return handleError(res, err5);
+            if (!inv || (inv.or_ || 0) < cost) return res.status(400).json({ error: 'Ressources insuffisantes' });
+            consumeResources(db, srow.id, { or_: cost }, err6 => {
+              if (err6) return handleError(res, err6);
+              db.run('INSERT OR IGNORE INTO trade_routes (barony_id_1, barony_id_2) VALUES (?,?)', [id1, id2], function(err7){
+                if (err7) return handleError(res, err7);
+                res.json({ added: this.changes, cost, distance: dist });
+              });
+            });
+          });
+        });
+      });
+    });
+  });
+});
+
 // Maritime zones CRUD
 const maritimeZoneFields = ['name'];
 app.get('/api/maritime_zones', (req,res)=>{ list('maritime_zones')(req,res); });

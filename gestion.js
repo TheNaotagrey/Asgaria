@@ -68,7 +68,7 @@ function showConfirm(message){
     const msgEl = document.getElementById('confirmMessage');
     const okBtn = document.getElementById('confirmOk');
     const cancelBtn = document.getElementById('confirmCancel');
-    msgEl.textContent = message;
+    msgEl.innerHTML = message;
     const clean = result => {
       okBtn.removeEventListener('click', onOk);
       cancelBtn.removeEventListener('click', onCancel);
@@ -134,6 +134,8 @@ async function init() {
   const sid = params.get('seigneurie_id');
   await loadAndRender(sid);
   await setupAdminSelector(sid);
+  const newRouteBtn = document.getElementById('newTradeRouteBtn');
+  if (newRouteBtn) newRouteBtn.addEventListener('click', startTradeRouteCreation);
 }
 
 async function loadAndRender(seigneurieId) {
@@ -1889,6 +1891,12 @@ function showSpellResult(success, spell, amount, error, randomLuxury) {
 
 let tradeMapCore = null;
 let tradeAdjacency = {};
+let tradeBaronies = null;
+let seigneurNameMap = {};
+let newRouteMode = false;
+let eligibleTargets = {};
+let currentTradeBaronyId = null;
+let currentTradeRoutes = [];
 
 async function initTradeMap() {
   if (tradeMapCore) return;
@@ -1905,6 +1913,8 @@ async function initTradeMap() {
     canvas,
     enablePan: false,
     enableZoom: false,
+    staticMap: true,
+    onSelect: handleTradeMapSelect,
     fetchData: async () => {
       const [pixels, connections] = await Promise.all([
         fetch('/api/barony_pixels').then(r => r.json()),
@@ -1923,7 +1933,7 @@ async function initTradeMap() {
   await tradeMapCore.ready;
   const commerceTab = document.getElementById('tab-commerce');
   if (commerceTab && commerceTab.classList.contains('active')) {
-    tradeMapCore.fitToContainer();
+    tradeMapCore.resetView();
     tradeMapCore.drawAll();
   }
 }
@@ -1952,6 +1962,98 @@ async function updateTradeMap(baronyId, routes) {
   tradeMapCore.setColorMap(colorMap);
 }
 
+function computeDistances(start) {
+  const dist = { [start]: 0 };
+  const queue = [start];
+  while (queue.length) {
+    const cur = queue.shift();
+    (tradeAdjacency[cur] || []).forEach(n => {
+      if (dist[n] == null) {
+        dist[n] = dist[cur] + 1;
+        queue.push(n);
+      }
+    });
+  }
+  return dist;
+}
+
+async function startTradeRouteCreation() {
+  if (newRouteMode) {
+    newRouteMode = false;
+    eligibleTargets = {};
+    await updateTradeMap(currentTradeBaronyId, currentTradeRoutes);
+    return;
+  }
+  if (!currentTradeBaronyId) return;
+  if (!tradeBaronies) {
+    try {
+      const [barRes, seiRes] = await Promise.all([
+        fetch('/api/baronies'),
+        fetch('/api/seigneurs')
+      ]);
+      const barData = barRes.ok ? await barRes.json() : [];
+      const seigs = seiRes.ok ? await seiRes.json() : [];
+      seigneurNameMap = Object.fromEntries(seigs.map(s => [s.id, s.name]));
+      tradeBaronies = barData.map(b => ({
+        id: b.id,
+        name: b.name,
+        seigneur_id: b.seigneur_id,
+        seigneur_name: seigneurNameMap[b.seigneur_id]
+      }));
+    } catch {
+      return;
+    }
+  }
+  const dists = computeDistances(currentTradeBaronyId);
+  const existing = new Set(currentTradeRoutes.map(r => r.id));
+  eligibleTargets = {};
+  tradeBaronies.forEach(b => {
+    if (!b.seigneur_id) return;
+    if (b.id === currentTradeBaronyId) return;
+    if (existing.has(b.id)) return;
+    if (dists[b.id] == null) return;
+    eligibleTargets[b.id] = { ...b, distance: dists[b.id] };
+  });
+  if (!Object.keys(eligibleTargets).length) {
+    alert('Aucune baronnie disponible');
+    return;
+  }
+  newRouteMode = true;
+  const cm = { ...tradeMapCore.colorMap };
+  Object.keys(eligibleTargets).forEach(id => {
+    cm[id] = [0, 170, 255, 100];
+  });
+  tradeMapCore.setColorMap(cm);
+  tradeMapCore.currentSelectedId = null;
+}
+
+async function handleTradeMapSelect(id) {
+  if (!newRouteMode || !id || !eligibleTargets[id]) return;
+  const target = eligibleTargets[id];
+  const cost = target.distance * 3;
+  const msg = `Vous allez construire une route commerciale vers la baronnie de <strong>${target.name} (#${target.id})</strong> gérée par ${target.seigneur_name}<br><br>Cela vous coutera <strong>${cost} Or</strong>`;
+  const ok = await showConfirm(msg);
+  if (!ok) return;
+  try {
+    const res = await fetch('/api/trade_routes/build', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ barony_id: target.id })
+    });
+    if (res.ok) {
+      await renderTradeRoutes(currentTradeBaronyId);
+    } else {
+      const err = await res.json().catch(() => ({}));
+      alert(err.error || 'Construction impossible');
+    }
+  } catch {
+    alert('Construction impossible');
+  }
+  newRouteMode = false;
+  eligibleTargets = {};
+  await updateTradeMap(currentTradeBaronyId, currentTradeRoutes);
+}
+
 async function renderTradeRoutes(baronyId) {
   const container = document.getElementById('tradeRoutes');
   if (!container) return;
@@ -1961,9 +2063,11 @@ async function renderTradeRoutes(baronyId) {
     await updateTradeMap(null, []);
     return;
   }
+  currentTradeBaronyId = baronyId;
   try {
     const res = await fetch(`/api/trade_partners?barony_id=${baronyId}`);
     const routes = res.ok ? await res.json() : [];
+    currentTradeRoutes = routes;
     await updateTradeMap(baronyId, routes);
     if (!routes.length) {
       container.textContent = 'Aucune route commerciale';
