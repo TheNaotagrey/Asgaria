@@ -136,6 +136,16 @@ async function init() {
   await setupAdminSelector(sid);
   const newRouteBtn = document.getElementById('newTradeRouteBtn');
   if (newRouteBtn) newRouteBtn.addEventListener('click', startTradeRouteCreation);
+
+  document.addEventListener('click', async e => {
+    if (!newRouteMode) return;
+    const map = document.getElementById('tradeMap');
+    if (map && map.contains(e.target)) return;
+    if (newRouteBtn && newRouteBtn.contains(e.target)) return;
+    newRouteMode = false;
+    eligibleTargets = {};
+    await updateTradeMap(currentTradeBaronyId, currentTradeRoutes);
+  });
 }
 
 async function loadAndRender(seigneurieId) {
@@ -2033,7 +2043,12 @@ async function handleTradeMapSelect(id) {
   const cost = target.distance * 3;
   const msg = `Vous allez construire une route commerciale vers la baronnie de <strong>${target.name} (#${target.id})</strong> gérée par ${target.seigneur_name}<br><br>Cela vous coutera <strong>${cost} Or</strong>`;
   const ok = await showConfirm(msg);
-  if (!ok) return;
+  if (!ok) {
+    newRouteMode = false;
+    eligibleTargets = {};
+    await updateTradeMap(currentTradeBaronyId, currentTradeRoutes);
+    return;
+  }
   try {
     const res = await fetch('/api/trade_routes/build', {
       method: 'POST',
