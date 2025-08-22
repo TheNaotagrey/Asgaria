@@ -231,8 +231,8 @@
 
     function handleCanvasClick(e) {
       const rect = canvas.getBoundingClientRect();
-      const x = Math.floor((e.clientX - rect.left) / scale);
-      const y = Math.floor((e.clientY - rect.top) / scale);
+      const x = Math.floor((e.clientX - rect.left) * canvas.width / rect.width);
+      const y = Math.floor((e.clientY - rect.top) * canvas.height / rect.height);
       const id = pixelMap[y] ? pixelMap[y][x] : null;
       selectBarony(id);
     }
