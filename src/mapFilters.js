@@ -1,7 +1,7 @@
 (function (global) {
   function init(core, data, options = {}) {
     const updateLegend = options.updateLegend || (() => {});
-    const terrainColor = [239, 228, 176];
+    const terrainColor = mapCore.terrainColor;
     const playerSeigneurColor = [82, 190, 128];
     const playerBishopColor = [46, 134, 193];
     const npcSeigneurColor = [231, 76, 60];

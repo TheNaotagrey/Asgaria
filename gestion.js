@@ -1921,26 +1921,34 @@ async function initTradeMap() {
     }
   });
   await tradeMapCore.ready;
+  const commerceTab = document.getElementById('tab-commerce');
+  if (commerceTab && commerceTab.classList.contains('active')) {
+    tradeMapCore.fitToContainer();
+    tradeMapCore.drawAll();
+  }
 }
 
 async function updateTradeMap(baronyId, routes) {
   await initTradeMap();
   if (!tradeMapCore) return;
-  const bg = [245, 247, 250, 255];
-  const highlight = [128, 0, 128, 255];
+  const bg = [...mapCore.terrainColor, 100];
+  const partnerColor = [128, 0, 128, 100];
+  const currentColor = [255, 237, 0, 180];
   const colorMap = {};
   Object.keys(tradeMapCore.pixelData).forEach(id => {
     colorMap[id] = bg;
   });
-  const ids = new Set();
   if (baronyId) {
-    ids.add(String(baronyId));
-    (tradeAdjacency[baronyId] || []).forEach(id => ids.add(String(id)));
+    (tradeAdjacency[baronyId] || []).forEach(id => {
+      colorMap[String(id)] = partnerColor;
+    });
   }
-  (routes || []).forEach(r => ids.add(String(r.id)));
-  ids.forEach(id => {
-    colorMap[id] = highlight;
+  (routes || []).forEach(r => {
+    colorMap[String(r.id)] = partnerColor;
   });
+  if (baronyId) {
+    colorMap[String(baronyId)] = currentColor;
+  }
   tradeMapCore.setColorMap(colorMap);
 }
 

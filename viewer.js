@@ -5,7 +5,7 @@
 
   let mapWidth = 0;
   let mapHeight = 0;
-  const terrainColor = [239, 228, 176];
+  const terrainColor = mapCore.terrainColor;
   const playerColor = [82, 190, 128];
   const npcColor = [231, 76, 60];
 
