@@ -1,4 +1,6 @@
 (function (global) {
+  const terrainColor = [239, 228, 176];
+
   /**
    * Initialise le rendu de la carte.
    * @param {Object} [opts] Options de configuration.
@@ -304,5 +306,5 @@
       get ready() { return ready; }
     };
   }
-  global.mapCore = { init };
+  global.mapCore = { init, terrainColor };
 })(typeof window !== 'undefined' ? window : global);
