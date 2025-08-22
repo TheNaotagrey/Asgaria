@@ -1887,17 +1887,76 @@ function showSpellResult(success, spell, amount, error, randomLuxury) {
   document.body.appendChild(overlay);
 }
 
+let tradeMapCore = null;
+let tradeAdjacency = {};
+
+async function initTradeMap() {
+  if (tradeMapCore) return;
+  const base = document.getElementById('tradeBaseMap');
+  const canvas = document.getElementById('tradeCanvas');
+  if (!base || !canvas) return;
+  const baseLoaded = base.complete ? Promise.resolve() : new Promise(res => (base.onload = res));
+  await baseLoaded;
+  canvas.width = base.naturalWidth;
+  canvas.height = base.naturalHeight;
+  canvas.style.width = '100%';
+  canvas.style.height = '100%';
+  tradeMapCore = mapCore.init({
+    canvas,
+    enablePan: false,
+    enableZoom: false,
+    fetchData: async () => {
+      const [pixels, connections] = await Promise.all([
+        fetch('/api/barony_pixels').then(r => r.json()),
+        fetch('/api/barony_connections').then(r => r.json())
+      ]);
+      tradeAdjacency = {};
+      connections.forEach(c => {
+        if (!tradeAdjacency[c.barony_id_1]) tradeAdjacency[c.barony_id_1] = [];
+        if (!tradeAdjacency[c.barony_id_2]) tradeAdjacency[c.barony_id_2] = [];
+        tradeAdjacency[c.barony_id_1].push(c.barony_id_2);
+        tradeAdjacency[c.barony_id_2].push(c.barony_id_1);
+      });
+      return { mapWidth: base.naturalWidth, mapHeight: base.naturalHeight, pixelData: pixels };
+    }
+  });
+  await tradeMapCore.ready;
+}
+
+async function updateTradeMap(baronyId, routes) {
+  await initTradeMap();
+  if (!tradeMapCore) return;
+  const bg = [245, 247, 250, 255];
+  const highlight = [128, 0, 128, 255];
+  const colorMap = {};
+  Object.keys(tradeMapCore.pixelData).forEach(id => {
+    colorMap[id] = bg;
+  });
+  const ids = new Set();
+  if (baronyId) {
+    ids.add(String(baronyId));
+    (tradeAdjacency[baronyId] || []).forEach(id => ids.add(String(id)));
+  }
+  (routes || []).forEach(r => ids.add(String(r.id)));
+  ids.forEach(id => {
+    colorMap[id] = highlight;
+  });
+  tradeMapCore.setColorMap(colorMap);
+}
+
 async function renderTradeRoutes(baronyId) {
   const container = document.getElementById('tradeRoutes');
   if (!container) return;
   container.textContent = '';
   if (!baronyId) {
     container.textContent = 'Aucune baronnie sélectionnée';
+    await updateTradeMap(null, []);
     return;
   }
   try {
     const res = await fetch(`/api/trade_partners?barony_id=${baronyId}`);
     const routes = res.ok ? await res.json() : [];
+    await updateTradeMap(baronyId, routes);
     if (!routes.length) {
       container.textContent = 'Aucune route commerciale';
       return;
@@ -1906,6 +1965,7 @@ async function renderTradeRoutes(baronyId) {
     container.innerHTML = `<table class="admin-table"><tr><th>#</th><th>Nom</th><th>Propriétaire</th><th>Province (Duché)</th></tr>${rows}</table>`;
   } catch {
     container.textContent = 'Erreur de chargement';
+    await updateTradeMap(baronyId, []);
   }
 }
 

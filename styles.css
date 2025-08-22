@@ -565,3 +565,31 @@ th.multi-col {
   border: 2px solid #dc3545;
   color: #721c24;
 }
+
+/* Commerce tab */
+.trade-section {
+  display: flex;
+  gap: 10px;
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+.trade-map {
+  flex: 1;
+  position: relative;
+  aspect-ratio: 4 / 3;
+}
+
+.trade-map img,
+.trade-map canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.trade-routes {
+  flex: 1;
+  overflow: auto;
+}
