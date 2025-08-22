@@ -40,7 +40,13 @@
         <div id="tab-ost" class="tab-panel"></div>
         <div id="tab-commerce" class="tab-panel">
           <h2>Chemins commerciaux</h2>
-          <div id="tradeRoutes"></div>
+          <div id="tradeSection" class="trade-section">
+            <div id="tradeMap" class="trade-map">
+              <img id="tradeBaseMap" src="Asgaria.png" alt="Carte" />
+              <canvas id="tradeCanvas"></canvas>
+            </div>
+            <div id="tradeRoutes" class="trade-routes"></div>
+          </div>
         </div>
         <div id="tab-proprietes" class="tab-panel">
           <div id="baronyProps"></div>
@@ -60,6 +66,7 @@
     </div>
   </dialog>
   <script src="auth.js"></script>
+  <script src="src/mapCore.js"></script>
   <script src="gestion.js"></script>
   <script>
     document.addEventListener('DOMContentLoaded', () => {
