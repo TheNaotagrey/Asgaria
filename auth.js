@@ -54,6 +54,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     panel.id = 'notificationPanel';
     panel.className = 'notif-panel';
     document.body.appendChild(panel);
+
+    const header = document.querySelector('.app-header');
+    function adjustPanel() {
+      const headerHeight = header ? header.offsetHeight : 0;
+      panel.style.top = headerHeight + 'px';
+      panel.style.maxHeight = `calc(100vh - ${headerHeight}px)`;
+      panel.style.right = '0';
+    }
+    adjustPanel();
+    window.addEventListener('resize', adjustPanel);
+
     const badge = notifBtn.querySelector('.badge');
 
     notifBtn.addEventListener('click', () => {
@@ -69,7 +80,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         items.forEach(n => {
           const div = document.createElement('div');
           div.className = 'notification' + (n.is_read ? '' : ' unread');
-          div.textContent = n.message;
+
+          const msgSpan = document.createElement('span');
+          msgSpan.textContent = n.message;
+          div.appendChild(msgSpan);
+
+          const timeEl = document.createElement('time');
+          timeEl.dateTime = n.created_at;
+          timeEl.title = new Date(n.created_at).toLocaleString('fr-FR');
+          timeEl.textContent = timeago.format(n.created_at, 'fr');
+          div.appendChild(timeEl);
+
           div.addEventListener('click', async () => {
             if (!n.is_read) {
               await fetch(`/api/notifications/${n.id}/read`, { method: 'POST' });
