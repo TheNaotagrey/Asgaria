@@ -10,6 +10,7 @@ const luxuryResources = ['fourrure','ivoire','soie','huile','teinture','epices',
 const logger = require('./logger');
 const handleError = require('./handleError');
 const { consumeResources } = require('./services/buildingService');
+const { sendNotification } = require('./services/notificationService');
 const { StorageEffect, ResourceProductionEffect, BuildingProductionEffect, InfraProductionEffect, IDHEffect, VariableWorkersEffect, UnlockPageEffect, SpellSuccessEffect, SpellBasicDiscountEffect, SpellAdvancedDiscountEffect, SpellRangeEffect, SpellMaxPerMonthEffect } = require('./effects');
 const app = express();
 const db = new sqlite3.Database('asgaria.db');
@@ -19,7 +20,7 @@ const VALID_TABLES = new Set([
   'duchies','marquisates','counties','viscounties','baronies','barony_pixels',
   'canonical_lands','inventaire','seigneuries','transactions','barony_properties',
   'building_properties','infrastructure_properties','barony_connections','trade_routes','tags','spells',
-  'sanctuaries','maritime_zones','maritime_zone_pixels','maritime_zone_connections','maritime_zone_baronies'
+  'sanctuaries','maritime_zones','maritime_zone_pixels','maritime_zone_connections','maritime_zone_baronies','notifications'
 ]);
 
 // create tables if they do not exist
@@ -302,6 +303,15 @@ CREATE TABLE IF NOT EXISTS spells (
 CREATE TABLE IF NOT EXISTS tags (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   label TEXT UNIQUE
+);
+CREATE TABLE IF NOT EXISTS notifications (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER,
+  message TEXT NOT NULL,
+  link TEXT,
+  is_read INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(user_id) REFERENCES users(id)
 );
 `;
 
@@ -601,6 +611,7 @@ app.post('/api/register', async (req, res) => {
           last_name,
           is_admin: 0
         };
+        sendNotification(db, this.lastID, 'Bienvenue sur Asgaria !', '/profile.html');
         res.json({ ok: true });
       }
     );
@@ -658,6 +669,23 @@ app.get('/api/me', (req, res) => {
   } catch (error) {
     handleError(res, error);
   }
+});
+
+app.get('/api/notifications', (req, res) => {
+  if (!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
+  db.all('SELECT id, message, link, is_read, created_at FROM notifications WHERE user_id=? ORDER BY created_at DESC', [req.session.user.id], (err, rows) => {
+    if (err) return handleError(res, err);
+    res.json(rows);
+  });
+});
+
+app.post('/api/notifications/:id/read', (req, res) => {
+  if (!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
+  const id = parseInt(req.params.id, 10);
+  db.run('UPDATE notifications SET is_read=1 WHERE id=? AND user_id=?', [id, req.session.user.id], function(err){
+    if (err) return handleError(res, err);
+    res.json({ changes: this.changes });
+  });
 });
 
 app.post('/api/admin_mode', (req,res) => {

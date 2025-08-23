@@ -4,10 +4,11 @@
 Ce dépôt propose un serveur Express/Node.js avec une base SQLite et plusieurs interfaces web pour le projet Asgaria (visualisation de la carte, édition, gestion et administration).
 
 ## Scripts et relations principales
-- **server.js** : point d'entrée du serveur. Expose l'API REST, gère l'authentification, les transactions et les effets. Requiert `handleError.js`, `logger.js`, `effects.js`, `transactions.js` et `services/buildingService.js`.
+- **server.js** : point d'entrée du serveur. Expose l'API REST, gère l'authentification, les transactions et les effets. Requiert `handleError.js`, `logger.js`, `effects.js`, `transactions.js`, `services/buildingService.js` et `services/notificationService.js`.
 - **effects.js** : définit les classes d'effets appliquées par le serveur (production, stockage, sorts, etc.).
 - **transactions.js** : applique les débits/crédits de ressources dans la base de données.
 - **services/buildingService.js** : utilitaires pour consommer les ressources lors des constructions.
+- **services/notificationService.js** : utilitaire pour envoyer des notifications aux utilisateurs.
 - **auth.js** : script inclus sur les pages client pour la connexion, la déconnexion et la navigation conditionnelle.
 - **viewer.js** : affiche la carte en lecture seule.
 - **script.js** : éditeur de carte permettant de modifier les baronnies et d'enregistrer les pixels.
