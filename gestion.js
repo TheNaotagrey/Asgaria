@@ -1956,18 +1956,18 @@ async function updateTradeMap(baronyId, routes) {
   const currentColor = [255, 237, 0, 180];
   const colorMap = {};
   Object.keys(tradeMapCore.pixelData).forEach(id => {
-    colorMap[id] = bg;
+    colorMap[id] = [...bg];
   });
   if (baronyId) {
     (tradeAdjacency[baronyId] || []).forEach(id => {
-      colorMap[String(id)] = partnerColor;
+      colorMap[String(id)] = [...partnerColor];
     });
   }
   (routes || []).forEach(r => {
-    colorMap[String(r.id)] = partnerColor;
+    colorMap[String(r.id)] = [...partnerColor];
   });
   if (baronyId) {
-    colorMap[String(baronyId)] = currentColor;
+    colorMap[String(baronyId)] = [...currentColor];
   }
   tradeMapCore.setColorMap(colorMap);
 }
@@ -2038,7 +2038,16 @@ async function startTradeRouteCreation() {
 }
 
 async function handleTradeMapSelect(id) {
-  if (!newRouteMode || !id || !eligibleTargets[id]) return;
+  if (!id) return;
+  if (!newRouteMode) {
+    if (tradeMapCore && tradeMapCore.colorMap[id]) {
+      tradeMapCore.colorMap[id][3] = 100;
+      tradeMapCore.currentSelectedId = null;
+      tradeMapCore.drawAll();
+    }
+    return;
+  }
+  if (!eligibleTargets[id]) return;
   const target = eligibleTargets[id];
   const cost = target.distance * 3;
   const msg = `Vous allez construire une route commerciale vers la baronnie de <strong>${target.name} (#${target.id})</strong> gérée par ${target.seigneur_name}<br><br>Cela vous coutera <strong>${cost} Or</strong>`;
