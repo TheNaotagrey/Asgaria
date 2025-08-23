@@ -42,6 +42,52 @@ document.addEventListener('DOMContentLoaded', async () => {
       location.reload();
     });
     authArea.appendChild(logoutBtn);
+
+    const notifBtn = document.createElement('button');
+    notifBtn.className = 'icon-btn bell-btn';
+    notifBtn.innerHTML = `
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+      <span class="badge" style="display:none"></span>`;
+    authArea.appendChild(notifBtn);
+
+    const panel = document.createElement('div');
+    panel.id = 'notificationPanel';
+    panel.className = 'notif-panel';
+    document.body.appendChild(panel);
+    const badge = notifBtn.querySelector('.badge');
+
+    notifBtn.addEventListener('click', () => {
+      panel.style.display = panel.style.display === 'block' ? 'none' : 'block';
+    });
+
+    async function loadNotifications() {
+      try {
+        const res = await fetch('/api/notifications');
+        const items = await res.json();
+        panel.innerHTML = '';
+        let unread = 0;
+        items.forEach(n => {
+          const div = document.createElement('div');
+          div.className = 'notification' + (n.is_read ? '' : ' unread');
+          div.textContent = n.message;
+          div.addEventListener('click', async () => {
+            if (!n.is_read) {
+              await fetch(`/api/notifications/${n.id}/read`, { method: 'POST' });
+            }
+            panel.style.display = 'none';
+            if (n.link) location.href = n.link;
+          });
+          panel.appendChild(div);
+          if (!n.is_read) unread++;
+        });
+        if (badge) {
+          badge.textContent = unread;
+          badge.style.display = unread ? 'block' : 'none';
+        }
+      } catch {}
+    }
+
+    loadNotifications();
   }
 
   const navButtons = [];
