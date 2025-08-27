@@ -149,6 +149,18 @@ class VariableWorkersEffect extends Effect {
   }
 }
 
+class TagEffect extends Effect {
+  constructor(tag, amount = 1) {
+    super();
+    this.tag = tag;
+    this.amount = amount;
+  }
+  apply(ctx, count) {
+    if (!ctx.tagCounts) ctx.tagCounts = {};
+    ctx.tagCounts[this.tag] = (ctx.tagCounts[this.tag] || 0) + this.amount * count;
+  }
+}
+
 class UnlockPageEffect extends Effect {
   constructor(page) {
     super();
@@ -244,4 +256,4 @@ class NavalTransactionMaxPerMonthEffect extends Effect {
   }
 }
 
-module.exports = { Effect, StorageEffect, ResourceProductionEffect, BuildingProductionEffect, InfraProductionEffect, InstantProductionEffect, IDHEffect, VariableWorkersEffect, UnlockPageEffect, SpellSuccessEffect, SpellBasicDiscountEffect, SpellAdvancedDiscountEffect, SpellRangeEffect, SpellMaxPerMonthEffect, LandTransactionMaxPerMonthEffect, NavalTransactionMaxPerMonthEffect };
+module.exports = { Effect, StorageEffect, ResourceProductionEffect, BuildingProductionEffect, InfraProductionEffect, InstantProductionEffect, IDHEffect, VariableWorkersEffect, TagEffect, UnlockPageEffect, SpellSuccessEffect, SpellBasicDiscountEffect, SpellAdvancedDiscountEffect, SpellRangeEffect, SpellMaxPerMonthEffect, LandTransactionMaxPerMonthEffect, NavalTransactionMaxPerMonthEffect };

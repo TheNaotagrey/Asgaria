@@ -54,7 +54,7 @@ const baronyPropLabels = {
   effects:'Effets'
 };
 
-const buildingPropFields = ['label','produces','production','costs','max','workers_per_building','absolute_restrictions','infra_restrictions','tags','description'];
+const buildingPropFields = ['label','produces','production','costs','max','workers_per_building','absolute_restrictions','infra_restrictions','effects','description'];
 const buildingPropLabels = {
   label:'Nom',
   produces:'Ressource produite',
@@ -64,10 +64,10 @@ const buildingPropLabels = {
   workers_per_building:'Travailleurs/bâtiment',
   absolute_restrictions:'Restrictions absolues',
   infra_restrictions:'Requis',
-  tags:'Tags',
+  effects:'Effets',
   description:'Description'
 };
-const infraPropFields = ['label','type','max','workers_per_building','effects','costs','absolute_restrictions','restrictions','tags','description'];
+const infraPropFields = ['label','type','max','workers_per_building','effects','costs','absolute_restrictions','restrictions','description'];
 const infraPropLabels = {
   label:'Nom',
   type:'Type',
@@ -77,7 +77,6 @@ const infraPropLabels = {
   costs:'Coûts',
   absolute_restrictions:'Restrictions absolues',
   restrictions:'Requis',
-  tags:'Tags',
   description:'Description',
 };
 const typeSelect = [{id:'civil',name:'Civil'},{id:'militaire',name:'Militaire'},{id:'commercial',name:'Commercial'}];
@@ -653,6 +652,7 @@ function makeEffectsInput(val, allowedTypes){
       {id:'spell_max_per_month', name:'Sorts max/mois'},
       {id:'land_transaction_max_per_month', name:'Transactions terrestres max/mois'},
       {id:'naval_transaction_max_per_month', name:'Transactions navales max/mois'},
+      {id:'tag', name:'Tag'},
       {id:'variable_production', name:'Production ressource variable'},
       {id:'random_luxury', name:'Ressource de luxe aléatoire'}
     ];
@@ -771,6 +771,19 @@ function makeEffectsInput(val, allowedTypes){
         editBtn.style.display = '';
         if(data.resource){ dataInput.value = JSON.stringify(data); updateSummary(); }
         else { dataInput.value = ''; updateSummary(); }
+      }else if(typeSel.value === 'tag'){
+        tagsSelect.forEach(o=>{
+          const op = document.createElement('option');
+          op.value = o.id;
+          op.textContent = o.name;
+          if(String(o.id) === String(data.tag)) op.selected = true;
+          targetSel.appendChild(op);
+        });
+        targetSel.style.display = '';
+        qty.style.display = '';
+        qty.placeholder = 'Nombre';
+        qty.value = data.amount ?? '';
+        return;
       }else if(typeSel.value === 'variable_production'){
         resourceSelect.forEach(o=>{
           const op = document.createElement('option');
@@ -878,6 +891,12 @@ function makeEffectsInput(val, allowedTypes){
         const amt = parseInt(rw.querySelector('input[data-role="qty"]').value,10);
         if(!isNaN(amt)){
           res.push({type, amount: amt});
+        }
+      }else if(type === 'tag'){
+        const tag = rw.querySelector('select[data-role="target"]').value;
+        const amt = parseInt(rw.querySelector('input[data-role="qty"]').value,10) || 1;
+        if(tag){
+          res.push({ type, tag: parseInt(tag,10), amount: amt });
         }
       }else if(['idh','spell_success','spell_basic_discount','spell_advanced_discount','spell_range','spell_max_per_month','land_transaction_max_per_month','naval_transaction_max_per_month'].includes(type)){
         const amt = parseInt(rw.querySelector('input[data-role="qty"]').value,10);
@@ -1136,56 +1155,6 @@ function renderTable(container, rows, opts){
           return JSON.stringify({ tag: parseInt(tagSel.value,10), per: p });
         }
         return sel.value || null;
-      };
-      return container;
-    }
-    if(field === 'tags'){
-      const container = document.createElement('div');
-      const list = document.createElement('div');
-      container.appendChild(list);
-      const addBtn = document.createElement('button');
-      addBtn.type = 'button';
-      addBtn.textContent = '+';
-      container.appendChild(addBtn);
-      function addRow(tag = ''){
-        const row = document.createElement('div');
-        row.className = 'tag-row';
-        const sel = document.createElement('select');
-        const blank = document.createElement('option');
-        blank.value = '';
-        sel.appendChild(blank);
-        tagsSelect.forEach(o=>{
-          const op = document.createElement('option');
-          op.value = o.id;
-          op.textContent = o.name;
-          if(String(o.id) === String(tag)) op.selected = true;
-          sel.appendChild(op);
-        });
-        const removeBtn = document.createElement('button');
-        removeBtn.type = 'button';
-        removeBtn.textContent = '-';
-        removeBtn.addEventListener('click', ()=> row.remove());
-        row.appendChild(sel);
-        row.appendChild(removeBtn);
-        list.appendChild(row);
-      }
-      addBtn.addEventListener('click', ()=> addRow());
-      try {
-        const arr = JSON.parse(val || '[]');
-        if(Array.isArray(arr) && arr.length){
-          arr.forEach(t=> addRow(t));
-        } else {
-          addRow();
-        }
-      } catch {
-        addRow();
-      }
-      container.getValue = ()=>{
-        const res = [];
-        list.querySelectorAll('select').forEach(sel=>{
-          if(sel.value) res.push(parseInt(sel.value,10));
-        });
-        return JSON.stringify(res);
       };
       return container;
     }
@@ -1584,7 +1553,8 @@ async function loadBatiments(){
     endpoint:'building_properties',
     fields:buildingPropFields,
     labels:buildingPropLabels,
-    selects:{produces: resourceSelect}
+    selects:{produces: resourceSelect},
+    allowedEffectTypes:['tag']
   });
   const infraPropsById = infraProps.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableInfraProps'), infraPropsById, {
