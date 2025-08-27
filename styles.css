@@ -195,6 +195,10 @@ main {
 .control-btn:hover {
   background-color: #3d6db2;
 }
+.control-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
 /* Fichier input stylé */
 .file-label {
