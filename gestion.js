@@ -61,6 +61,8 @@ let tagLabels = {};
 let tagCounts = {};
 let currentUser = null;
 let currentSeigneurieId = null;
+const params = new URLSearchParams(location.search);
+let transactionToOpen = params.get('transactionId');
 
 function showConfirm(message){
   return new Promise(resolve => {
@@ -267,7 +269,13 @@ async function loadAndRender(seigneurieId) {
           <table id="deJureTable" class="admin-table"></table>
         </div>
       </div>
-      <div id="populationSummary"></div>
+      <div id="popAndTx" class="resource-tables">
+        <div id="populationSummary" class="resource-table-container"></div>
+        <div class="resource-table-container">
+          <h2>Transactions en Attente</h2>
+          <table id="pendingTxTable" class="admin-table"></table>
+        </div>
+      </div>
       <div id="resourceTables" class="resource-tables">
         <div class="resource-table-container">
           <h2>Ressources de base</h2>
@@ -380,6 +388,13 @@ async function loadAndRender(seigneurieId) {
           alert('Erreur lors de la mise à jour des taxes');
         }
       });
+    }
+
+    await renderPendingTransactions();
+    if (transactionToOpen) {
+      openTransactionPopup(transactionToOpen);
+      transactionToOpen = null;
+      history.replaceState({}, '', location.pathname);
     }
 
     const ostPanel = document.getElementById('tab-ost');
@@ -2138,9 +2153,9 @@ async function renderTradeRoutes(baronyId) {
 }
 
 async function openTradeDialog(baronyId) {
-  const resources = await showTradeDialog();
-  if (!resources) return;
-  await sendTransaction(baronyId, resources);
+  const result = await showTradeDialog();
+  if (!result) return;
+  await sendTransaction(baronyId, result.resources, result.reason);
 }
 
 function showTradeDialog() {
@@ -2150,7 +2165,9 @@ function showTradeDialog() {
     const addBtn = document.getElementById('tradeAddRow');
     const cancelBtn = document.getElementById('tradeCancel');
     const sendBtn = document.getElementById('tradeSend');
+    const reasonInput = document.getElementById('tradeReason');
     list.innerHTML = '';
+    if (reasonInput) reasonInput.value = '';
     function addRow() {
       const row = document.createElement('div');
       const sel = document.createElement('select');
@@ -2196,19 +2213,20 @@ function showTradeDialog() {
         alert('Quantités invalides');
         return;
       }
+      const reason = reasonInput ? reasonInput.value.trim() : '';
       dialog.close();
-      resolve(res);
+      resolve({ resources: res, reason });
     };
     dialog.showModal();
   });
 }
 
-async function sendTransaction(baronyId, resources) {
+async function sendTransaction(baronyId, resources, reason) {
   try {
     const res = await fetch('/api/send_transaction', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ target_barony_id: baronyId, resources, type: 'land' })
+      body: JSON.stringify({ target_barony_id: baronyId, resources, type: 'land', reason })
     });
     if (res.ok) {
       await loadAndRender(currentSeigneurieId);
@@ -2218,6 +2236,80 @@ async function sendTransaction(baronyId, resources) {
     }
   } catch {
     alert('Transaction impossible');
+  }
+}
+
+async function renderPendingTransactions() {
+  const table = document.getElementById('pendingTxTable');
+  if (!table) return;
+  try {
+    const res = await fetch('/api/trade_transactions');
+    const txs = res.ok ? await res.json() : [];
+    table.innerHTML = '<tr><th>Ressources</th><th>Origine</th><th>Date</th><th>Raison</th><th></th></tr>';
+    txs.forEach(tx => {
+      const resSummary = Object.entries(tx.resources || {}).map(([k,v]) => `${v} ${resourceLabels[k] || k}`).join(', ');
+      const origin = `${tx.origin_name} (${tx.origin_barony_name})`;
+      const date = `<span class="timeago" datetime="${tx.created_at}"></span>`;
+      let status;
+      if (tx.state === 'En Attente') {
+        status = `<button class="tx-open" data-id="${tx.id}">...</button>`;
+      } else {
+        const label = tx.state === 'Approuvée' ? 'Approuvée' : 'Refusée';
+        status = `<span title="${tx.decision_time ? new Date(tx.decision_time).toLocaleString() : ''}">${label}</span>`;
+      }
+      table.innerHTML += `<tr><td>${resSummary}</td><td>${origin}</td><td>${date}</td><td>${tx.reason || ''}</td><td>${status}</td></tr>`;
+    });
+    let rows = txs.length;
+    while (rows < 3) { table.innerHTML += '<tr><td colspan="5">&nbsp;</td></tr>'; rows++; }
+    timeago.render(table.querySelectorAll('.timeago'), 'fr');
+    table.querySelectorAll('.tx-open').forEach(btn => {
+      btn.addEventListener('click', () => openTransactionPopup(btn.dataset.id));
+    });
+  } catch {
+    table.innerHTML = '<tr><td colspan="5">Erreur</td></tr>';
+  }
+}
+
+async function openTransactionPopup(id) {
+  try {
+    const res = await fetch(`/api/trade_transactions/${id}`);
+    if (!res.ok) throw new Error('Erreur');
+    const tx = await res.json();
+    const dialog = document.getElementById('txDialog');
+    const content = document.getElementById('txContent');
+    const buttons = document.getElementById('txButtons');
+    const refuseBtn = document.getElementById('txRefuse');
+    const acceptBtn = document.getElementById('txAccept');
+    const items = Object.entries(tx.resources || {}).map(([k,v]) => `<li>${v} ${resourceLabels[k] || k}</li>`).join('');
+    content.innerHTML = `<p>Origine: ${tx.origin_name} (${tx.origin_barony_name})</p><p>Date: <span class="timeago" datetime="${tx.created_at}"></span></p><p>Ressources:</p><ul>${items}</ul><p>Raison: ${tx.reason || ''}</p><p>En cas de refus, les ressources seront retournées à l'envoyeur (perdu si maximum d'une ressource dépassée).</p>`;
+    if (tx.state === 'En Attente' && tx.destination_id === currentSeigneurieId) {
+      buttons.style.display = '';
+      refuseBtn.onclick = async () => { dialog.close(); await decideTx(id, 'refuse'); };
+      acceptBtn.onclick = async () => { dialog.close(); await decideTx(id, 'accept'); };
+    } else {
+      buttons.style.display = 'none';
+      refuseBtn.onclick = acceptBtn.onclick = null;
+    }
+    dialog.showModal();
+    timeago.render(dialog.querySelectorAll('.timeago'), 'fr');
+  } catch {}
+}
+
+async function decideTx(id, action) {
+  try {
+    const res = await fetch(`/api/trade_transactions/${id}/decision`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action })
+    });
+    if (res.ok) {
+      await loadAndRender(currentSeigneurieId);
+    } else {
+      const err = await res.json().catch(() => ({}));
+      alert(err.error || 'Erreur');
+    }
+  } catch {
+    alert('Erreur');
   }
 }
 

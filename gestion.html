@@ -74,9 +74,17 @@
   <dialog id="tradeDialog" class="confirm-dialog">
     <div id="tradeList"></div>
     <div style="margin-top:10px"><button id="tradeAddRow" class="control-btn">+</button></div>
+    <textarea id="tradeReason" placeholder="Raison" style="width:100%;margin-top:10px"></textarea>
     <div class="dialog-buttons">
       <button id="tradeCancel" class="control-btn">Annuler</button>
       <button id="tradeSend" class="control-btn">Envoyer</button>
+    </div>
+  </dialog>
+  <dialog id="txDialog" class="confirm-dialog">
+    <div id="txContent"></div>
+    <div id="txButtons" class="dialog-buttons">
+      <button id="txRefuse" class="control-btn danger">Refuser</button>
+      <button id="txAccept" class="control-btn">Accepter</button>
     </div>
   </dialog>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/timeago.js/4.0.2/timeago.min.js"></script>
