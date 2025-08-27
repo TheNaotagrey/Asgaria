@@ -438,6 +438,7 @@ async function loadAndRender(seigneurieId) {
     const prodDiv = document.getElementById('productionInfra');
     const civilDiv = document.getElementById('civilInfra');
     const miliDiv = document.getElementById('militaryInfra');
+    const commercialDiv = document.getElementById('commercialInfra');
     const freePop = s.population + employment.slaves - employment.employed;
     if (prodDiv) {
       let html = '<table class="admin-table" id="buildingsTable">';
@@ -471,7 +472,7 @@ async function loadAndRender(seigneurieId) {
         const active = info.active || 0;
         const workersPer = bp.workers_per_building || 0;
 
-        let maxVal = '';
+        let maxVal = Infinity;
         if (bp.max !== undefined && bp.max !== null && bp.max !== '') {
           const parsed = parseInt(bp.max, 10);
           if (!isNaN(parsed) && parsed > 0) {
@@ -481,6 +482,19 @@ async function loadAndRender(seigneurieId) {
             if (!isNaN(dyn) && dyn > 0) maxVal = dyn;
           }
         }
+        try {
+          const obj = JSON.parse(bp.max || '');
+          if (obj && typeof obj === 'object' && obj.tag) {
+            const tagId = obj.tag || obj.tag_id;
+            const per = obj.per || obj.value || 1;
+            const count = tagCounts[tagId] || 0;
+            const computed = count * per;
+            if (!isNaN(computed)) {
+              maxVal = Math.min(maxVal, computed);
+            }
+          }
+        } catch {}
+        const maxValDisplay = maxVal === Infinity ? '' : maxVal;
 
         let costHtml = '';
         let hasResources = true;
@@ -562,8 +576,8 @@ async function loadAndRender(seigneurieId) {
         }
 
         let maxReached = false;
-        if (maxVal !== '') {
-          const maxNum = parseInt(maxVal, 10);
+        if (maxValDisplay !== '') {
+          const maxNum = parseInt(maxValDisplay, 10);
           if (!isNaN(maxNum) && built >= maxNum) {
             maxReached = true;
           }
@@ -580,7 +594,7 @@ async function loadAndRender(seigneurieId) {
         const empTotal = workersPer * active;
 
         const builtField = isAdmin ? `<input type="number" class="building-built-input" data-id="${bp.id}" value="${built}" style="width:6em">` : built;
-        html += `<tr data-id="${bp.id}"><td>${bp.label || bp.type}</td><td>${prod}</td><td>${workersPer}</td><td>${restrHtml}</td><td>${builtField}</td><td>${maxVal}</td>`;
+        html += `<tr data-id="${bp.id}"><td>${bp.label || bp.type}</td><td>${prod}</td><td>${workersPer}</td><td>${restrHtml}</td><td>${builtField}</td><td>${maxValDisplay}</td>`;
         if (built > 0) {
           let maxActivate = built;
           if (bp.workers_per_building) {
@@ -620,6 +634,12 @@ async function loadAndRender(seigneurieId) {
     if (miliDiv) {
       miliDiv.innerHTML = buildInfraTable(infraProps.filter(i=>i.type==='militaire'), infrastructures, inv, 'militaryInfraTable', isAdmin);
       const table = document.getElementById('militaryInfraTable');
+      table.addEventListener('click', handleInfraTableClick);
+      table.addEventListener('change', handleInfraTableChange);
+    }
+    if (commercialDiv) {
+      commercialDiv.innerHTML = buildInfraTable(infraProps.filter(i=>i.type==='commercial'), infrastructures, inv, 'commercialInfraTable', isAdmin);
+      const table = document.getElementById('commercialInfraTable');
       table.addEventListener('click', handleInfraTableClick);
       table.addEventListener('change', handleInfraTableChange);
     }

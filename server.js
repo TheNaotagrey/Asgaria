@@ -1590,6 +1590,7 @@ function canConstruct(db, srow, id, qty, cb){
     const costObj = safeParse(bprops.costs, {});
     const absReq = safeParse(bprops.absolute_restrictions, []);
     const infraReq = safeParse(bprops.infra_restrictions, {});
+    const maxObj = safeParse(bprops.max, null);
     const effects = safeParse(bprops.effects, []);
     const costs = {};
     Object.entries(costObj).forEach(([res, val]) => {
@@ -1599,6 +1600,7 @@ function canConstruct(db, srow, id, qty, cb){
       if (err2) return cb(err2);
       const barProps = props || {};
       let max = Infinity;
+      let tagLimit = null;
       if (bprops.max != null && bprops.max !== '') {
         const parsed = parseInt(bprops.max, 10);
         if (!isNaN(parsed) && parsed > 0) {
@@ -1606,6 +1608,8 @@ function canConstruct(db, srow, id, qty, cb){
         } else if (barProps[bprops.max] != null) {
           const dyn = parseInt(barProps[bprops.max], 10);
           if (!isNaN(dyn) && dyn > 0) max = dyn;
+        } else if (maxObj && typeof maxObj === 'object' && maxObj.tag) {
+          tagLimit = maxObj;
         }
       }
       if (Array.isArray(absReq)) {
@@ -1649,13 +1653,48 @@ function canConstruct(db, srow, id, qty, cb){
           cb(null, { costs, built, active, buildings, infrastructures, effects });
         });
       };
+      const applyTagLimit = (next) => {
+        if (!tagLimit || !tagLimit.tag) return next();
+        const tagId = parseInt(tagLimit.tag || tagLimit.tag_id, 10);
+        const per = parseInt(tagLimit.per || tagLimit.value, 10) || 1;
+        db.all('SELECT id, tags FROM building_properties', [], (errB, bRows) => {
+          if (errB) return cb(errB);
+          const bTags = {};
+          (bRows || []).forEach(r => {
+            bTags[r.id] = safeParse(r.tags, []);
+          });
+          db.all('SELECT id, tags FROM infrastructure_properties', [], (errI, iRows) => {
+            if (errI) return cb(errI);
+            const iTags = {};
+            (iRows || []).forEach(r => {
+              iTags[r.id] = safeParse(r.tags, []);
+            });
+            let count = 0;
+            for (const [bid, info] of Object.entries(buildings)) {
+              const tags = bTags[bid] || bTags[String(bid)] || [];
+              if (tags.includes(tagId)) {
+                count += info.built || 0;
+              }
+            }
+            for (const [iid, entry] of Object.entries(infrastructures)) {
+              const tags = iTags[iid] || iTags[String(iid)] || [];
+              const builtCount = typeof entry === 'object' ? (entry.built || 0) : entry;
+              if (tags.includes(tagId)) {
+                count += builtCount;
+              }
+            }
+            max = Math.min(max, count * per);
+            next();
+          });
+        });
+      };
       if (Array.isArray(infraReq.tags) && infraReq.tags.length) {
         checkTagRestrictions(db, buildings, infrastructures, infraReq.tags, err3 => {
           if (err3) return cb(err3);
-          finalize();
+          applyTagLimit(finalize);
         });
       } else {
-        finalize();
+        applyTagLimit(finalize);
       }
     });
   });

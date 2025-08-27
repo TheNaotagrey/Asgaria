@@ -80,7 +80,7 @@ const infraPropLabels = {
   tags:'Tags',
   description:'Description',
 };
-const typeSelect = [{id:'civil',name:'Civil'},{id:'militaire',name:'Militaire'}];
+const typeSelect = [{id:'civil',name:'Civil'},{id:'militaire',name:'Militaire'},{id:'commercial',name:'Commercial'}];
 const resourceSelect = Object.entries(inventaireLabels).map(([id, name]) => ({ id, name }));
 const pageSelect = [{id:'magie', name:'Magie'}];
 let buildingPropsSelect = [];
@@ -90,7 +90,8 @@ const dataCache = {};
 const tabLoaded = {};
 const maxOptions = [
   ...Array.from({length:10}, (_,i)=>({ id:String(i+1), name:String(i+1) })),
-  ...baronyPropIntFields.map(f=>({ id:f, name:baronyPropLabels[f] || f }))
+  ...baronyPropIntFields.map(f=>({ id:f, name:baronyPropLabels[f] || f })),
+  { id:'tag', name:'Par tag' }
 ];
 
 const spellFields = ['label','type','costs','effects','description'];
@@ -1079,6 +1080,65 @@ function renderTable(container, rows, opts){
     if(field === 'effects'){
       return makeEffectsInput(val, opts && opts.allowedEffectTypes);
     }
+    if(field === 'max'){
+      let isTag = false, tag = '', per = '';
+      try {
+        const obj = JSON.parse(val || '');
+        if (obj && obj.tag) {
+          isTag = true;
+          tag = obj.tag || obj.tag_id || '';
+          per = obj.per || obj.value || '';
+        }
+      } catch {}
+      const container = document.createElement('div');
+      const sel = document.createElement('select');
+      const blank = document.createElement('option');
+      blank.value = '';
+      sel.appendChild(blank);
+      maxOptions.forEach(o=>{
+        const op = document.createElement('option');
+        op.value = o.id;
+        op.textContent = o.name;
+        if(!isTag && String(o.id) === String(val)) op.selected = true;
+        sel.appendChild(op);
+      });
+      const tagSel = document.createElement('select');
+      const tagBlank = document.createElement('option');
+      tagBlank.value = '';
+      tagSel.appendChild(tagBlank);
+      tagsSelect.forEach(o=>{
+        const op = document.createElement('option');
+        op.value = o.id;
+        op.textContent = o.name;
+        if(String(o.id) === String(tag)) op.selected = true;
+        tagSel.appendChild(op);
+      });
+      const qty = document.createElement('input');
+      qty.type = 'number';
+      qty.min = '0';
+      qty.style.width = '6em';
+      qty.value = per;
+      container.appendChild(sel);
+      container.appendChild(tagSel);
+      container.appendChild(qty);
+      function update(){
+        const show = sel.value === 'tag';
+        tagSel.style.display = show ? '' : 'none';
+        qty.style.display = show ? '' : 'none';
+      }
+      sel.addEventListener('change', update);
+      if(isTag){ sel.value = 'tag'; }
+      update();
+      container.getValue = ()=>{
+        if(sel.value === 'tag'){
+          if(!tagSel.value) return null;
+          const p = parseInt(qty.value,10) || 1;
+          return JSON.stringify({ tag: parseInt(tagSel.value,10), per: p });
+        }
+        return sel.value || null;
+      };
+      return container;
+    }
     if(field === 'tags'){
       const container = document.createElement('div');
       const list = document.createElement('div');
@@ -1524,7 +1584,7 @@ async function loadBatiments(){
     endpoint:'building_properties',
     fields:buildingPropFields,
     labels:buildingPropLabels,
-    selects:{produces: resourceSelect, max: maxOptions}
+    selects:{produces: resourceSelect}
   });
   const infraPropsById = infraProps.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableInfraProps'), infraPropsById, {
