@@ -2266,7 +2266,10 @@ async function renderPendingTransactions() {
       table.innerHTML += `<tr><td>${resSummary}</td><td>${origin}</td><td>${date}</td><td>${tx.reason || ''}</td><td>${status}</td></tr>`;
     });
     let rows = txs.length;
-    while (rows < 3) { table.innerHTML += '<tr><td colspan="5">&nbsp;</td></tr>'; rows++; }
+    while (rows < 3) {
+      table.innerHTML += '<tr>' + '<td>&nbsp;</td>'.repeat(5) + '</tr>';
+      rows++;
+    }
     timeago.render(table.querySelectorAll('.timeago'), 'fr');
     table.querySelectorAll('.tx-open').forEach(btn => {
       btn.addEventListener('click', () => openTransactionPopup(btn.dataset.id));
