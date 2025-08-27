@@ -2481,8 +2481,8 @@ app.get('/api/trade_transactions/:id', (req, res) => {
   if (!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
   const id = parseInt(req.params.id, 10);
   if (!id) return res.status(400).json({ error: 'Identifiant invalide' });
-  db.get(`SELECT tt.*, so.user_id as origin_user_id, so.name as origin_name, bo.name as origin_barony_name,
-                  sd.user_id as dest_user_id, sd.name as dest_name, bd.name as dest_barony_name
+  db.get(`SELECT tt.*, so.name as origin_name, bo.name as origin_barony_name,
+                  sd.name as dest_name, bd.name as dest_barony_name
           FROM trade_transactions tt
           JOIN seigneuries os ON tt.origin_id=os.id
           JOIN seigneurs so ON os.seigneur_id=so.id
@@ -2493,12 +2493,17 @@ app.get('/api/trade_transactions/:id', (req, res) => {
           WHERE tt.id=?`, [id], (err, row) => {
     if (err) return handleError(res, err);
     if (!row) return res.status(404).json({ error: 'Introuvable' });
-    const uid = req.session.user.id;
-    if (row.origin_user_id !== uid && row.dest_user_id !== uid && !isAdminActive(req.session.user)) {
-      return res.status(403).json({ error: 'Forbidden' });
-    }
-    row.resources = safeParse(row.resources, {});
-    res.json(row);
+    db.all(`SELECT seigneuries.id FROM seigneurs
+            JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id
+            WHERE seigneurs.user_id=?`, [req.session.user.id], (err2, srows) => {
+      if (err2) return handleError(res, err2);
+      const owned = (srows || []).map(r => r.id);
+      if (!isAdminActive(req.session.user) && !owned.includes(row.origin_id) && !owned.includes(row.destination_id)) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+      row.resources = safeParse(row.resources, {});
+      res.json(row);
+    });
   });
 });
 
