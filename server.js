@@ -250,7 +250,9 @@ CREATE TABLE IF NOT EXISTS trade_transactions (
   resources TEXT,
   type TEXT,
   state TEXT,
+  reason TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  decision_time TEXT,
   FOREIGN KEY(origin_id) REFERENCES seigneuries(id),
   FOREIGN KEY(destination_id) REFERENCES seigneuries(id)
 );
@@ -378,6 +380,16 @@ db.exec(initSql, () => {
       }
       if (!rows.some(r => r.name === 'naval_transaction_month')) {
         db.run("ALTER TABLE seigneuries ADD COLUMN naval_transaction_month TEXT");
+      }
+    }
+  });
+  db.all("PRAGMA table_info(trade_transactions)", (err, rows) => {
+    if (!err && rows) {
+      if (!rows.some(r => r.name === 'reason')) {
+        db.run('ALTER TABLE trade_transactions ADD COLUMN reason TEXT');
+      }
+      if (!rows.some(r => r.name === 'decision_time')) {
+        db.run('ALTER TABLE trade_transactions ADD COLUMN decision_time TEXT');
       }
     }
   });
@@ -2347,6 +2359,7 @@ app.post('/api/send_transaction', (req, res) => {
   const targetBaronyId = parseInt(req.body.target_barony_id, 10);
   const resources = req.body.resources || {};
   const txType = req.body.type === 'naval' ? 'naval' : 'land';
+  const reason = req.body.reason || null;
   if (!targetBaronyId || typeof resources !== 'object') return res.status(400).json({ error: 'Données invalides' });
   getSeigneurie(req, 'seigneuries.id, seigneuries.baronnie_id, seigneuries.inventaire_id, seigneuries.buildings, seigneuries.infrastructures, seigneuries.land_transactions, seigneuries.land_transaction_month, seigneuries.naval_transactions, seigneuries.naval_transaction_month', (err, srow) => {
     if (err) return handleError(res, err);
@@ -2403,35 +2416,137 @@ app.post('/api/send_transaction', (req, res) => {
               return res.status(400).json({ error: 'Ressources insuffisantes' });
             }
           }
-          db.get('SELECT id FROM seigneuries WHERE baronnie_id=?', [targetBaronyId], (err5, dest) => {
+          db.get(`SELECT seigneuries.id, seigneurs.user_id as user_id, seigneurs.name as name, baronies.name as barony_name FROM seigneuries JOIN seigneurs ON seigneurs.id=seigneuries.seigneur_id JOIN baronies ON baronies.id=seigneuries.baronnie_id WHERE seigneuries.baronnie_id=?`, [targetBaronyId], (err5, dest) => {
             if (err5) return handleError(res, err5);
             if (!dest) return res.status(400).json({ error: 'Destination invalide' });
-            const entries = Object.entries(resources);
-            let idx = 0;
-            function next() {
-              if (idx >= entries.length) return finish();
-              const [resName, amount] = entries[idx++];
-              performTransaction(db, seigneurieId, resName, -amount, err6 => {
-                if (err6) return handleError(res, err6);
-                next();
-              });
-            }
-            function finish() {
-              const newCount = count + 1;
-              const field = txType === 'naval' ? 'naval_transactions' : 'land_transactions';
-              const monthField = txType === 'naval' ? 'naval_transaction_month' : 'land_transaction_month';
-              db.run(`UPDATE seigneuries SET ${field}=?, ${monthField}=? WHERE id=?`, [newCount, month, seigneurieId], err7 => {
-                if (err7) return handleError(res, err7);
-                db.run('INSERT INTO trade_transactions (origin_id, destination_id, resources, type, state) VALUES (?,?,?,?,?)', [seigneurieId, dest.id, JSON.stringify(resources), txType, 'En Attente'], err8 => {
-                  if (err8) return handleError(res, err8);
-                  res.json({ ok: true });
+            db.get('SELECT seigneurs.name as name FROM seigneurs JOIN seigneuries ON seigneurs.id=seigneuries.seigneur_id WHERE seigneuries.id=?', [seigneurieId], (errO, originInfo) => {
+              if (errO) return handleError(res, errO);
+              const entries = Object.entries(resources);
+              let idx = 0;
+              function next() {
+                if (idx >= entries.length) return finish();
+                const [resName, amount] = entries[idx++];
+                performTransaction(db, seigneurieId, resName, -amount, err6 => {
+                  if (err6) return handleError(res, err6);
+                  next();
                 });
-              });
-            }
-            next();
+              }
+              function finish() {
+                const newCount = count + 1;
+                const field = txType === 'naval' ? 'naval_transactions' : 'land_transactions';
+                const monthField = txType === 'naval' ? 'naval_transaction_month' : 'land_transaction_month';
+                db.run(`UPDATE seigneuries SET ${field}=?, ${monthField}=? WHERE id=?`, [newCount, month, seigneurieId], err7 => {
+                  if (err7) return handleError(res, err7);
+                  db.run('INSERT INTO trade_transactions (origin_id, destination_id, resources, type, state, reason) VALUES (?,?,?,?,?,?)', [seigneurieId, dest.id, JSON.stringify(resources), txType, 'En Attente', reason], function(err8) {
+                    if (err8) return handleError(res, err8);
+                    const message = `Vous avez reçu une ${txType === 'naval' ? 'cargaison' : 'caravane'} de ressources de ${originInfo ? originInfo.name : ''}`;
+                    sendNotification(db, dest.user_id, message, `/gestion.html?transactionId=${this.lastID}`, () => {
+                      res.json({ ok: true });
+                    });
+                  });
+                });
+              }
+              next();
+            });
           });
         });
       });
+    });
+  });
+});
+
+app.get('/api/trade_transactions', (req, res) => {
+  if (!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
+  getSeigneurie(req, 'seigneuries.id', (err, row) => {
+    if (err) return handleError(res, err);
+    if (!row) return res.status(400).json({ error: 'Seigneurie introuvable' });
+    const three = new Date();
+    three.setMonth(three.getMonth() - 3);
+    const sql = `SELECT tt.id, tt.resources, tt.type, tt.state, tt.reason, tt.created_at, tt.decision_time, s.name as origin_name, b.name as origin_barony_name
+                 FROM trade_transactions tt
+                 JOIN seigneuries os ON tt.origin_id=os.id
+                 JOIN seigneurs s ON os.seigneur_id=s.id
+                 JOIN baronies b ON os.baronnie_id=b.id
+                 WHERE tt.destination_id=? AND (tt.state='En Attente' OR (tt.decision_time IS NOT NULL AND tt.decision_time>=?))
+                 ORDER BY tt.created_at DESC`;
+    db.all(sql, [row.id, three.toISOString()], (err2, rows) => {
+      if (err2) return handleError(res, err2);
+      const mapped = (rows || []).map(r => ({ ...r, resources: safeParse(r.resources, {}) }));
+      res.json(mapped);
+    });
+  });
+});
+
+app.get('/api/trade_transactions/:id', (req, res) => {
+  if (!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
+  const id = parseInt(req.params.id, 10);
+  if (!id) return res.status(400).json({ error: 'Identifiant invalide' });
+  db.get(`SELECT tt.*, so.user_id as origin_user_id, so.name as origin_name, bo.name as origin_barony_name,
+                  sd.user_id as dest_user_id, sd.name as dest_name, bd.name as dest_barony_name
+          FROM trade_transactions tt
+          JOIN seigneuries os ON tt.origin_id=os.id
+          JOIN seigneurs so ON os.seigneur_id=so.id
+          JOIN baronies bo ON os.baronnie_id=bo.id
+          JOIN seigneuries ds ON tt.destination_id=ds.id
+          JOIN seigneurs sd ON ds.seigneur_id=sd.id
+          JOIN baronies bd ON ds.baronnie_id=bd.id
+          WHERE tt.id=?`, [id], (err, row) => {
+    if (err) return handleError(res, err);
+    if (!row) return res.status(404).json({ error: 'Introuvable' });
+    const uid = req.session.user.id;
+    if (row.origin_user_id !== uid && row.dest_user_id !== uid && !isAdminActive(req.session.user)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    row.resources = safeParse(row.resources, {});
+    res.json(row);
+  });
+});
+
+app.post('/api/trade_transactions/:id/decision', (req, res) => {
+  if (!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
+  const id = parseInt(req.params.id, 10);
+  const action = req.body.action;
+  if (!id || !['accept', 'refuse'].includes(action)) return res.status(400).json({ error: 'Données invalides' });
+  getSeigneurie(req, 'seigneuries.id', (err, row) => {
+    if (err) return handleError(res, err);
+    if (!row) return res.status(400).json({ error: 'Seigneurie introuvable' });
+    const seigneurieId = row.id;
+    db.get(`SELECT tt.*, so.user_id as origin_user_id, sd.name as dest_name FROM trade_transactions tt
+            JOIN seigneuries os ON tt.origin_id=os.id
+            JOIN seigneurs so ON os.seigneur_id=so.id
+            JOIN seigneuries ds ON tt.destination_id=ds.id
+            JOIN seigneurs sd ON ds.seigneur_id=sd.id
+            WHERE tt.id=? AND tt.destination_id=?`, [id, seigneurieId], (err2, tx) => {
+      if (err2) return handleError(res, err2);
+      if (!tx) return res.status(404).json({ error: 'Introuvable' });
+      if (tx.state !== 'En Attente') return res.status(400).json({ error: 'Déjà traité' });
+      const resources = safeParse(tx.resources, {});
+      const entries = Object.entries(resources);
+      let idx = 0;
+      function finish() {
+        const newState = action === 'accept' ? 'Approuvée' : 'Refusée';
+        db.run('UPDATE trade_transactions SET state=?, decision_time=CURRENT_TIMESTAMP WHERE id=?', [newState, id], errU => {
+          if (errU) return handleError(res, errU);
+          if (action === 'refuse') {
+            sendNotification(db, tx.origin_user_id, `${tx.dest_name} a refusé vos ressources`, `/gestion.html?transactionId=${id}`, () => {
+              res.json({ ok: true });
+            });
+          } else {
+            res.json({ ok: true });
+          }
+        });
+      }
+      function next() {
+        if (idx >= entries.length) return finish();
+        const [r, a] = entries[idx++];
+        const amt = parseInt(a, 10);
+        const targetId = action === 'accept' ? seigneurieId : tx.origin_id;
+        performTransaction(db, targetId, r, amt, errT => {
+          if (errT) return handleError(res, errT);
+          next();
+        });
+      }
+      next();
     });
   });
 });
