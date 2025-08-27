@@ -11,14 +11,14 @@ const logger = require('./logger');
 const handleError = require('./handleError');
 const { consumeResources } = require('./services/buildingService');
 const { sendNotification } = require('./services/notificationService');
-const { StorageEffect, ResourceProductionEffect, BuildingProductionEffect, InfraProductionEffect, IDHEffect, VariableWorkersEffect, UnlockPageEffect, SpellSuccessEffect, SpellBasicDiscountEffect, SpellAdvancedDiscountEffect, SpellRangeEffect, SpellMaxPerMonthEffect } = require('./effects');
+const { StorageEffect, ResourceProductionEffect, BuildingProductionEffect, InfraProductionEffect, IDHEffect, VariableWorkersEffect, UnlockPageEffect, SpellSuccessEffect, SpellBasicDiscountEffect, SpellAdvancedDiscountEffect, SpellRangeEffect, SpellMaxPerMonthEffect, LandTransactionMaxPerMonthEffect, NavalTransactionMaxPerMonthEffect } = require('./effects');
 const app = express();
 const db = new sqlite3.Database('asgaria.db');
 
 const VALID_TABLES = new Set([
   'users','religions','cultures','seigneurs','empires','kingdoms','archduchies',
   'duchies','marquisates','counties','viscounties','baronies','barony_pixels',
-  'canonical_lands','inventaire','seigneuries','transactions','barony_properties',
+  'canonical_lands','inventaire','seigneuries','transactions','trade_transactions','barony_properties',
   'building_properties','infrastructure_properties','barony_connections','trade_routes','tags','spells',
   'sanctuaries','maritime_zones','maritime_zone_pixels','maritime_zone_connections','maritime_zone_baronies','notifications'
 ]);
@@ -227,6 +227,10 @@ CREATE TABLE IF NOT EXISTS seigneuries (
   infrastructures TEXT DEFAULT '{}',
   spells_cast INTEGER DEFAULT 0,
   spell_month TEXT,
+  land_transactions INTEGER DEFAULT 0,
+  land_transaction_month TEXT,
+  naval_transactions INTEGER DEFAULT 0,
+  naval_transaction_month TEXT,
   FOREIGN KEY(baronnie_id) REFERENCES baronies(id),
   FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id),
   FOREIGN KEY(inventaire_id) REFERENCES inventaire(id)
@@ -238,6 +242,17 @@ CREATE TABLE IF NOT EXISTS transactions (
   amount INTEGER,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY(seigneurie_id) REFERENCES seigneuries(id)
+);
+CREATE TABLE IF NOT EXISTS trade_transactions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  origin_id INTEGER,
+  destination_id INTEGER,
+  resources TEXT,
+  type TEXT,
+  state TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(origin_id) REFERENCES seigneuries(id),
+  FOREIGN KEY(destination_id) REFERENCES seigneuries(id)
 );
 CREATE TABLE IF NOT EXISTS barony_properties (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -351,6 +366,18 @@ db.exec(initSql, () => {
       }
       if (!rows.some(r => r.name === 'spell_month')) {
         db.run("ALTER TABLE seigneuries ADD COLUMN spell_month TEXT");
+      }
+      if (!rows.some(r => r.name === 'land_transactions')) {
+        db.run("ALTER TABLE seigneuries ADD COLUMN land_transactions INTEGER DEFAULT 0");
+      }
+      if (!rows.some(r => r.name === 'land_transaction_month')) {
+        db.run("ALTER TABLE seigneuries ADD COLUMN land_transaction_month TEXT");
+      }
+      if (!rows.some(r => r.name === 'naval_transactions')) {
+        db.run("ALTER TABLE seigneuries ADD COLUMN naval_transactions INTEGER DEFAULT 0");
+      }
+      if (!rows.some(r => r.name === 'naval_transaction_month')) {
+        db.run("ALTER TABLE seigneuries ADD COLUMN naval_transaction_month TEXT");
       }
     }
   });
@@ -879,6 +906,12 @@ app.get('/api/my_seigneurie', (req, res) => {
             const currentMonth = new Date().toISOString().slice(0,7);
             let spellsCast = s.spells_cast || 0;
             if (s.spell_month !== currentMonth) spellsCast = 0;
+            let landTransactions = s.land_transactions || 0;
+            let landMonth = s.land_transaction_month;
+            if (landMonth !== currentMonth) landTransactions = 0;
+            let navalTransactions = s.naval_transactions || 0;
+            let navalMonth = s.naval_transaction_month;
+            if (navalMonth !== currentMonth) navalTransactions = 0;
             const buildingProductionBonus = {};
             const buildingProductionBonusDetails = {};
             const effectCtx = {
@@ -899,11 +932,15 @@ app.get('/api/my_seigneurie', (req, res) => {
               advancedSpellDiscount: 0,
               spellRangeBonus: 0,
               spellMax: 0,
+              landTxMax: 0,
+              navalTxMax: 0,
               spellSuccessDetails: [{ label: 'Base', amount: 75, source: 1 }],
               basicSpellDiscountDetails: [{ label: 'Base', amount: 0, source: 1 }],
               advancedSpellDiscountDetails: [{ label: 'Base', amount: 0, source: 1 }],
               spellRangeDetails: [{ label: 'Base', amount: 5, source: 1 }],
-              spellMaxDetails: [{ label: 'Base', amount: 0, source: 1 }]
+              spellMaxDetails: [{ label: 'Base', amount: 0, source: 1 }],
+              landTxMaxDetails: [{ label: 'Base', amount: 0, source: 1 }],
+              navalTxMaxDetails: [{ label: 'Base', amount: 0, source: 1 }]
             };
             for (const ip of infraList) {
               effectCtx.currentInfraId = ip.id;
@@ -951,6 +988,12 @@ app.get('/api/my_seigneurie', (req, res) => {
                   if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
                 } else if (def.type === 'spell_max_per_month') {
                   effObj = new SpellMaxPerMonthEffect(def.amount || 0);
+                  if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
+                } else if (def.type === 'land_transaction_max_per_month') {
+                  effObj = new LandTransactionMaxPerMonthEffect(def.amount || 0);
+                  if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
+                } else if (def.type === 'naval_transaction_max_per_month') {
+                  effObj = new NavalTransactionMaxPerMonthEffect(def.amount || 0);
                   if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
                 } else if (def.type === 'variable_workers') {
                   const max = (def.max_workers || 0) * count;
@@ -1053,6 +1096,8 @@ app.get('/api/my_seigneurie', (req, res) => {
               const advancedSpellDiscount = effectCtx.advancedSpellDiscount || 0;
               const spellRange = 5 + (effectCtx.spellRangeBonus || 0);
               const spellMax = effectCtx.spellMax || 0;
+              const landTxMax = effectCtx.landTxMax || 0;
+              const navalTxMax = effectCtx.navalTxMax || 0;
               res.json({
                 seigneur: seig,
                 seigneurie: s,
@@ -1077,12 +1122,18 @@ app.get('/api/my_seigneurie', (req, res) => {
                 advancedSpellDiscount,
                 spellRange,
                 spellMax,
+                landTxMax,
+                navalTxMax,
+                landTransactions,
+                navalTransactions,
                 spellsCast,
                 spellSuccessDetails: effectCtx.spellSuccessDetails || [],
                 basicSpellDiscountDetails: effectCtx.basicSpellDiscountDetails || [],
                 advancedSpellDiscountDetails: effectCtx.advancedSpellDiscountDetails || [],
                 spellRangeDetails: effectCtx.spellRangeDetails || [],
-                spellMaxDetails: effectCtx.spellMaxDetails || []
+                spellMaxDetails: effectCtx.spellMaxDetails || [],
+                landTxMaxDetails: effectCtx.landTxMaxDetails || [],
+                navalTxMaxDetails: effectCtx.navalTxMaxDetails || []
               });
             }
             if (s.baronnie_id) {
@@ -1114,6 +1165,10 @@ app.get('/api/my_seigneurie', (req, res) => {
                     effObj = new SpellRangeEffect(def.amount || 0);
                   } else if (def.type === 'spell_max_per_month') {
                     effObj = new SpellMaxPerMonthEffect(def.amount || 0);
+                  } else if (def.type === 'land_transaction_max_per_month') {
+                    effObj = new LandTransactionMaxPerMonthEffect(def.amount || 0);
+                  } else if (def.type === 'naval_transaction_max_per_month') {
+                    effObj = new NavalTransactionMaxPerMonthEffect(def.amount || 0);
                   }
                   if (effObj) {
                     effObj.apply(effectCtx, 1, 'Baronnie');
@@ -2245,6 +2300,100 @@ app.delete('/api/barony_connections', requireAdmin, (req,res)=>{
   db.run('DELETE FROM barony_connections WHERE barony_id_1=? AND barony_id_2=?',[id1,id2],function(err){
     if(err) return handleError(res, err);
     res.json({deleted: this.changes});
+  });
+});
+
+app.post('/api/send_transaction', (req, res) => {
+  if (!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
+  const targetBaronyId = parseInt(req.body.target_barony_id, 10);
+  const resources = req.body.resources || {};
+  const txType = req.body.type === 'naval' ? 'naval' : 'land';
+  if (!targetBaronyId || typeof resources !== 'object') return res.status(400).json({ error: 'Données invalides' });
+  getSeigneurie(req, 'seigneuries.id, seigneuries.baronnie_id, seigneuries.inventaire_id, seigneuries.buildings, seigneuries.infrastructures, seigneuries.land_transactions, seigneuries.land_transaction_month, seigneuries.naval_transactions, seigneuries.naval_transaction_month', (err, srow) => {
+    if (err) return handleError(res, err);
+    if (!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
+    const seigneurieId = srow.id;
+    const infrastructures = safeParse(srow.infrastructures, {});
+    const currentMonth = new Date().toISOString().slice(0,7);
+    let count = txType === 'naval' ? (srow.naval_transactions || 0) : (srow.land_transactions || 0);
+    let month = txType === 'naval' ? srow.naval_transaction_month : srow.land_transaction_month;
+    if (month !== currentMonth) { count = 0; month = currentMonth; }
+    db.all('SELECT id, label, effects FROM infrastructure_properties', [], (err2, iprops) => {
+      if (err2) return handleError(res, err2);
+      const effectCtx = { landTxMax:0, navalTxMax:0 };
+      (iprops || []).forEach(ip => {
+        const entry = infrastructures[ip.id] || infrastructures[String(ip.id)] || 0;
+        const c = typeof entry === 'object' ? (entry.built || 0) : entry;
+        if (!c) return;
+        const effs = safeParse(ip.effects, []);
+        effs.forEach(def => {
+          let effObj = null;
+          if (def.type === 'land_transaction_max_per_month') {
+            effObj = new LandTransactionMaxPerMonthEffect(def.amount || 0);
+          } else if (def.type === 'naval_transaction_max_per_month') {
+            effObj = new NavalTransactionMaxPerMonthEffect(def.amount || 0);
+          }
+          if (effObj) effObj.apply(effectCtx, c, ip.label || ip.type);
+        });
+      });
+      const applyBarony = cb => {
+        if (!srow.baronnie_id) return cb();
+        db.get('SELECT effects FROM barony_properties WHERE barony_id=?', [srow.baronnie_id], (err3, bprops) => {
+          if (err3) return handleError(res, err3);
+          const beffs = safeParse(bprops && bprops.effects, []);
+          beffs.forEach(def => {
+            let effObj = null;
+            if (def.type === 'land_transaction_max_per_month') {
+              effObj = new LandTransactionMaxPerMonthEffect(def.amount || 0);
+            } else if (def.type === 'naval_transaction_max_per_month') {
+              effObj = new NavalTransactionMaxPerMonthEffect(def.amount || 0);
+            }
+            if (effObj) effObj.apply(effectCtx, 1, 'Baronnie');
+          });
+          cb();
+        });
+      };
+      applyBarony(() => {
+        const max = txType === 'naval' ? effectCtx.navalTxMax : effectCtx.landTxMax;
+        if (max && count >= max) return res.status(400).json({ error: 'Limite de transactions atteinte' });
+        db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err4, inv) => {
+          if (err4) return handleError(res, err4);
+          for (const [r, a] of Object.entries(resources)) {
+            const amt = parseInt(a, 10);
+            if (!inventaireFields.includes(r) || amt <= 0 || inv[r] < amt) {
+              return res.status(400).json({ error: 'Ressources insuffisantes' });
+            }
+          }
+          db.get('SELECT id FROM seigneuries WHERE baronnie_id=?', [targetBaronyId], (err5, dest) => {
+            if (err5) return handleError(res, err5);
+            if (!dest) return res.status(400).json({ error: 'Destination invalide' });
+            const entries = Object.entries(resources);
+            let idx = 0;
+            function next() {
+              if (idx >= entries.length) return finish();
+              const [resName, amount] = entries[idx++];
+              performTransaction(db, seigneurieId, resName, -amount, err6 => {
+                if (err6) return handleError(res, err6);
+                next();
+              });
+            }
+            function finish() {
+              const newCount = count + 1;
+              const field = txType === 'naval' ? 'naval_transactions' : 'land_transactions';
+              const monthField = txType === 'naval' ? 'naval_transaction_month' : 'land_transaction_month';
+              db.run(`UPDATE seigneuries SET ${field}=?, ${monthField}=? WHERE id=?`, [newCount, month, seigneurieId], err7 => {
+                if (err7) return handleError(res, err7);
+                db.run('INSERT INTO trade_transactions (origin_id, destination_id, resources, type, state) VALUES (?,?,?,?,?)', [seigneurieId, dest.id, JSON.stringify(resources), txType, 'En Attente'], err8 => {
+                  if (err8) return handleError(res, err8);
+                  res.json({ ok: true });
+                });
+              });
+            }
+            next();
+          });
+        });
+      });
+    });
   });
 });
 

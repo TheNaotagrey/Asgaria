@@ -40,6 +40,7 @@
         <div id="tab-ost" class="tab-panel"></div>
         <div id="tab-commerce" class="tab-panel">
           <h2>Chemins commerciaux</h2>
+          <div id="tradeInfo" style="margin-bottom:10px"></div>
           <div class="trade-controls" style="margin-bottom:10px">
             <button id="newTradeRouteBtn" class="control-btn">Nouvelle route</button>
           </div>
@@ -66,6 +67,14 @@
     <div class="dialog-buttons">
       <button id="confirmCancel" class="control-btn">Annuler</button>
       <button id="confirmOk" class="control-btn danger">Confirmer</button>
+    </div>
+  </dialog>
+  <dialog id="tradeDialog" class="confirm-dialog">
+    <div id="tradeList"></div>
+    <div style="margin-top:10px"><button id="tradeAddRow" class="control-btn">+</button></div>
+    <div class="dialog-buttons">
+      <button id="tradeCancel" class="control-btn">Annuler</button>
+      <button id="tradeSend" class="control-btn">Envoyer</button>
     </div>
   </dialog>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/timeago.js/4.0.2/timeago.min.js"></script>

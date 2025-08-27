@@ -244,12 +244,16 @@ async function loadAndRender(seigneurieId) {
     const spellRange = data.spellRange || 5;
     const spellMax = data.spellMax || 0;
     const spellsCast = data.spellsCast || 0;
+    const landTxMax = data.landTxMax || 0;
+    const navalTxMax = data.navalTxMax || 0;
+    const landTransactions = data.landTransactions || 0;
+    const navalTransactions = data.navalTransactions || 0;
     const spellSuccessDetails = data.spellSuccessDetails || [];
     const basicSpellDiscountDetails = data.basicSpellDiscountDetails || [];
     const advancedSpellDiscountDetails = data.advancedSpellDiscountDetails || [];
     const spellRangeDetails = data.spellRangeDetails || [];
     const spellMaxDetails = data.spellMaxDetails || [];
-    gameState = { s, employment, buildings, infrastructures, bpMap, ipMap, buildingBonuses, buildingBonusDetails, productionDetails, spellSuccess, basicSpellDiscount, advancedSpellDiscount, spellRange, spellMax, spellsCast, spellSuccessDetails, basicSpellDiscountDetails, advancedSpellDiscountDetails, spellRangeDetails, spellMaxDetails, inv, capacities, isAdmin, baronyProps };
+    gameState = { s, employment, buildings, infrastructures, bpMap, ipMap, buildingBonuses, buildingBonusDetails, productionDetails, spellSuccess, basicSpellDiscount, advancedSpellDiscount, spellRange, spellMax, spellsCast, landTxMax, navalTxMax, landTransactions, navalTransactions, spellSuccessDetails, basicSpellDiscountDetails, advancedSpellDiscountDetails, spellRangeDetails, spellMaxDetails, inv, capacities, isAdmin, baronyProps };
 
     await renderTradeRoutes(barony.id);
 
@@ -2089,6 +2093,11 @@ async function renderTradeRoutes(baronyId) {
   }
   currentTradeBaronyId = baronyId;
   try {
+    const info = document.getElementById('tradeInfo');
+    if (info) {
+      const { landTransactions = 0, landTxMax = 0 } = gameState;
+      info.textContent = `Transactions terrestres: ${landTransactions} / ${landTxMax}`;
+    }
     const res = await fetch(`/api/trade_partners?barony_id=${baronyId}`);
     const routes = res.ok ? await res.json() : [];
     currentTradeRoutes = routes;
@@ -2097,11 +2106,98 @@ async function renderTradeRoutes(baronyId) {
       container.textContent = 'Aucune route commerciale';
       return;
     }
-    const rows = routes.map(r => `<tr><td>${r.id}</td><td>${r.name || ''}</td><td>${r.seigneur_name || ''}</td><td>${r.duchy_name || ''}</td></tr>`).join('');
-    container.innerHTML = `<table class="admin-table"><tr><th>#</th><th>Nom</th><th>Propriétaire</th><th>Province (Duché)</th></tr>${rows}</table>`;
+    const rows = routes.map(r => `<tr><td>${r.id}</td><td>${r.name || ''}</td><td>${r.seigneur_name || ''}</td><td>${r.duchy_name || ''}</td><td><button class="trade-btn" data-id="${r.id}">Commercer</button></td></tr>`).join('');
+    container.innerHTML = `<table class="admin-table"><tr><th>#</th><th>Nom</th><th>Propriétaire</th><th>Province (Duché)</th><th></th></tr>${rows}</table>`;
+    container.querySelectorAll('.trade-btn').forEach(btn => {
+      btn.addEventListener('click', () => openTradeDialog(btn.dataset.id));
+    });
   } catch {
     container.textContent = 'Erreur de chargement';
     await updateTradeMap(baronyId, []);
+  }
+}
+
+async function openTradeDialog(baronyId) {
+  const resources = await showTradeDialog();
+  if (!resources) return;
+  await sendTransaction(baronyId, resources);
+}
+
+function showTradeDialog() {
+  return new Promise(resolve => {
+    const dialog = document.getElementById('tradeDialog');
+    const list = document.getElementById('tradeList');
+    const addBtn = document.getElementById('tradeAddRow');
+    const cancelBtn = document.getElementById('tradeCancel');
+    const sendBtn = document.getElementById('tradeSend');
+    list.innerHTML = '';
+    function addRow() {
+      const row = document.createElement('div');
+      const sel = document.createElement('select');
+      const blank = document.createElement('option');
+      blank.value = '';
+      sel.appendChild(blank);
+      resourceSelect.forEach(o => {
+        const op = document.createElement('option');
+        op.value = o.id;
+        op.textContent = o.name;
+        sel.appendChild(op);
+      });
+      const qty = document.createElement('input');
+      qty.type = 'number';
+      qty.min = '0';
+      sel.addEventListener('change', () => {
+        const max = gameState.inv[sel.value] || 0;
+        qty.max = String(max);
+        if (parseInt(qty.value, 10) > max) qty.value = max;
+      });
+      row.appendChild(sel);
+      row.appendChild(qty);
+      list.appendChild(row);
+      sel.dispatchEvent(new Event('change'));
+    }
+    addRow();
+    addBtn.onclick = () => addRow();
+    cancelBtn.onclick = () => { dialog.close(); resolve(null); };
+    sendBtn.onclick = () => {
+      const res = {};
+      let valid = true;
+      list.querySelectorAll('div').forEach(r => {
+        const sel = r.querySelector('select');
+        const inp = r.querySelector('input');
+        const key = sel.value;
+        const val = parseInt(inp.value, 10) || 0;
+        if (key && val > 0) {
+          if (val > (gameState.inv[key] || 0)) valid = false;
+          else res[key] = val;
+        }
+      });
+      if (!valid || !Object.keys(res).length) {
+        alert('Quantités invalides');
+        return;
+      }
+      dialog.close();
+      resolve(res);
+    };
+    dialog.showModal();
+  });
+}
+
+async function sendTransaction(baronyId, resources) {
+  try {
+    const res = await fetch('/api/send_transaction', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target_barony_id: baronyId, resources, type: 'land' })
+    });
+    if (res.ok) {
+      await loadAndRender(currentSeigneurieId);
+    } else {
+      const err = await res.json().catch(() => ({}));
+      alert(err.error || 'Transaction impossible');
+    }
+  } catch {
+    alert('Transaction impossible');
   }
 }
 
