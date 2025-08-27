@@ -166,6 +166,7 @@ async function loadAndRender(seigneurieId) {
     const tags = tRes.ok ? await tRes.json() : [];
     tagLabels = Object.fromEntries(tags.map(t=> [String(t.id), t.label]));
     const s = data.seigneurie;
+    currentSeigneurieId = s ? s.id : currentSeigneurieId;
     const inv = data.inventaire || {};
     const barony = data.barony || {};
     const seigneur = data.seigneur || {};
@@ -900,25 +901,40 @@ async function handleInfraTableChange(e) {
 }
 
 function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId, editable = false) {
-  const { buildings = {}, infrastructures = {}, s = {}, bpMap = {}, ipMap = {}, productionDetails = {} } = gameState || {};
+  const { buildings = {}, infrastructures = {}, s = {}, bpMap = {}, ipMap = {}, productionDetails = {}, baronyProps = {} } = gameState || {};
   let html = `<table class="admin-table" id="${tableId}"><tr><th>Nom</th><th>Construits</th><th>Max</th><th>Effets</th><th>Requis</th><th>Coût</th><th>Construire</th><th>Détruire</th><th class="multi-col"></th></tr>`;
   for (const ip of list) {
     const entry = infraBuilt[ip.id] || infraBuilt[String(ip.id)] || 0;
     const built = typeof entry === 'object' ? (entry.built || 0) : entry;
     const entryObj = typeof entry === 'object' ? entry : {};
 
-    let maxVal = '';
-    let maxReached = false;
+    let maxVal = Infinity;
     if (ip.max !== undefined && ip.max !== null && ip.max !== '') {
       const parsed = parseInt(ip.max, 10);
       if (!isNaN(parsed)) {
-        if (parsed > 0) {
-          maxVal = parsed;
-          if (built >= parsed) maxReached = true;
-        }
-      } else {
-        maxVal = ip.max;
+        maxVal = parsed;
+      } else if (baronyProps[ip.max] !== undefined) {
+        const dyn = parseInt(baronyProps[ip.max], 10);
+        if (!isNaN(dyn) && dyn > 0) maxVal = dyn;
       }
+      try {
+        const obj = JSON.parse(ip.max);
+        if (obj && typeof obj === 'object' && obj.tag) {
+          const tagId = obj.tag || obj.tag_id;
+          const per = obj.per || obj.value || 1;
+          const count = tagCounts[tagId] || 0;
+          const computed = count * per;
+          if (!isNaN(computed)) {
+            maxVal = Math.min(maxVal, computed);
+          }
+        }
+      } catch {}
+    }
+    const maxValDisplay = maxVal === Infinity ? '' : maxVal;
+    let maxReached = false;
+    if (maxValDisplay !== '') {
+      const maxNum = parseInt(maxValDisplay, 10);
+      if (!isNaN(maxNum) && built >= maxNum) maxReached = true;
     }
 
     const effectsHtml = (ip.description || '').replace(/\n/g, '<br>');
@@ -1000,7 +1016,7 @@ function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId, editable = fa
 
     const canBuild = hasRes && restrOk;
     const builtField = editable ? `<input type="number" class="infra-built-input" data-id="${ip.id}" value="${built}" style="width:6em">` : built;
-    html += `<tr data-id="${ip.id}"><td>${ip.label}</td><td>${builtField}</td><td>${maxVal}</td><td>${effectsHtml}</td><td>${restrHtml}</td><td>${costHtml}</td>`;
+    html += `<tr data-id="${ip.id}"><td>${ip.label}</td><td>${builtField}</td><td>${maxValDisplay}</td><td>${effectsHtml}</td><td>${restrHtml}</td><td>${costHtml}</td>`;
     if (maxReached) {
       html += '<td></td>';
     } else {
