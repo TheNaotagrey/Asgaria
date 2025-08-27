@@ -2287,8 +2287,14 @@ async function openTransactionPopup(id) {
     const refuseBtn = document.getElementById('txRefuse');
     const acceptBtn = document.getElementById('txAccept');
     const items = Object.entries(tx.resources || {}).map(([k,v]) => `<li>${v} ${resourceLabels[k] || k}</li>`).join('');
-    content.innerHTML = `<p>Origine: ${tx.origin_name} (${tx.origin_barony_name})</p><p>Date: <span class="timeago" datetime="${tx.created_at}"></span></p><p>Ressources:</p><ul>${items}</ul><p>Raison: ${tx.reason || ''}</p><p>En cas de refus, les ressources seront retournées à l'envoyeur (perdu si maximum d'une ressource dépassée).</p>`;
-    if (tx.state === 'En Attente' && tx.destination_id === currentSeigneurieId) {
+    const typeLabel = tx.type === 'naval' ? 'cargaison' : 'caravane';
+    content.innerHTML = `
+      <p>Vous avez reçu une ${typeLabel} de ${tx.origin_name} de la Baronnie de ${tx.origin_barony_name} avec la raison suivante :</p>
+      <p>${tx.reason || ''}</p>
+      <p>Elle contient :</p>
+      <ul>${items}</ul>
+      <p>En cas de refus, les ressources seront retournées à l'envoyeur (perdu si maximum d'une ressource dépassée).</p>`;
+    if (tx.state === 'En Attente' && Number(tx.destination_id) === Number(currentSeigneurieId)) {
       buttons.style.display = '';
       refuseBtn.onclick = async () => { dialog.close(); await decideTx(id, 'refuse'); };
       acceptBtn.onclick = async () => { dialog.close(); await decideTx(id, 'accept'); };
