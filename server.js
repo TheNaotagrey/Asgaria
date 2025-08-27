@@ -11,7 +11,7 @@ const logger = require('./logger');
 const handleError = require('./handleError');
 const { consumeResources } = require('./services/buildingService');
 const { sendNotification } = require('./services/notificationService');
-const { StorageEffect, ResourceProductionEffect, BuildingProductionEffect, InfraProductionEffect, IDHEffect, VariableWorkersEffect, UnlockPageEffect, SpellSuccessEffect, SpellBasicDiscountEffect, SpellAdvancedDiscountEffect, SpellRangeEffect, SpellMaxPerMonthEffect, LandTransactionMaxPerMonthEffect, NavalTransactionMaxPerMonthEffect } = require('./effects');
+const { StorageEffect, ResourceProductionEffect, BuildingProductionEffect, InfraProductionEffect, IDHEffect, VariableWorkersEffect, TagEffect, UnlockPageEffect, SpellSuccessEffect, SpellBasicDiscountEffect, SpellAdvancedDiscountEffect, SpellRangeEffect, SpellMaxPerMonthEffect, LandTransactionMaxPerMonthEffect, NavalTransactionMaxPerMonthEffect } = require('./effects');
 const app = express();
 const db = new sqlite3.Database('asgaria.db');
 
@@ -293,7 +293,7 @@ CREATE TABLE IF NOT EXISTS building_properties (
   workers_per_building INTEGER DEFAULT 1,
   absolute_restrictions TEXT,
   infra_restrictions TEXT,
-  tags TEXT,
+  effects TEXT,
   description TEXT
 );
 CREATE TABLE IF NOT EXISTS infrastructure_properties (
@@ -306,7 +306,6 @@ CREATE TABLE IF NOT EXISTS infrastructure_properties (
   costs TEXT,
   absolute_restrictions TEXT,
   restrictions TEXT,
-  tags TEXT,
   description TEXT
 );
 CREATE TABLE IF NOT EXISTS spells (
@@ -473,22 +472,19 @@ db.exec(initSql, () => {
     if (!rows.some(r => r.name === 'absolute_restrictions')) {
       db.run('ALTER TABLE building_properties ADD COLUMN absolute_restrictions TEXT');
     }
-    if (!rows.some(r => r.name === 'infra_restrictions')) {
-      db.run('ALTER TABLE building_properties ADD COLUMN infra_restrictions TEXT');
-    }
-    if (!rows.some(r => r.name === 'tags')) {
-      db.run('ALTER TABLE building_properties ADD COLUMN tags TEXT');
-    }
-  });
-  db.all("PRAGMA table_info(infrastructure_properties)", (err, rows) => {
-    if (err || !rows) return;
-    if (!rows.some(r => r.name === 'absolute_restrictions')) {
-      db.run('ALTER TABLE infrastructure_properties ADD COLUMN absolute_restrictions TEXT');
-    }
-    if (!rows.some(r => r.name === 'tags')) {
-      db.run('ALTER TABLE infrastructure_properties ADD COLUMN tags TEXT');
-    }
-  });
+      if (!rows.some(r => r.name === 'infra_restrictions')) {
+        db.run('ALTER TABLE building_properties ADD COLUMN infra_restrictions TEXT');
+      }
+      if (!rows.some(r => r.name === 'effects')) {
+        db.run('ALTER TABLE building_properties ADD COLUMN effects TEXT');
+      }
+    });
+    db.all("PRAGMA table_info(infrastructure_properties)", (err, rows) => {
+      if (err || !rows) return;
+      if (!rows.some(r => r.name === 'absolute_restrictions')) {
+        db.run('ALTER TABLE infrastructure_properties ADD COLUMN absolute_restrictions TEXT');
+      }
+    });
   db.all("PRAGMA table_info(barony_properties)", (err, rows) => {
     if (err || !rows) return;
     if (!rows.some(r => r.name === 'effects')) {
@@ -952,7 +948,8 @@ app.get('/api/my_seigneurie', (req, res) => {
               spellRangeDetails: [{ label: 'Base', amount: 5, source: 1 }],
               spellMaxDetails: [{ label: 'Base', amount: 0, source: 1 }],
               landTxMaxDetails: [{ label: 'Base', amount: 0, source: 1 }],
-              navalTxMaxDetails: [{ label: 'Base', amount: 0, source: 1 }]
+              navalTxMaxDetails: [{ label: 'Base', amount: 0, source: 1 }],
+              tagCounts: {}
             };
             for (const ip of infraList) {
               effectCtx.currentInfraId = ip.id;
@@ -1006,6 +1003,9 @@ app.get('/api/my_seigneurie', (req, res) => {
                   if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
                 } else if (def.type === 'naval_transaction_max_per_month') {
                   effObj = new NavalTransactionMaxPerMonthEffect(def.amount || 0);
+                  if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
+                } else if (def.type === 'tag') {
+                  effObj = new TagEffect(def.tag, def.amount || 1);
                   if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
                 } else if (def.type === 'variable_workers') {
                   const max = (def.max_workers || 0) * count;
@@ -1181,6 +1181,8 @@ app.get('/api/my_seigneurie', (req, res) => {
                     effObj = new LandTransactionMaxPerMonthEffect(def.amount || 0);
                   } else if (def.type === 'naval_transaction_max_per_month') {
                     effObj = new NavalTransactionMaxPerMonthEffect(def.amount || 0);
+                  } else if (def.type === 'tag') {
+                    effObj = new TagEffect(def.tag, def.amount || 1);
                   }
                   if (effObj) {
                     effObj.apply(effectCtx, 1, 'Baronnie');
@@ -1381,7 +1383,7 @@ app.put('/api/tags/:id', requireAdmin, (req,res)=>{
   update('tags', tagFields)(req,res);
 });
 
-const buildingPropFields = ['label','produces','production','costs','max','workers_per_building','absolute_restrictions','infra_restrictions','tags','description'];
+const buildingPropFields = ['label','produces','production','costs','max','workers_per_building','absolute_restrictions','infra_restrictions','effects','description'];
 app.get('/api/building_properties', (req,res)=>{
   list('building_properties')(req,res);
 });
@@ -1392,7 +1394,7 @@ app.put('/api/building_properties/:id', requireAdmin, (req,res)=>{
   update('building_properties', buildingPropFields)(req,res);
 });
 
-const infraPropFields = ['label','type','max','workers_per_building','effects','costs','absolute_restrictions','restrictions','tags','description'];
+const infraPropFields = ['label','type','max','workers_per_building','effects','costs','absolute_restrictions','restrictions','description'];
 app.get('/api/infrastructure_properties', (req,res)=>{
   list('infrastructure_properties')(req,res);
 });
@@ -1556,17 +1558,31 @@ function safeParse(json, fallback){
 }
 
 function checkTagRestrictions(db, buildings, infrastructures, tagConds, cb) {
-  db.all('SELECT id, tags FROM building_properties', [], (err, bRows) => {
+  db.all('SELECT id, effects FROM building_properties', [], (err, bRows) => {
     if (err) return cb(err);
     const bTags = {};
     (bRows || []).forEach(r => {
-      bTags[r.id] = safeParse(r.tags, []);
+      const effs = safeParse(r.effects, []);
+      const tagMap = {};
+      effs.forEach(ef => {
+        if (ef.type === 'tag' && ef.tag) {
+          tagMap[ef.tag] = (tagMap[ef.tag] || 0) + (parseInt(ef.amount, 10) || 1);
+        }
+      });
+      bTags[r.id] = tagMap;
     });
-    db.all('SELECT id, tags FROM infrastructure_properties', [], (err2, iRows) => {
+    db.all('SELECT id, effects FROM infrastructure_properties', [], (err2, iRows) => {
       if (err2) return cb(err2);
       const iTags = {};
       (iRows || []).forEach(r => {
-        iTags[r.id] = safeParse(r.tags, []);
+        const effs = safeParse(r.effects, []);
+        const tagMap = {};
+        effs.forEach(ef => {
+          if (ef.type === 'tag' && ef.tag) {
+            tagMap[ef.tag] = (tagMap[ef.tag] || 0) + (parseInt(ef.amount, 10) || 1);
+          }
+        });
+        iTags[r.id] = tagMap;
       });
       for (const cond of tagConds) {
         const tagId = parseInt(cond.tag || cond.tag_id, 10);
@@ -1574,16 +1590,18 @@ function checkTagRestrictions(db, buildings, infrastructures, tagConds, cb) {
         const val = parseInt(cond.value, 10) || 0;
         let count = 0;
         for (const [bid, info] of Object.entries(buildings)) {
-          const tags = bTags[bid] || bTags[String(bid)] || [];
-          if (tags.includes(tagId)) {
-            count += info.built || 0;
+          const tagMap = bTags[bid] || bTags[String(bid)] || {};
+          const amt = tagMap[tagId];
+          if (amt) {
+            count += (info.built || 0) * amt;
           }
         }
         for (const [iid, entry] of Object.entries(infrastructures)) {
-          const tags = iTags[iid] || iTags[String(iid)] || [];
-          const builtCount = typeof entry === 'object' ? (entry.built || 0) : entry;
-          if (tags.includes(tagId)) {
-            count += builtCount;
+          const tagMap = iTags[iid] || iTags[String(iid)] || {};
+          const amt = tagMap[tagId];
+          if (amt) {
+            const builtCount = typeof entry === 'object' ? (entry.built || 0) : entry;
+            count += builtCount * amt;
           }
         }
         if (cmp === '>=' && count < val) return cb(new Error('Restriction non satisfaite'));
@@ -1669,30 +1687,46 @@ function canConstruct(db, srow, id, qty, cb){
         if (!tagLimit || !tagLimit.tag) return next();
         const tagId = parseInt(tagLimit.tag || tagLimit.tag_id, 10);
         const per = parseInt(tagLimit.per || tagLimit.value, 10) || 1;
-        db.all('SELECT id, tags FROM building_properties', [], (errB, bRows) => {
+        db.all('SELECT id, effects FROM building_properties', [], (errB, bRows) => {
           if (errB) return cb(errB);
           const bTags = {};
           (bRows || []).forEach(r => {
-            bTags[r.id] = safeParse(r.tags, []);
+            const effs = safeParse(r.effects, []);
+            const tagMap = {};
+            effs.forEach(ef => {
+              if (ef.type === 'tag' && ef.tag) {
+                tagMap[ef.tag] = (tagMap[ef.tag] || 0) + (parseInt(ef.amount, 10) || 1);
+              }
+            });
+            bTags[r.id] = tagMap;
           });
-          db.all('SELECT id, tags FROM infrastructure_properties', [], (errI, iRows) => {
+          db.all('SELECT id, effects FROM infrastructure_properties', [], (errI, iRows) => {
             if (errI) return cb(errI);
             const iTags = {};
             (iRows || []).forEach(r => {
-              iTags[r.id] = safeParse(r.tags, []);
+              const effs = safeParse(r.effects, []);
+              const tagMap = {};
+              effs.forEach(ef => {
+                if (ef.type === 'tag' && ef.tag) {
+                  tagMap[ef.tag] = (tagMap[ef.tag] || 0) + (parseInt(ef.amount, 10) || 1);
+                }
+              });
+              iTags[r.id] = tagMap;
             });
             let count = 0;
             for (const [bid, info] of Object.entries(buildings)) {
-              const tags = bTags[bid] || bTags[String(bid)] || [];
-              if (tags.includes(tagId)) {
-                count += info.built || 0;
+              const tagMap = bTags[bid] || bTags[String(bid)] || {};
+              const amt = tagMap[tagId];
+              if (amt) {
+                count += (info.built || 0) * amt;
               }
             }
             for (const [iid, entry] of Object.entries(infrastructures)) {
-              const tags = iTags[iid] || iTags[String(iid)] || [];
-              const builtCount = typeof entry === 'object' ? (entry.built || 0) : entry;
-              if (tags.includes(tagId)) {
-                count += builtCount;
+              const tagMap = iTags[iid] || iTags[String(iid)] || {};
+              const amt = tagMap[tagId];
+              if (amt) {
+                const builtCount = typeof entry === 'object' ? (entry.built || 0) : entry;
+                count += builtCount * amt;
               }
             }
             max = Math.min(max, count * per);

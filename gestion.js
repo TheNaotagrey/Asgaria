@@ -225,18 +225,24 @@ async function loadAndRender(seigneurieId) {
     Object.entries(buildings).forEach(([bid, info]) => {
       const bp = bpMap[String(bid)];
       if (!bp) return;
-      const tags = safeParse(bp.tags, []);
-      tags.forEach(tid => {
-        tagCounts[tid] = (tagCounts[tid] || 0) + (info.built || 0);
+      const effs = safeParse(bp.effects, []);
+      effs.forEach(ef => {
+        if (ef.type === 'tag' && ef.tag) {
+          const amt = parseInt(ef.amount, 10) || 1;
+          tagCounts[ef.tag] = (tagCounts[ef.tag] || 0) + (info.built || 0) * amt;
+        }
       });
     });
     Object.entries(infrastructures).forEach(([iid, entry]) => {
       const ip = ipMap[String(iid)];
       if (!ip) return;
-      const tags = safeParse(ip.tags, []);
       const builtCount = typeof entry === 'object' ? (entry.built || 0) : entry;
-      tags.forEach(tid => {
-        tagCounts[tid] = (tagCounts[tid] || 0) + builtCount;
+      const effs = safeParse(ip.effects, []);
+      effs.forEach(ef => {
+        if (ef.type === 'tag' && ef.tag) {
+          const amt = parseInt(ef.amount, 10) || 1;
+          tagCounts[ef.tag] = (tagCounts[ef.tag] || 0) + builtCount * amt;
+        }
       });
     });
 
