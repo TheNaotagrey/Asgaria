@@ -2139,9 +2139,25 @@ async function handleTradeMapSelect(id) {
   await updateTradeMap(currentTradeBaronyId, currentTradeRoutes);
 }
 
+function renderTradeLimits() {
+  const table = document.getElementById('tradeLimitsTable');
+  if (!table || !gameState) return;
+  const {
+    landTransactions = 0,
+    landTxMax = 0,
+    navalTransactions = 0,
+    navalTxMax = 0
+  } = gameState;
+  table.innerHTML =
+    '<tr><th>Type</th><th>Présent</th><th>Max/mois</th></tr>' +
+    `<tr><td>Terrestres</td><td>${landTransactions}</td><td>${landTxMax}</td></tr>` +
+    `<tr><td>Maritimes</td><td>${navalTransactions}</td><td>${navalTxMax}</td></tr>`;
+}
+
 async function renderTradeRoutes(baronyId) {
   const container = document.getElementById('tradeRoutes');
   if (!container) return;
+  renderTradeLimits();
   container.textContent = '';
   if (!baronyId) {
     container.textContent = 'Aucune baronnie sélectionnée';
@@ -2150,11 +2166,6 @@ async function renderTradeRoutes(baronyId) {
   }
   currentTradeBaronyId = baronyId;
   try {
-    const info = document.getElementById('tradeInfo');
-    if (info) {
-      const { landTransactions = 0, landTxMax = 0 } = gameState;
-      info.textContent = `Transactions terrestres: ${landTransactions} / ${landTxMax}`;
-    }
     const res = await fetch(`/api/trade_partners?barony_id=${baronyId}`);
     const routes = res.ok ? await res.json() : [];
     currentTradeRoutes = routes;
@@ -2163,10 +2174,18 @@ async function renderTradeRoutes(baronyId) {
       container.textContent = 'Aucune route commerciale';
       return;
     }
-    const rows = routes.map(r => `<tr><td>${r.id}</td><td>${r.name || ''}</td><td>${r.seigneur_name || ''}</td><td>${r.duchy_name || ''}</td><td><button class="trade-btn" data-id="${r.id}">Commercer</button></td></tr>`).join('');
+    const { landTransactions = 0, landTxMax = 0 } = gameState;
+    const limitReached = landTxMax !== 0 && landTransactions >= landTxMax;
+    const rows = routes
+      .map(r =>
+        `<tr><td>${r.id}</td><td>${r.name || ''}</td><td>${r.seigneur_name || ''}</td><td>${r.duchy_name || ''}</td><td><button class="trade-btn control-btn" data-id="${r.id}"${limitReached ? ' disabled' : ''}>Commercer</button></td></tr>`
+      )
+      .join('');
     container.innerHTML = `<table class="admin-table"><tr><th>#</th><th>Nom</th><th>Propriétaire</th><th>Province (Duché)</th><th></th></tr>${rows}</table>`;
     container.querySelectorAll('.trade-btn').forEach(btn => {
-      btn.addEventListener('click', () => openTradeDialog(btn.dataset.id));
+      if (!btn.disabled) {
+        btn.addEventListener('click', () => openTradeDialog(btn.dataset.id));
+      }
     });
   } catch {
     container.textContent = 'Erreur de chargement';
