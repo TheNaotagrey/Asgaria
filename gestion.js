@@ -1968,6 +1968,31 @@ let newRouteMode = false;
 let eligibleTargets = {};
 let currentTradeBaronyId = null;
 let currentTradeRoutes = [];
+let seaZoneAdjacency = {};
+let zoneBaronies = {};
+let baronyZones = {};
+let seaReachCache = {};
+
+async function ensureTradeData() {
+  if (tradeBaronies) return;
+  try {
+    const [barRes, seiRes] = await Promise.all([
+      fetch('/api/baronies'),
+      fetch('/api/seigneurs')
+    ]);
+    const barData = barRes.ok ? await barRes.json() : [];
+    const seigs = seiRes.ok ? await seiRes.json() : [];
+    seigneurNameMap = Object.fromEntries(seigs.map(s => [s.id, s.name]));
+    tradeBaronies = barData.map(b => ({
+      id: b.id,
+      name: b.name,
+      seigneur_id: b.seigneur_id,
+      seigneur_name: seigneurNameMap[b.seigneur_id]
+    }));
+  } catch {
+    tradeBaronies = [];
+  }
+}
 
 async function initTradeMap() {
   if (tradeMapCore) return;
@@ -1987,9 +2012,11 @@ async function initTradeMap() {
     staticMap: true,
     onSelect: handleTradeMapSelect,
     fetchData: async () => {
-      const [pixels, connections] = await Promise.all([
+      const [pixels, connections, zoneConns, zoneBars] = await Promise.all([
         fetch('/api/barony_pixels').then(r => r.json()),
-        fetch('/api/barony_connections').then(r => r.json())
+        fetch('/api/barony_connections').then(r => r.json()),
+        fetch('/api/maritime_zone_connections').then(r => r.json()),
+        fetch('/api/maritime_zone_baronies').then(r => r.json())
       ]);
       tradeAdjacency = {};
       connections.forEach(c => {
@@ -1998,6 +2025,22 @@ async function initTradeMap() {
         tradeAdjacency[c.barony_id_1].push(c.barony_id_2);
         tradeAdjacency[c.barony_id_2].push(c.barony_id_1);
       });
+      seaZoneAdjacency = {};
+      zoneConns.forEach(c => {
+        if (!seaZoneAdjacency[c.zone_id_1]) seaZoneAdjacency[c.zone_id_1] = [];
+        if (!seaZoneAdjacency[c.zone_id_2]) seaZoneAdjacency[c.zone_id_2] = [];
+        seaZoneAdjacency[c.zone_id_1].push(c.zone_id_2);
+        seaZoneAdjacency[c.zone_id_2].push(c.zone_id_1);
+      });
+      zoneBaronies = {};
+      baronyZones = {};
+      zoneBars.forEach(zb => {
+        if (!zoneBaronies[zb.zone_id]) zoneBaronies[zb.zone_id] = [];
+        zoneBaronies[zb.zone_id].push(zb.barony_id);
+        if (!baronyZones[zb.barony_id]) baronyZones[zb.barony_id] = [];
+        baronyZones[zb.barony_id].push(zb.zone_id);
+      });
+      seaReachCache = {};
       return { mapWidth: base.naturalWidth, mapHeight: base.naturalHeight, pixelData: pixels };
     }
   });
@@ -2013,24 +2056,38 @@ async function updateTradeMap(baronyId, routes) {
   await initTradeMap();
   if (!tradeMapCore) return;
   const bg = [...mapCore.terrainColor, 100];
-  const partnerColor = [128, 0, 128, 100];
+  const landColor = [128, 0, 128, 100];
+  const seaColor = [0, 128, 255, 100];
   const currentColor = [255, 237, 0, 180];
   const colorMap = {};
+  const patternMap = {};
   Object.keys(tradeMapCore.pixelData).forEach(id => {
     colorMap[id] = [...bg];
   });
   if (baronyId) {
-    (tradeAdjacency[baronyId] || []).forEach(id => {
-      colorMap[String(id)] = [...partnerColor];
+    const landSet = new Set(tradeAdjacency[baronyId] || []);
+    (routes || []).forEach(r => landSet.add(r.id));
+    const seaSet = computeSeaReachable(baronyId);
+    landSet.forEach(id => {
+      colorMap[String(id)] = [...landColor];
+    });
+    seaSet.forEach(id => {
+      if (landSet.has(id)) {
+        delete colorMap[String(id)];
+        patternMap[String(id)] = [landColor, seaColor];
+      } else {
+        colorMap[String(id)] = [...seaColor];
+      }
     });
   }
   (routes || []).forEach(r => {
-    colorMap[String(r.id)] = [...partnerColor];
+    if (!colorMap[String(r.id)]) colorMap[String(r.id)] = [...landColor];
   });
   if (baronyId) {
     colorMap[String(baronyId)] = [...currentColor];
   }
   tradeMapCore.setColorMap(colorMap);
+  tradeMapCore.setCanonicalPatterns(patternMap);
 }
 
 function computeDistances(start) {
@@ -2048,6 +2105,41 @@ function computeDistances(start) {
   return dist;
 }
 
+function computeSeaReachable(start) {
+  if (!gameState.navalTxMax || gameState.navalTxMax <= 0) return new Set();
+  if (seaReachCache[start]) return seaReachCache[start];
+  const startZones = baronyZones[start] || [];
+  const visited = new Set(startZones);
+  const queue = [...startZones];
+  while (queue.length) {
+    const z = queue.shift();
+    (seaZoneAdjacency[z] || []).forEach(nz => {
+      if (!visited.has(nz)) {
+        visited.add(nz);
+        queue.push(nz);
+      }
+    });
+  }
+  const res = new Set();
+  visited.forEach(z => {
+    (zoneBaronies[z] || []).forEach(bid => {
+      if (bid !== start) res.add(bid);
+    });
+  });
+  seaReachCache[start] = res;
+  return res;
+}
+
+function getAvailableMethods(targetId) {
+  const methods = [];
+  const landPossible = (tradeAdjacency[currentTradeBaronyId] || []).includes(targetId) ||
+    currentTradeRoutes.some(r => r.id === targetId);
+  const seaPossible = computeSeaReachable(currentTradeBaronyId).has(targetId);
+  if (landPossible && (!gameState.landTxMax || gameState.landTransactions < gameState.landTxMax)) methods.push('land');
+  if (seaPossible && (!gameState.navalTxMax || gameState.navalTransactions < gameState.navalTxMax)) methods.push('naval');
+  return methods;
+}
+
 async function startTradeRouteCreation() {
   if (newRouteMode) {
     newRouteMode = false;
@@ -2056,25 +2148,7 @@ async function startTradeRouteCreation() {
     return;
   }
   if (!currentTradeBaronyId) return;
-  if (!tradeBaronies) {
-    try {
-      const [barRes, seiRes] = await Promise.all([
-        fetch('/api/baronies'),
-        fetch('/api/seigneurs')
-      ]);
-      const barData = barRes.ok ? await barRes.json() : [];
-      const seigs = seiRes.ok ? await seiRes.json() : [];
-      seigneurNameMap = Object.fromEntries(seigs.map(s => [s.id, s.name]));
-      tradeBaronies = barData.map(b => ({
-        id: b.id,
-        name: b.name,
-        seigneur_id: b.seigneur_id,
-        seigneur_name: seigneurNameMap[b.seigneur_id]
-      }));
-    } catch {
-      return;
-    }
-  }
+  await ensureTradeData();
   const dists = computeDistances(currentTradeBaronyId);
   const existing = new Set(currentTradeRoutes.map(r => r.id));
   eligibleTargets = {};
@@ -2101,11 +2175,26 @@ async function startTradeRouteCreation() {
 async function handleTradeMapSelect(id) {
   if (!id) return;
   if (!newRouteMode) {
-    if (tradeMapCore && tradeMapCore.colorMap[id]) {
-      tradeMapCore.colorMap[id][3] = 100;
-      tradeMapCore.currentSelectedId = null;
-      tradeMapCore.drawAll();
+    const idNum = parseInt(id, 10);
+    const methods = getAvailableMethods(idNum);
+    if (!methods.length) {
+      if (tradeMapCore && tradeMapCore.colorMap[id]) {
+        tradeMapCore.colorMap[id][3] = 100;
+        tradeMapCore.currentSelectedId = null;
+        tradeMapCore.drawAll();
+      }
+      return;
     }
+    await ensureTradeData();
+    const bar = tradeBaronies.find(b => b.id === idNum);
+    const name = bar ? bar.seigneur_name : '';
+    const result = await showTradeDialog(name, methods);
+    if (result) {
+      await sendTransaction(idNum, result.resources, result.reason, result.method);
+      await loadAndRender(currentSeigneurieId);
+      await renderTradeRoutes(currentTradeBaronyId);
+    }
+    tradeMapCore.drawAll();
     return;
   }
   if (!eligibleTargets[id]) return;
@@ -2166,6 +2255,13 @@ async function renderTradeRoutes(baronyId) {
   }
   currentTradeBaronyId = baronyId;
   try {
+    const info = document.getElementById('tradeInfo');
+    if (info) {
+      const { landTransactions = 0, landTxMax = 0, navalTransactions = 0, navalTxMax = 0 } = gameState;
+      info.innerHTML = `Transactions terrestres: ${landTransactions} / ${landTxMax}<br>Transactions maritimes: ${navalTransactions} / ${navalTxMax}`;
+      const legend = document.getElementById('tradeLegend');
+      if (legend) legend.style.display = navalTxMax > 0 ? 'flex' : 'none';
+    }
     const res = await fetch(`/api/trade_partners?barony_id=${baronyId}`);
     const routes = res.ok ? await res.json() : [];
     currentTradeRoutes = routes;
@@ -2194,19 +2290,35 @@ async function renderTradeRoutes(baronyId) {
 }
 
 async function openTradeDialog(baronyId) {
-  const result = await showTradeDialog();
+  await ensureTradeData();
+  const idNum = parseInt(baronyId, 10);
+  const methods = getAvailableMethods(idNum);
+  const bar = tradeBaronies.find(b => b.id === idNum);
+  const name = bar ? bar.seigneur_name : '';
+  const result = await showTradeDialog(name, methods);
   if (!result) return;
-  await sendTransaction(baronyId, result.resources, result.reason);
+  await sendTransaction(idNum, result.resources, result.reason, result.method);
 }
 
-function showTradeDialog() {
+function showTradeDialog(seigneurName, methods) {
   return new Promise(resolve => {
     const dialog = document.getElementById('tradeDialog');
+    const header = document.getElementById('tradeHeader');
     const list = document.getElementById('tradeList');
     const addBtn = document.getElementById('tradeAddRow');
     const cancelBtn = document.getElementById('tradeCancel');
     const sendBtn = document.getElementById('tradeSend');
     const reasonInput = document.getElementById('tradeReason');
+    header.textContent = `Envoyer des ressources à ${seigneurName} par la `;
+    const methodSel = document.createElement('select');
+    methods.forEach(m => {
+      const op = document.createElement('option');
+      op.value = m;
+      op.textContent = m === 'land' ? 'Terre' : 'Mer';
+      methodSel.appendChild(op);
+    });
+    methodSel.disabled = methods.length <= 1;
+    header.appendChild(methodSel);
     list.innerHTML = '';
     if (reasonInput) reasonInput.value = '';
     function addRow() {
@@ -2255,19 +2367,20 @@ function showTradeDialog() {
         return;
       }
       const reason = reasonInput ? reasonInput.value.trim() : '';
+      const method = methodSel.value;
       dialog.close();
-      resolve({ resources: res, reason });
+      resolve({ resources: res, reason, method });
     };
     dialog.showModal();
   });
 }
 
-async function sendTransaction(baronyId, resources, reason) {
+async function sendTransaction(baronyId, resources, reason, method) {
   try {
     const res = await fetch('/api/send_transaction', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ target_barony_id: baronyId, resources, type: 'land', reason })
+      body: JSON.stringify({ target_barony_id: baronyId, resources, type: method, reason })
     });
     if (res.ok) {
       await loadAndRender(currentSeigneurieId);
