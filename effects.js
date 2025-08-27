@@ -220,4 +220,28 @@ class SpellMaxPerMonthEffect extends Effect {
   }
 }
 
-module.exports = { Effect, StorageEffect, ResourceProductionEffect, BuildingProductionEffect, InfraProductionEffect, InstantProductionEffect, IDHEffect, VariableWorkersEffect, UnlockPageEffect, SpellSuccessEffect, SpellBasicDiscountEffect, SpellAdvancedDiscountEffect, SpellRangeEffect, SpellMaxPerMonthEffect };
+class LandTransactionMaxPerMonthEffect extends Effect {
+  constructor(amount) {
+    super();
+    this.amount = amount;
+  }
+  apply(ctx, count, label) {
+    const total = this.amount * count;
+    ctx.landTxMax = (ctx.landTxMax || 0) + total;
+    if (ctx.landTxMaxDetails) ctx.landTxMaxDetails.push({ label, amount: total, source: count });
+  }
+}
+
+class NavalTransactionMaxPerMonthEffect extends Effect {
+  constructor(amount) {
+    super();
+    this.amount = amount;
+  }
+  apply(ctx, count, label) {
+    const total = this.amount * count;
+    ctx.navalTxMax = (ctx.navalTxMax || 0) + total;
+    if (ctx.navalTxMaxDetails) ctx.navalTxMaxDetails.push({ label, amount: total, source: count });
+  }
+}
+
+module.exports = { Effect, StorageEffect, ResourceProductionEffect, BuildingProductionEffect, InfraProductionEffect, InstantProductionEffect, IDHEffect, VariableWorkersEffect, UnlockPageEffect, SpellSuccessEffect, SpellBasicDiscountEffect, SpellAdvancedDiscountEffect, SpellRangeEffect, SpellMaxPerMonthEffect, LandTransactionMaxPerMonthEffect, NavalTransactionMaxPerMonthEffect };

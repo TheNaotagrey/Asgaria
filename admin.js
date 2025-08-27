@@ -650,6 +650,8 @@ function makeEffectsInput(val, allowedTypes){
       {id:'spell_advanced_discount', name:'Réduc. sort avancé'},
       {id:'spell_range', name:'Portée des sorts'},
       {id:'spell_max_per_month', name:'Sorts max/mois'},
+      {id:'land_transaction_max_per_month', name:'Transactions terrestres max/mois'},
+      {id:'naval_transaction_max_per_month', name:'Transactions navales max/mois'},
       {id:'variable_production', name:'Production ressource variable'},
       {id:'random_luxury', name:'Ressource de luxe aléatoire'}
     ];
@@ -789,7 +791,7 @@ function makeEffectsInput(val, allowedTypes){
         qty.placeholder = 'Quantité';
         qty.value = data.amount ?? '';
         return;
-      }else if(['idh','spell_success','spell_basic_discount','spell_advanced_discount','spell_range','spell_max_per_month'].includes(typeSel.value)){
+      }else if(['idh','spell_success','spell_basic_discount','spell_advanced_discount','spell_range','spell_max_per_month','land_transaction_max_per_month','naval_transaction_max_per_month'].includes(typeSel.value)){
         qty.style.display = '';
       }else if(typeSel.value === 'unlock_page'){
         pageSel.style.display = '';
@@ -876,7 +878,7 @@ function makeEffectsInput(val, allowedTypes){
         if(!isNaN(amt)){
           res.push({type, amount: amt});
         }
-      }else if(['idh','spell_success','spell_basic_discount','spell_advanced_discount','spell_range','spell_max_per_month'].includes(type)){
+      }else if(['idh','spell_success','spell_basic_discount','spell_advanced_discount','spell_range','spell_max_per_month','land_transaction_max_per_month','naval_transaction_max_per_month'].includes(type)){
         const amt = parseInt(rw.querySelector('input[data-role="qty"]').value,10);
         if(type && !isNaN(amt)){
           res.push({ type, amount: amt });
