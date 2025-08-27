@@ -2265,7 +2265,10 @@ async function renderPendingTransactions() {
   const table = document.getElementById('pendingTxTable');
   if (!table) return;
   try {
-    const res = await fetch('/api/trade_transactions');
+    const url = currentSeigneurieId
+      ? `/api/trade_transactions?seigneurie_id=${currentSeigneurieId}`
+      : '/api/trade_transactions';
+    const res = await fetch(url);
     const txs = res.ok ? await res.json() : [];
     table.innerHTML = '<tr><th>Ressources</th><th>Origine</th><th>Date</th><th>Raison</th><th></th></tr>';
     txs.forEach(tx => {
@@ -2328,10 +2331,12 @@ async function openTransactionPopup(id) {
 
 async function decideTx(id, action) {
   try {
+    const payload = { action };
+    if (currentSeigneurieId) payload.seigneurie_id = currentSeigneurieId;
     const res = await fetch(`/api/trade_transactions/${id}/decision`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action })
+      body: JSON.stringify(payload)
     });
     if (res.ok) {
       await loadAndRender(currentSeigneurieId);
