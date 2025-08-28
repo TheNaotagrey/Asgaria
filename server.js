@@ -253,6 +253,7 @@ CREATE TABLE IF NOT EXISTS trade_transactions (
   reason TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   decision_time TEXT,
+  returned INTEGER DEFAULT 0,
   FOREIGN KEY(origin_id) REFERENCES seigneuries(id),
   FOREIGN KEY(destination_id) REFERENCES seigneuries(id)
 );
@@ -389,6 +390,9 @@ db.exec(initSql, () => {
       }
       if (!rows.some(r => r.name === 'decision_time')) {
         db.run('ALTER TABLE trade_transactions ADD COLUMN decision_time TEXT');
+      }
+      if (!rows.some(r => r.name === 'returned')) {
+        db.run('ALTER TABLE trade_transactions ADD COLUMN returned INTEGER DEFAULT 0');
       }
     }
   });
@@ -1557,6 +1561,27 @@ function safeParse(json, fallback){
   }
 }
 
+function computeCapacities(db, infrastructures, cb){
+  db.all('SELECT id, effects, type, label FROM infrastructure_properties', [], (err, rows) => {
+    if (err) return cb(err);
+    const capacities = { vivres: 500, points_magique: 2000, hommes_darmes: 0, chevaux: 0, trebuchets: 0 };
+    const effectCtx = { capacity: capacities };
+    (rows || []).forEach(ip => {
+      const entry = infrastructures[ip.id] || infrastructures[String(ip.id)] || 0;
+      const count = typeof entry === 'object' ? (entry.built || 0) : entry;
+      if (!count) return;
+      const effects = safeParse(ip.effects, []);
+      effects.forEach(def => {
+        if (def.type === 'storage') {
+          const effObj = new StorageEffect(def.resource, def.amount || 0);
+          if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
+        }
+      });
+    });
+    cb(null, capacities);
+  });
+}
+
 function checkTagRestrictions(db, buildings, infrastructures, tagConds, cb) {
   db.all('SELECT id, effects FROM building_properties', [], (err, bRows) => {
     if (err) return cb(err);
@@ -2579,13 +2604,79 @@ app.post('/api/trade_transactions/:id/decision', (req, res) => {
         if (idx >= entries.length) return finish();
         const [r, a] = entries[idx++];
         const amt = parseInt(a, 10);
-        const targetId = action === 'accept' ? seigneurieId : tx.origin_id;
-        performTransaction(db, targetId, r, amt, errT => {
-          if (errT) return handleError(res, errT);
+        if (action === 'accept') {
+          performTransaction(db, seigneurieId, r, amt, errT => {
+            if (errT) return handleError(res, errT);
+            next();
+          });
+        } else {
           next();
-        });
+        }
       }
       next();
+    });
+  });
+});
+
+app.post('/api/trade_transactions/:id/claim', (req, res) => {
+  if (!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
+  const id = parseInt(req.params.id, 10);
+  if (!id) return res.status(400).json({ error: 'Identifiant invalide' });
+  getSeigneurie(req, 'seigneuries.id, seigneuries.inventaire_id, seigneuries.buildings, seigneuries.infrastructures', (err, srow) => {
+    if (err) return handleError(res, err);
+    if (!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
+    db.get('SELECT * FROM trade_transactions WHERE id=? AND origin_id=?', [id, srow.id], (err2, tx) => {
+      if (err2) return handleError(res, err2);
+      if (!tx || tx.state !== 'Refusée') return res.status(404).json({ error: 'Introuvable' });
+      if (tx.returned) return res.status(400).json({ error: 'Déjà retournée' });
+      const resources = safeParse(tx.resources, {});
+      db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err3, inventaire) => {
+        if (err3) return handleError(res, err3);
+        const infrastructures = safeParse(srow.infrastructures, {});
+        computeCapacities(db, infrastructures, (err4, capacities) => {
+          if (err4) return handleError(res, err4);
+          const entries = Object.entries(resources);
+          const returned = {};
+          const lost = {};
+          let idx = 0;
+          function finalize(){
+            db.run('UPDATE trade_transactions SET returned=1 WHERE id=?', [id], errU => {
+              if (errU) return handleError(res, errU);
+              res.json({ returned, lost });
+            });
+          }
+          function apply(){
+            if (idx >= entries.length) return finalize();
+            const [r, a] = entries[idx++];
+            const amt = parseInt(a, 10);
+            const cap = capacities[r];
+            const current = inventaire[r] || 0;
+            let toAdd = amt;
+            if (typeof cap === 'number') {
+              const space = cap - current;
+              if (space <= 0) {
+                lost[r] = (lost[r] || 0) + amt;
+                return apply();
+              }
+              if (space < amt) {
+                toAdd = space;
+                lost[r] = amt - space;
+              }
+            }
+            if (toAdd > 0) {
+              performTransaction(db, srow.id, r, toAdd, errT => {
+                if (errT) return handleError(res, errT);
+                inventaire[r] = current + toAdd;
+                returned[r] = (returned[r] || 0) + toAdd;
+                apply();
+              });
+            } else {
+              apply();
+            }
+          }
+          apply();
+        });
+      });
     });
   });
 });

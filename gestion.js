@@ -2440,21 +2440,58 @@ async function openTransactionPopup(id) {
     const buttons = document.getElementById('txButtons');
     const refuseBtn = document.getElementById('txRefuse');
     const acceptBtn = document.getElementById('txAccept');
+    const closeBtn = document.getElementById('txClose');
     const items = Object.entries(tx.resources || {}).map(([k,v]) => `<li>${v} ${resourceLabels[k] || k}</li>`).join('');
     const typeLabel = tx.type === 'naval' ? 'cargaison' : 'caravane';
-    content.innerHTML = `
-      <p>Vous avez reçu une ${typeLabel} de ${tx.origin_name} de la Baronnie de ${tx.origin_barony_name} avec la raison suivante :</p>
-      <p>${tx.reason || ''}</p>
-      <p>Elle contient :</p>
-      <ul>${items}</ul>
-      <p>En cas de refus, les ressources seront retournées à l'envoyeur (perdu si maximum d'une ressource dépassée).</p>`;
-    if (tx.state === 'En Attente' && Number(tx.destination_id) === Number(currentSeigneurieId)) {
+    refuseBtn.style.display = 'none';
+    acceptBtn.style.display = 'none';
+    closeBtn.style.display = 'none';
+    if (tx.state === 'Refusée' && Number(tx.origin_id) === Number(currentSeigneurieId)) {
+      let claim = { returned: tx.resources, lost: {} };
+      if (!tx.returned) {
+        try {
+          const cRes = await fetch(`/api/trade_transactions/${id}/claim`, { method: 'POST' });
+          if (cRes.ok) {
+            claim = await cRes.json();
+            await loadAndRender(currentSeigneurieId);
+          }
+        } catch {}
+      }
+      const retItems = Object.entries(claim.returned || {}).map(([k,v]) => `<li>${v} ${resourceLabels[k] || k}</li>`).join('');
+      let lossHtml = '';
+      if (claim.lost && Object.keys(claim.lost).length) {
+        const lossItems = Object.entries(claim.lost).map(([k,v]) => `<li>${v} ${resourceLabels[k] || k}</li>`).join('');
+        lossHtml = `<p>Pertes :</p><ul>${lossItems}</ul>`;
+      }
+      content.innerHTML = `
+        <p>Votre ${typeLabel} à destination de ${tx.dest_name} a été refusée.</p>
+        <p>Les ressources suivantes vous ont été retournées :</p>
+        <ul>${retItems}</ul>
+        ${lossHtml}`;
       buttons.style.display = '';
-      refuseBtn.onclick = async () => { dialog.close(); await decideTx(id, 'refuse'); };
-      acceptBtn.onclick = async () => { dialog.close(); await decideTx(id, 'accept'); };
+      closeBtn.style.display = '';
+      closeBtn.onclick = () => dialog.close();
     } else {
-      buttons.style.display = 'none';
-      refuseBtn.onclick = acceptBtn.onclick = null;
+      content.innerHTML = `
+        <p>Vous avez reçu une ${typeLabel} de ${tx.origin_name} de la Baronnie de ${tx.origin_barony_name} avec la raison suivante :</p>
+        <p>${tx.reason || ''}</p>
+        <p>Elle contient :</p>
+        <ul>${items}</ul>
+        <p>En cas de refus, les ressources seront retournées à l'envoyeur (perdu si maximum d'une ressource dépassée).</p>`;
+      if (tx.state === 'En Attente' && Number(tx.destination_id) === Number(currentSeigneurieId)) {
+        buttons.style.display = '';
+        refuseBtn.style.display = '';
+        acceptBtn.style.display = '';
+        closeBtn.style.display = 'none';
+        refuseBtn.onclick = async () => { dialog.close(); await decideTx(id, 'refuse'); };
+        acceptBtn.onclick = async () => { dialog.close(); await decideTx(id, 'accept'); };
+      } else {
+        buttons.style.display = '';
+        closeBtn.style.display = '';
+        refuseBtn.style.display = 'none';
+        acceptBtn.style.display = 'none';
+        closeBtn.onclick = () => dialog.close();
+      }
     }
     dialog.showModal();
     timeago.render(dialog.querySelectorAll('.timeago'), 'fr');
