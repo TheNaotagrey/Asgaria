@@ -11,6 +11,7 @@ const logger = require('./logger');
 const handleError = require('./handleError');
 const { consumeResources } = require('./services/buildingService');
 const { sendNotification } = require('./services/notificationService');
+const { crudRoutes, list, create, update } = require('./src/crudRouter');
 const { StorageEffect, ResourceProductionEffect, BuildingProductionEffect, InfraProductionEffect, IDHEffect, VariableWorkersEffect, TagEffect, UnlockPageEffect, SpellSuccessEffect, SpellBasicDiscountEffect, SpellAdvancedDiscountEffect, SpellRangeEffect, SpellMaxPerMonthEffect, LandTransactionMaxPerMonthEffect, NavalTransactionMaxPerMonthEffect } = require('./effects');
 const app = express();
 const db = new sqlite3.Database('asgaria.db');
@@ -22,6 +23,9 @@ const VALID_TABLES = new Set([
   'building_properties','infrastructure_properties','barony_connections','trade_routes','tags','spells',
   'sanctuaries','maritime_zones','maritime_zone_pixels','maritime_zone_connections','maritime_zone_baronies','notifications'
 ]);
+
+app.set('db', db);
+app.set('validTables', VALID_TABLES);
 
 // create tables if they do not exist
 const initSql = `
@@ -566,18 +570,6 @@ app.use((req, res, next) => {
   next();
 });
 
-function list(table) {
-  return (req, res) => {
-    if (!VALID_TABLES.has(table)) {
-      return res.status(400).json({ error: 'Invalid table' });
-    }
-    db.all(`SELECT * FROM ${table}`, [], (err, rows) => {
-      if (err) return handleError(res, err);
-      res.json(rows);
-    });
-  };
-}
-
 function sanitize(val){
   return val === '' ? null : val;
 }
@@ -598,36 +590,6 @@ function getSeigneurie(req, select, cb) {
     : `SELECT ${select} FROM seigneurs JOIN seigneuries ON seigneuries.seigneur_id=seigneurs.id WHERE seigneurs.user_id=?`;
   const param = overrideId ? [overrideId] : [user.id];
   db.get(sql, param, cb);
-}
-
-function create(table, fields) {
-  return (req, res) => {
-    if (!VALID_TABLES.has(table)) {
-      return res.status(400).json({ error: 'Invalid table' });
-    }
-    const values = fields.map(f => sanitize(req.body[f]));
-    const placeholders = fields.map(() => '?').join(',');
-    db.run(`INSERT INTO ${table} (${fields.join(',')}) VALUES (${placeholders})`, values, function(err){
-      if (err) return handleError(res, err);
-      res.json({id: this.lastID});
-    });
-  };
-}
-
-function update(table, fields) {
-  return (req, res) => {
-    if (!VALID_TABLES.has(table)) {
-      return res.status(400).json({ error: 'Invalid table' });
-    }
-    const id = req.params.id;
-    const set = fields.map(f => `${f}=?`).join(',');
-    const values = fields.map(f => sanitize(req.body[f]));
-    values.push(id);
-    db.run(`UPDATE ${table} SET ${set} WHERE id=?`, values, function(err){
-      if (err) return handleError(res, err);
-      res.json({changes: this.changes});
-    });
-  };
 }
 
 // Authentication endpoints
@@ -783,49 +745,17 @@ app.post('/api/profile', (req, res) => {
   }
 });
 
-app.get('/api/empires', list('empires'));
-app.post('/api/empires', create('empires',['name','seigneur_id']));
-app.put('/api/empires/:id', update('empires',['name','seigneur_id']));
-
-app.get('/api/kingdoms', list('kingdoms'));
-app.post('/api/kingdoms', create('kingdoms',['name','seigneur_id','empire_id']));
-app.put('/api/kingdoms/:id', update('kingdoms',['name','seigneur_id','empire_id']));
-
-app.get('/api/archduchies', list('archduchies'));
-app.post('/api/archduchies', create('archduchies',['name','seigneur_id']));
-app.put('/api/archduchies/:id', update('archduchies',['name','seigneur_id']));
-
-app.get('/api/duchies', list('duchies'));
-app.post('/api/duchies', create('duchies',['name','seigneur_id','kingdom_id','archduchy_id']));
-app.put('/api/duchies/:id', update('duchies',['name','seigneur_id','kingdom_id','archduchy_id']));
-
-app.get('/api/marquisates', list('marquisates'));
-app.post('/api/marquisates', create('marquisates',['name','seigneur_id']));
-app.put('/api/marquisates/:id', update('marquisates',['name','seigneur_id']));
-
-app.get('/api/counties', list('counties'));
-app.post('/api/counties', create('counties',['name','seigneur_id','duchy_id','marquisate_id']));
-app.put('/api/counties/:id', update('counties',['name','seigneur_id','duchy_id','marquisate_id']));
-
-app.get('/api/viscounties', list('viscounties'));
-app.post('/api/viscounties', create('viscounties',['name','seigneur_id']));
-app.put('/api/viscounties/:id', update('viscounties',['name','seigneur_id']));
-
-app.get('/api/religions', list('religions'));
-app.post('/api/religions', create('religions',['name','color']));
-app.put('/api/religions/:id', update('religions',['name','color']));
-
-app.get('/api/cultures', list('cultures'));
-app.post('/api/cultures', create('cultures',['name','color']));
-app.put('/api/cultures/:id', update('cultures',['name','color']));
-
-app.get('/api/seigneurs', list('seigneurs'));
-app.post('/api/seigneurs', create('seigneurs',['name','religion_id','overlord_id','user_id']));
-app.put('/api/seigneurs/:id', update('seigneurs',['name','religion_id','overlord_id','user_id']));
-
-app.get('/api/inventaire', list('inventaire'));
-app.post('/api/inventaire', create('inventaire', inventaireFields));
-app.put('/api/inventaire/:id', update('inventaire', inventaireFields));
+app.use('/api/empires', crudRoutes('empires',['name','seigneur_id']));
+app.use('/api/kingdoms', crudRoutes('kingdoms',['name','seigneur_id','empire_id']));
+app.use('/api/archduchies', crudRoutes('archduchies',['name','seigneur_id']));
+app.use('/api/duchies', crudRoutes('duchies',['name','seigneur_id','kingdom_id','archduchy_id']));
+app.use('/api/marquisates', crudRoutes('marquisates',['name','seigneur_id']));
+app.use('/api/counties', crudRoutes('counties',['name','seigneur_id','duchy_id','marquisate_id']));
+app.use('/api/viscounties', crudRoutes('viscounties',['name','seigneur_id']));
+app.use('/api/religions', crudRoutes('religions',['name','color']));
+app.use('/api/cultures', crudRoutes('cultures',['name','color']));
+app.use('/api/seigneurs', crudRoutes('seigneurs',['name','religion_id','overlord_id','user_id']));
+app.use('/api/inventaire', crudRoutes('inventaire', inventaireFields));
 
 app.get('/api/seigneuries', requireAdmin, (req, res) => {
   const invSelect = inventaireFields.map(f => `i.${f}`).join(',');
@@ -1339,6 +1269,11 @@ app.post('/api/transactions', requireAdmin, (req,res)=>{
   create('transactions',['seigneurie_id','resource','amount'])(req,res);
 });
 
+const baronyFields = [
+  'id','name','seigneur_id','religion_pop_id','county_id','viscounty_id','culture_id',
+  'priory_religion_id','church_religion_id','cathedral_religion_id','player','bishop'
+];
+
 app.get('/api/baronies', (req, res) => {
   const id = req.query.id;
   if (id) {
@@ -1350,75 +1285,43 @@ app.get('/api/baronies', (req, res) => {
     list('baronies')(req, res);
   }
 });
-app.post('/api/baronies', create('baronies',[
-  'id','name','seigneur_id','religion_pop_id','county_id','viscounty_id','culture_id',
-  'priory_religion_id','church_religion_id','cathedral_religion_id','player','bishop'
-]));
-app.put('/api/baronies/:id', update('baronies',[
-  'name','seigneur_id','religion_pop_id','county_id','viscounty_id','culture_id',
-  'priory_religion_id','church_religion_id','cathedral_religion_id','player','bishop'
-]));
-app.delete('/api/baronies/:id', (req,res)=>{
-  db.run('DELETE FROM baronies WHERE id=?',[req.params.id], function(err){
-    if(err) return handleError(res, err);
-    res.json({deleted: this.changes});
-  });
-});
+app.use('/api/baronies', crudRoutes('baronies', baronyFields));
 
 const baronyPropFields = ['barony_id','water_access','sea_access','has_or','has_argent','has_fer','has_pierre','has_epices','has_perle','has_encens','has_huiles','has_pierre_precieuses','has_soie','has_sel','has_fourrure','has_teinture','has_ivoire','has_vin','field_limit','fishing_limit','high_sea_boat_limit','effects'];
-app.get('/api/barony_properties', requireAdmin, (req,res)=>{
-  list('barony_properties')(req,res);
-});
-app.post('/api/barony_properties', requireAdmin, (req,res)=>{
-  create('barony_properties', baronyPropFields)(req,res);
-});
-app.put('/api/barony_properties/:id', requireAdmin, (req,res)=>{
-  update('barony_properties', baronyPropFields)(req,res);
-});
+const baronyPropRouter = crudRoutes('barony_properties', baronyPropFields);
+app.use('/api/barony_properties', requireAdmin, baronyPropRouter);
 
 const tagFields = ['label'];
-app.get('/api/tags', (req,res)=>{
-  list('tags')(req,res);
+const tagsRouter = crudRoutes('tags', tagFields);
+tagsRouter.use((req,res,next)=>{
+  if(['POST','PUT','DELETE'].includes(req.method)) return requireAdmin(req,res,next);
+  next();
 });
-app.post('/api/tags', requireAdmin, (req,res)=>{
-  create('tags', tagFields)(req,res);
-});
-app.put('/api/tags/:id', requireAdmin, (req,res)=>{
-  update('tags', tagFields)(req,res);
-});
+app.use('/api/tags', tagsRouter);
 
 const buildingPropFields = ['label','produces','production','costs','max','workers_per_building','absolute_restrictions','infra_restrictions','effects','description'];
-app.get('/api/building_properties', (req,res)=>{
-  list('building_properties')(req,res);
+const buildingPropsRouter = crudRoutes('building_properties', buildingPropFields);
+buildingPropsRouter.use((req,res,next)=>{
+  if(['POST','PUT','DELETE'].includes(req.method)) return requireAdmin(req,res,next);
+  next();
 });
-app.post('/api/building_properties', requireAdmin, (req,res)=>{
-  create('building_properties', buildingPropFields)(req,res);
-});
-app.put('/api/building_properties/:id', requireAdmin, (req,res)=>{
-  update('building_properties', buildingPropFields)(req,res);
-});
+app.use('/api/building_properties', buildingPropsRouter);
 
 const infraPropFields = ['label','type','max','workers_per_building','effects','costs','absolute_restrictions','restrictions','description'];
-app.get('/api/infrastructure_properties', (req,res)=>{
-  list('infrastructure_properties')(req,res);
+const infraPropsRouter = crudRoutes('infrastructure_properties', infraPropFields);
+infraPropsRouter.use((req,res,next)=>{
+  if(['POST','PUT','DELETE'].includes(req.method)) return requireAdmin(req,res,next);
+  next();
 });
-app.post('/api/infrastructure_properties', requireAdmin, (req,res)=>{
-  create('infrastructure_properties', infraPropFields)(req,res);
-});
-app.put('/api/infrastructure_properties/:id', requireAdmin, (req,res)=>{
-  update('infrastructure_properties', infraPropFields)(req,res);
-});
+app.use('/api/infrastructure_properties', infraPropsRouter);
 
 const spellFields = ['label','type','costs','effects','description'];
-app.get('/api/spells', (req,res)=>{
-  list('spells')(req,res);
+const spellsRouter = crudRoutes('spells', spellFields);
+spellsRouter.use((req,res,next)=>{
+  if(['POST','PUT','DELETE'].includes(req.method)) return requireAdmin(req,res,next);
+  next();
 });
-app.post('/api/spells', requireAdmin, (req,res)=>{
-  create('spells', spellFields)(req,res);
-});
-app.put('/api/spells/:id', requireAdmin, (req,res)=>{
-  update('spells', spellFields)(req,res);
-});
+app.use('/api/spells', spellsRouter);
 
 app.post('/api/cast_spell', (req,res)=>{
   if (!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
@@ -2372,15 +2275,7 @@ app.delete('/api/canonical_lands', (req, res) => {
 });
 
 // Sanctuaries API
-app.get('/api/sanctuaries', list('sanctuaries'));
-app.post('/api/sanctuaries', create('sanctuaries',['barony_id','religion_id','active']));
-app.put('/api/sanctuaries/:id', update('sanctuaries',['barony_id','religion_id','active']));
-app.delete('/api/sanctuaries/:id', (req,res)=>{
-  db.run('DELETE FROM sanctuaries WHERE id=?',[req.params.id], function(err){
-    if(err) return handleError(res, err);
-    res.json({deleted: this.changes});
-  });
-});
+app.use('/api/sanctuaries', crudRoutes('sanctuaries',['barony_id','religion_id','active']));
 
 // Barony adjacency API
 app.get('/api/barony_connections', (req,res)=>{
@@ -2766,15 +2661,12 @@ app.post('/api/trade_routes/build', (req, res) => {
 
 // Maritime zones CRUD
 const maritimeZoneFields = ['name'];
-app.get('/api/maritime_zones', (req,res)=>{ list('maritime_zones')(req,res); });
-app.post('/api/maritime_zones', requireAdmin, (req,res)=>{ create('maritime_zones', maritimeZoneFields)(req,res); });
-app.put('/api/maritime_zones/:id', requireAdmin, (req,res)=>{ update('maritime_zones', maritimeZoneFields)(req,res); });
-app.delete('/api/maritime_zones/:id', requireAdmin, (req,res)=>{
-  db.run('DELETE FROM maritime_zones WHERE id=?',[req.params.id],function(err){
-    if(err) return handleError(res, err);
-    res.json({deleted: this.changes});
-  });
+const maritimeZonesRouter = crudRoutes('maritime_zones', maritimeZoneFields);
+maritimeZonesRouter.use((req,res,next)=>{
+  if(['POST','PUT','DELETE'].includes(req.method)) return requireAdmin(req,res,next);
+  next();
 });
+app.use('/api/maritime_zones', maritimeZonesRouter);
 
 // Maritime zone adjacency
 app.get('/api/maritime_zone_connections', (req,res)=>{ list('maritime_zone_connections')(req,res); });
