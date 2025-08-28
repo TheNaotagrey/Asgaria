@@ -3,6 +3,10 @@
 ## Contexte
 Ce dépôt propose un serveur Express/Node.js avec une base SQLite et plusieurs interfaces web pour le projet Asgaria (visualisation de la carte, édition, gestion et administration).
 
+## Spécifications du serveur de jeu
+- Le projet constitue un serveur de jeu : toute action demandée par un client doit être validée par le serveur avant d'être appliquée.
+- Si une action n'est pas réalisable, le serveur doit refuser son exécution et renvoyer une erreur explicite décrivant la cause de l'échec.
+
 ## Scripts et relations principales
 - **server.js** : point d'entrée du serveur. Expose l'API REST, gère l'authentification, les transactions et les effets. Requiert `handleError.js`, `logger.js`, `effects.js`, `transactions.js`, `services/buildingService.js` et `services/notificationService.js`.
 - **effects.js** : définit les classes d'effets appliquées par le serveur (production, stockage, sorts, etc.).
