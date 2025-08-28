@@ -2091,37 +2091,17 @@ async function updateTradeMap(baronyId, routes) {
 }
 
 function computeDistances(start) {
-  const dist = { [start]: 0 };
-  const queue = [start];
-  while (queue.length) {
-    const cur = queue.shift();
-    (tradeAdjacency[cur] || []).forEach(n => {
-      if (dist[n] == null) {
-        dist[n] = dist[cur] + 1;
-        queue.push(n);
-      }
-    });
-  }
-  return dist;
+  const { distanceMap } = breadthFirst(start, cur => tradeAdjacency[cur] || []);
+  return distanceMap;
 }
 
 function computeSeaReachable(start) {
   if (!gameState.navalTxMax || gameState.navalTxMax <= 0) return new Set();
   if (seaReachCache[start]) return seaReachCache[start];
   const startZones = baronyZones[start] || [];
-  const visited = new Set(startZones);
-  const queue = [...startZones];
-  while (queue.length) {
-    const z = queue.shift();
-    (seaZoneAdjacency[z] || []).forEach(nz => {
-      if (!visited.has(nz)) {
-        visited.add(nz);
-        queue.push(nz);
-      }
-    });
-  }
+  const { distanceMap } = breadthFirst(startZones, z => seaZoneAdjacency[z] || []);
   const res = new Set();
-  visited.forEach(z => {
+  Object.keys(distanceMap).forEach(z => {
     (zoneBaronies[z] || []).forEach(bid => {
       if (bid !== start) res.add(bid);
     });

@@ -55,19 +55,7 @@
             core.setColorMap(colorMap);
             return;
           }
-          const distances = {};
-          const queue = [core.currentSelectedId];
-          distances[core.currentSelectedId] = 0;
-          while (queue.length > 0) {
-            const cur = queue.shift();
-            const next = data.baronyAdjacency[cur] || [];
-            next.forEach(n => {
-              if (distances[n] === undefined) {
-                distances[n] = distances[cur] + 1;
-                queue.push(n);
-              }
-            });
-          }
+          const { distanceMap: distances } = breadthFirst(core.currentSelectedId, cur => data.baronyAdjacency[cur] || []);
           Object.keys(data.baronyMeta).forEach(id => {
             const d = distances[id];
             if (d === undefined) return;
@@ -108,19 +96,7 @@
           core.setColorMap(colorMap);
           return;
         }
-        const distances = {};
-        const queue = [core.currentSelectedId];
-        distances[core.currentSelectedId] = 0;
-        while (queue.length > 0) {
-          const cur = queue.shift();
-          const next = data.baronyAdjacency[cur] || [];
-          next.forEach(n => {
-            if (distances[n] === undefined) {
-              distances[n] = distances[cur] + 1;
-              queue.push(n);
-            }
-          });
-        }
+        const { distanceMap: distances } = breadthFirst(core.currentSelectedId, cur => data.baronyAdjacency[cur] || []);
         Object.keys(data.baronyMeta).forEach(id => {
           const d = distances[id];
           if (d === undefined) return;
