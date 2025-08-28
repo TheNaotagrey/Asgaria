@@ -18,6 +18,7 @@ Ce dépôt propose un serveur Express/Node.js avec une base SQLite et plusieurs 
 - **admin.js** : interface d'administration des empires, royaumes, duchés, etc.
 - **gestion.js** : gestion des seigneuries, ressources et sorts côté joueur.
 - **profile.js** : modification du profil utilisateur.
+- **renderHeader.js** : insère le fragment HTML du header commun côté client.
 - **handleError.js** et **logger.js** : gestion des erreurs et du logging.
 - Les pages HTML (`index.html`, `mapEditor.html`, `admin.html`, `gestion.html`, `profile.html`) chargent ces scripts selon leur rôle.
 - Les scripts client communiquent avec l'API du serveur via `fetch`.

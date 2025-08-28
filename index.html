@@ -6,19 +6,28 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header class="app-header">
-    <h1>Carte des baronnies</h1>
-    <nav class="tabs">
-      <a href="index.html">Baronnies</a>
-      <a href="index.html?mode=sea">Carte Maritime</a>
-    </nav>
-    <div id="controls" class="controls-row">
-      <button id="randomBtn" class="control-btn">Couleurs aléatoires</button>
-      <label for="filterSelect">Filtre :</label>
-      <select id="filterSelect" class="control-btn"></select>
-      <span id="authArea" class="auth-area"></span>
-    </div>
-  </header>
+  <script src="renderHeader.js"></script>
+  <script>
+    renderHeader('Carte des baronnies', () => {
+      const header = document.querySelector('.app-header');
+      header.insertAdjacentHTML('beforeend', `
+        <nav class="tabs">
+          <a href="index.html">Baronnies</a>
+          <a href="index.html?mode=sea">Carte Maritime</a>
+        </nav>
+      `);
+      const controls = document.getElementById('controls');
+      controls.insertAdjacentHTML('afterbegin', `
+        <button id="randomBtn" class="control-btn">Couleurs aléatoires</button>
+        <label for="filterSelect">Filtre :</label>
+        <select id="filterSelect" class="control-btn"></select>
+      `);
+    }).then(() => {
+      const script = document.createElement('script');
+      script.src = 'viewer.js';
+      document.body.appendChild(script);
+    });
+  </script>
   <main>
     <div id="mapContainer" class="map-container">
       <div id="panZoomGroup" class="panzoom-group">
@@ -50,7 +59,6 @@
   <script src="pixelData.js"></script>
   <script src="src/mapCore.js"></script>
   <script src="src/mapFilters.js"></script>
-    <script src="viewer.js"></script>
     <dialog id="authDialog">
     <form id="loginForm" method="dialog">
       <h3>Connexion</h3>
