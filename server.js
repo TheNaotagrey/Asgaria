@@ -13,6 +13,7 @@ const { consumeResources } = require('./services/buildingService');
 const { sendNotification } = require('./services/notificationService');
 const { crudRoutes, list, create, update } = require('./src/crudRouter');
 const { StorageEffect, ResourceProductionEffect, BuildingProductionEffect, InfraProductionEffect, IDHEffect, VariableWorkersEffect, TagEffect, UnlockPageEffect, SpellSuccessEffect, SpellBasicDiscountEffect, SpellAdvancedDiscountEffect, SpellRangeEffect, SpellMaxPerMonthEffect, LandTransactionMaxPerMonthEffect, NavalTransactionMaxPerMonthEffect } = require('./effects');
+const { breadthFirst } = require('./src/bfs');
 const app = express();
 const db = new sqlite3.Database('asgaria.db');
 
@@ -2630,16 +2631,8 @@ app.post('/api/trade_routes/build', (req, res) => {
             (adj[r.barony_id_1] = adj[r.barony_id_1] || []).push(r.barony_id_2);
             (adj[r.barony_id_2] = adj[r.barony_id_2] || []).push(r.barony_id_1);
           });
-          const queue = [[startId, 0]];
-          const visited = new Set([startId]);
-          let dist = null;
-          while (queue.length) {
-            const [cur, d] = queue.shift();
-            if (cur === targetId) { dist = d; break; }
-            (adj[cur] || []).forEach(n => {
-              if (!visited.has(n)) { visited.add(n); queue.push([n, d + 1]); }
-            });
-          }
+          const { distanceMap } = breadthFirst(startId, cur => adj[cur] || []);
+          const dist = distanceMap[targetId];
           if (dist == null) return res.status(400).json({ error: 'Inaccessible' });
           const cost = dist * 3;
           db.get('SELECT or_ FROM inventaire WHERE id=?', [srow.inventaire_id], (err5, inv) => {
