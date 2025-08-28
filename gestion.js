@@ -2377,10 +2377,12 @@ function showTradeDialog(seigneurName, methods) {
 
 async function sendTransaction(baronyId, resources, reason, method) {
   try {
+    const payload = { target_barony_id: baronyId, resources, type: method, reason };
+    if (currentSeigneurieId) payload.seigneurie_id = currentSeigneurieId;
     const res = await fetch('/api/send_transaction', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ target_barony_id: baronyId, resources, type: method, reason })
+      body: JSON.stringify(payload)
     });
     if (res.ok) {
       await loadAndRender(currentSeigneurieId);
