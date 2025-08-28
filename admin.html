@@ -6,12 +6,10 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header class="app-header">
-    <h1>Administration</h1>
-    <div id="controls" class="controls-row">
-      <span id="authArea" class="auth-area"></span>
-    </div>
-  </header>
+  <script src="renderHeader.js"></script>
+  <script>
+    renderHeader('Administration');
+  </script>
   <div id="saveIndicator" class="save-indicator">✔️</div>
   <main>
     <div class="tab-container" style="overflow:auto;flex:1">
