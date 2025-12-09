@@ -3,6 +3,7 @@ const sqlite3 = require('sqlite3');
 const zlib = require('zlib');
 const path = require('path');
 const session = require('express-session');
+const { promisify } = require('util');
 const SQLiteStore = require('connect-sqlite3')(session);
 const bcrypt = require('bcryptjs');
 const { inventaireFields, performTransaction } = require('./transactions');
@@ -16,6 +17,7 @@ const { StorageEffect, ResourceProductionEffect, BuildingProductionEffect, Infra
 const { breadthFirst } = require('./src/bfs');
 const app = express();
 const db = new sqlite3.Database('asgaria.db');
+const gunzip = promisify(zlib.gunzip);
 
 app.set('trust proxy', 1);
 
@@ -528,6 +530,20 @@ db.exec(initSql, () => {
 
 // accept large pixel blobs
 app.use(express.json({ limit: '50mb' }));
+function gzipJsonResponses(req, res, next) {
+  const acceptEncoding = req.headers['accept-encoding'] || '';
+  if (!acceptEncoding.includes('gzip')) return next();
+  res.json = (data) => {
+    zlib.gzip(Buffer.from(JSON.stringify(data)), (err, compressed) => {
+      if (err) return handleError(res, err);
+      res.set('Content-Encoding', 'gzip');
+      res.set('Content-Type', 'application/json');
+      res.send(compressed);
+    });
+  };
+  next();
+}
+app.use(gzipJsonResponses);
 const sessionSecret = process.env.SESSION_SECRET;
 if (!sessionSecret) {
   logger.warn('SESSION_SECRET environment variable not set; using fallback secret');
@@ -2736,24 +2752,22 @@ app.get('/api/barony_pixels', (req, res) => {
     db.get('SELECT data FROM barony_pixels WHERE barony_id=?', [id], (err, row) => {
       if (err) return handleError(res, err);
       if (!row) return res.json([]);
-      try {
-        const json = zlib.gunzipSync(row.data).toString();
-        res.json(JSON.parse(json));
-      } catch(e){
-        handleError(res, e);
-      }
+      gunzip(row.data)
+        .then(buf => res.json(JSON.parse(buf.toString())))
+        .catch(e => handleError(res, e));
     });
   } else {
-    db.all('SELECT barony_id, data FROM barony_pixels', [], (err, rows) => {
+    db.all('SELECT barony_id, data FROM barony_pixels', [], (err, rows = []) => {
       if (err) return handleError(res, err);
       const out = {};
-      rows.forEach(r => {
+      Promise.all(rows.map(async r => {
         try {
-          const json = zlib.gunzipSync(r.data).toString();
-          out[r.barony_id] = JSON.parse(json);
-        } catch {}
-      });
-      res.json(out);
+          const json = await gunzip(r.data);
+          out[r.barony_id] = JSON.parse(json.toString());
+        } catch (e) {
+          logger.warn(`Failed to decompress barony ${r.barony_id}`, e);
+        }
+      })).then(() => res.json(out)).catch(e => handleError(res, e));
     });
   }
 });
@@ -2779,24 +2793,22 @@ app.get('/api/maritime_zone_pixels', (req, res) => {
     db.get('SELECT data FROM maritime_zone_pixels WHERE zone_id=?', [id], (err, row) => {
       if (err) return handleError(res, err);
       if (!row) return res.json([]);
-      try {
-        const json = zlib.gunzipSync(row.data).toString();
-        res.json(JSON.parse(json));
-      } catch(e){
-        handleError(res, e);
-      }
+      gunzip(row.data)
+        .then(buf => res.json(JSON.parse(buf.toString())))
+        .catch(e => handleError(res, e));
     });
   } else {
-    db.all('SELECT zone_id, data FROM maritime_zone_pixels', [], (err, rows) => {
+    db.all('SELECT zone_id, data FROM maritime_zone_pixels', [], (err, rows = []) => {
       if (err) return handleError(res, err);
       const out = {};
-      rows.forEach(r => {
+      Promise.all(rows.map(async r => {
         try {
-          const json = zlib.gunzipSync(r.data).toString();
-          out[r.zone_id] = JSON.parse(json);
-        } catch {}
-      });
-      res.json(out);
+          const json = await gunzip(r.data);
+          out[r.zone_id] = JSON.parse(json.toString());
+        } catch (e) {
+          logger.warn(`Failed to decompress maritime zone ${r.zone_id}`, e);
+        }
+      })).then(() => res.json(out)).catch(e => handleError(res, e));
     });
   }
 });
