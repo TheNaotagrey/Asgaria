@@ -2814,4 +2814,5 @@ app.put('/api/maritime_zone_pixels', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
+logger.info('Ceci est un testouille');
 app.listen(PORT, () => logger.info(`Server running on http://localhost:${PORT}`));
