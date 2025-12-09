@@ -17,6 +17,8 @@ const { breadthFirst } = require('./src/bfs');
 const app = express();
 const db = new sqlite3.Database('asgaria.db');
 
+app.set('trust proxy', 1);
+
 const VALID_TABLES = new Set([
   'users','religions','cultures','seigneurs','empires','kingdoms','archduchies',
   'duchies','marquisates','counties','viscounties','baronies','barony_pixels',
@@ -535,11 +537,12 @@ app.use(session({
   secret: sessionSecret || 'dev-secret',
   resave: false,
   saveUninitialized: false,
+  proxy: true,
   cookie: {
     maxAge: 30 * 24 * 60 * 60 * 1000,
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict'
+    secure: 'auto',
+    sameSite: 'lax'
   }
 }));
 function isAdminActive(user){
