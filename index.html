@@ -8,25 +8,23 @@
 <body>
   <script src="renderHeader.js"></script>
   <script>
-    renderHeader('Carte des baronnies', () => {
-      const header = document.querySelector('.app-header');
-      header.insertAdjacentHTML('beforeend', `
-        <nav class="tabs">
-          <a href="index.html">Baronnies</a>
-          <a href="index.html?mode=sea">Carte Maritime</a>
-        </nav>
-      `);
-      const controls = document.getElementById('controls');
-      controls.insertAdjacentHTML('afterbegin', `
-        <button id="randomBtn" class="control-btn">Couleurs aléatoires</button>
-        <label for="filterSelect">Filtre :</label>
-        <select id="filterSelect" class="control-btn"></select>
-        <span id="pixelLoading" class="loading-indicator" style="display:none;"></span>
-      `);
-    }).then(() => {
-      const script = document.createElement('script');
-      script.src = 'viewer.js';
-      document.body.appendChild(script);
+    document.addEventListener('DOMContentLoaded', () => {
+      renderHeader('Carte des baronnies', () => {
+        const header = document.querySelector('.app-header');
+        header.insertAdjacentHTML('beforeend', `
+          <nav class="tabs">
+            <a href="index.html">Baronnies</a>
+            <a href="index.html?mode=sea">Carte Maritime</a>
+          </nav>
+        `);
+        const controls = document.getElementById('controls');
+        controls.insertAdjacentHTML('afterbegin', `
+          <button id="randomBtn" class="control-btn">Couleurs aléatoires</button>
+          <label for="filterSelect">Filtre :</label>
+          <select id="filterSelect" class="control-btn"></select>
+          <span id="pixelLoading" class="loading-indicator" style="display:none;"></span>
+        `);
+      });
     });
   </script>
   <main>
@@ -61,7 +59,8 @@
   <script src="src/mapCore.js"></script>
   <script src="src/bfs.js"></script>
   <script src="src/mapFilters.js"></script>
-    <dialog id="authDialog">
+  <script src="viewer.js"></script>
+  <dialog id="authDialog">
     <form id="loginForm" method="dialog">
       <h3>Connexion</h3>
       <input type="email" name="email" placeholder="Email" required>
@@ -79,9 +78,9 @@
       <button type="submit" class="control-btn">Créer</button>
       <p><a href="#" id="showLogin">Déjà un compte ?</a></p>
     </form>
-    </dialog>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/timeago.js/4.0.2/timeago.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/timeago.js/4.0.2/locale/fr.min.js"></script>
-    <script src="auth.js"></script>
+  </dialog>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/timeago.js/4.0.2/timeago.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/timeago.js/4.0.2/locale/fr.min.js"></script>
+  <script src="auth.js"></script>
   </body>
 </html>
