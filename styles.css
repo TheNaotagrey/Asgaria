@@ -51,6 +51,11 @@ main {
   gap: 6px;
 }
 
+.loading-indicator {
+  color: #555;
+  font-style: italic;
+}
+
 .user-link {
   display: flex;
   align-items: center;

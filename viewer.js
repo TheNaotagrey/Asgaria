@@ -2,6 +2,8 @@
   const API_BASE = location.origin === 'null' ? 'http://localhost:3000' : '';
   const params = new URLSearchParams(location.search);
   const mapMode = params.get('mode') === 'sea' ? 'sea' : 'land';
+  const PIXEL_CHUNK_SIZE = 50;
+  const MAX_PIXEL_REQUESTS = 3;
 
   let mapWidth = 0;
   let mapHeight = 0;
@@ -51,6 +53,7 @@
   const legendDiv = document.getElementById('legend');
   const filterSelect = document.getElementById('filterSelect');
   const randomBtn = document.getElementById('randomBtn');
+  const pixelLoading = document.getElementById('pixelLoading');
 
   function setLine(elem, text) {
     if (!elem) return;
@@ -156,6 +159,58 @@
     });
   }
 
+  function updatePixelLoading(loaded, total, show = true) {
+    if (!pixelLoading) return;
+    if (!show) {
+      pixelLoading.style.display = 'none';
+      return;
+    }
+    pixelLoading.style.display = 'inline-block';
+    pixelLoading.textContent = `Chargement des pixels... ${loaded}/${total}`;
+  }
+
+  async function fetchBaronyPixelsInChunks(ids, target = {}) {
+    if (!ids || ids.length === 0) return target;
+    const queue = [...ids];
+    const active = [];
+    let loaded = 0;
+    const total = ids.length;
+
+    const scheduleNext = () => {
+      if (active.length >= MAX_PIXEL_REQUESTS) return;
+      const batch = queue.splice(0, PIXEL_CHUNK_SIZE);
+      if (batch.length === 0) return;
+      const promise = fetch(`${API_BASE}/api/barony_pixels?ids=${batch.join(',')}`)
+        .then(r => r.json())
+        .then(data => {
+          Object.assign(target, data);
+          loaded = Math.min(total, loaded + batch.length);
+          updatePixelLoading(loaded, total, true);
+          if (core && typeof core.setPixelData === 'function') {
+            core.setPixelData(target);
+          }
+        })
+        .catch(err => console.warn('Erreur lors du chargement des pixels', err))
+        .finally(() => {
+          const idx = active.indexOf(promise);
+          if (idx >= 0) active.splice(idx, 1);
+          scheduleNext();
+        });
+      active.push(promise);
+    };
+
+    for (let i = 0; i < MAX_PIXEL_REQUESTS; i++) {
+      scheduleNext();
+    }
+
+    while (active.length > 0) {
+      await Promise.race(active);
+    }
+
+    updatePixelLoading(total, total, false);
+    return target;
+  }
+
   function handleSelect(id) {
     if (mapMode === 'sea') {
       if (!id) {
@@ -219,12 +274,11 @@
 
   async function fetchData() {
     const endpoint = mapMode === 'sea' ? '/api/maritime_zone_pixels' : '/api/barony_pixels';
-    pixelData = await fetch(API_BASE + endpoint).then(r => r.json());
+    pixelData = mapMode === 'sea' ? await fetch(API_BASE + endpoint).then(r => r.json()) : {};
     if (mapMode === 'sea') {
-      const [zones, connections, bPixels, zoneBaronies] = await Promise.all([
+      const [zones, connections, zoneBaronies] = await Promise.all([
         fetch(API_BASE + '/api/maritime_zones').then(r => r.json()),
         fetch(API_BASE + '/api/maritime_zone_connections').then(r => r.json()),
-        fetch(API_BASE + '/api/barony_pixels').then(r => r.json()),
         fetch(API_BASE + '/api/maritime_zone_baronies').then(r => r.json())
       ]);
       baronyMeta = {};
@@ -236,7 +290,9 @@
         baronyAdjacency[c.zone_id_1].push(c.zone_id_2);
         baronyAdjacency[c.zone_id_2].push(c.zone_id_1);
       });
-      baronyPixels = bPixels;
+      const baronyIds = [...new Set(zoneBaronies.map(zb => zb.barony_id))];
+      baronyPixels = {};
+      fetchBaronyPixelsInChunks(baronyIds, baronyPixels).catch(err => console.error(err));
       maritimeZoneBaronies = {};
       zoneBaronies.forEach(zb => {
         if (!maritimeZoneBaronies[zb.zone_id]) maritimeZoneBaronies[zb.zone_id] = [];
@@ -307,6 +363,9 @@
       baronyAdjacency[c.barony_id_1].push(c.barony_id_2);
       baronyAdjacency[c.barony_id_2].push(c.barony_id_1);
     });
+    const baronyIds = baronies.map(b => b.id);
+    baronyPixels = pixelData;
+    fetchBaronyPixelsInChunks(baronyIds, pixelData).catch(err => console.error(err));
     mapData = {
       pixelData,
       baronyMeta,
