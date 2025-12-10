@@ -2748,6 +2748,10 @@ app.get('/api/trade_partners', (req, res) => {
 // Pixel data API
 app.get('/api/barony_pixels', (req, res) => {
   const id = req.query.id;
+  const idsParam = req.query.ids;
+  const offsetParam = req.query.offset;
+  const limitParam = req.query.limit;
+
   if (id) {
     db.get('SELECT data FROM barony_pixels WHERE barony_id=?', [id], (err, row) => {
       if (err) return handleError(res, err);
@@ -2756,20 +2760,35 @@ app.get('/api/barony_pixels', (req, res) => {
         .then(buf => res.json(JSON.parse(buf.toString())))
         .catch(e => handleError(res, e));
     });
-  } else {
-    db.all('SELECT barony_id, data FROM barony_pixels', [], (err, rows = []) => {
-      if (err) return handleError(res, err);
-      const out = {};
-      Promise.all(rows.map(async r => {
-        try {
-          const json = await gunzip(r.data);
-          out[r.barony_id] = JSON.parse(json.toString());
-        } catch (e) {
-          logger.warn(`Failed to decompress barony ${r.barony_id}`, e);
-        }
-      })).then(() => res.json(out)).catch(e => handleError(res, e));
-    });
+    return;
   }
+
+  let sql = 'SELECT barony_id, data FROM barony_pixels';
+  const params = [];
+  if (idsParam) {
+    const ids = idsParam.split(',').map(v => parseInt(v, 10)).filter(Number.isFinite);
+    if (ids.length === 0) return res.json({});
+    sql += ` WHERE barony_id IN (${ids.map(() => '?').join(',')})`;
+    params.push(...ids);
+  } else if (offsetParam !== undefined || limitParam !== undefined) {
+    const offset = parseInt(offsetParam, 10) || 0;
+    const limit = parseInt(limitParam, 10) || 100;
+    sql += ' ORDER BY barony_id LIMIT ? OFFSET ?';
+    params.push(limit, offset);
+  }
+
+  db.all(sql, params, (err, rows = []) => {
+    if (err) return handleError(res, err);
+    const out = {};
+    Promise.all(rows.map(async r => {
+      try {
+        const json = await gunzip(r.data);
+        out[r.barony_id] = JSON.parse(json.toString());
+      } catch (e) {
+        logger.warn(`Failed to decompress barony ${r.barony_id}`, e);
+      }
+    })).then(() => res.json(out)).catch(e => handleError(res, e));
+  });
 });
 
 app.put('/api/barony_pixels', (req, res) => {
