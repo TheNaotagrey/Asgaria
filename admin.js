@@ -102,6 +102,7 @@ const dataCache = {};
 const tabLoaded = {};
 const canonicalKey = id => (id === null || id === undefined ? '' : String(id));
 let canonicalLandMap = {};
+let canonicalDependents = {};
 const maxOptions = [
   ...Array.from({length:10}, (_,i)=>({ id:String(i+1), name:String(i+1) })),
   ...baronyPropIntFields.map(f=>({ id:f, name:baronyPropLabels[f] || f })),
@@ -226,11 +227,12 @@ function openCanonicalPopup(baronyId, baroniesList, onChange){
     row.dataset.canonicalId = val;
     sel.addEventListener('change', async () => {
       const newId = parseInt(sel.value, 10);
-      const key = canonicalKey(baronyId);
+      const canonicalKeyId = canonicalKey(baronyId);
       const oldId = parseInt(row.dataset.canonicalId || '0', 10);
       if (oldId) {
         await fetchJSON(`/api/canonical_lands?barony_id=${oldId}&canonical_barony_id=${baronyId}`, { method: 'DELETE' });
-        if (canonicalLandMap[key]) canonicalLandMap[key] = canonicalLandMap[key].filter(id => id !== oldId);
+        if (canonicalDependents[canonicalKeyId]) canonicalDependents[canonicalKeyId] = canonicalDependents[canonicalKeyId].filter(id => id !== oldId);
+        if (canonicalLandMap[canonicalKey(oldId)]) canonicalLandMap[canonicalKey(oldId)] = canonicalLandMap[canonicalKey(oldId)].filter(id => id !== baronyId);
       }
       if (newId) {
         await fetchJSON('/api/canonical_lands', {
@@ -238,8 +240,10 @@ function openCanonicalPopup(baronyId, baroniesList, onChange){
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ barony_id: newId, canonical_barony_id: baronyId })
         });
-        if (!canonicalLandMap[key]) canonicalLandMap[key] = [];
-        if (!canonicalLandMap[key].includes(newId)) canonicalLandMap[key].push(newId);
+        if (!canonicalDependents[canonicalKeyId]) canonicalDependents[canonicalKeyId] = [];
+        if (!canonicalDependents[canonicalKeyId].includes(newId)) canonicalDependents[canonicalKeyId].push(newId);
+        if (!canonicalLandMap[canonicalKey(newId)]) canonicalLandMap[canonicalKey(newId)] = [];
+        if (!canonicalLandMap[canonicalKey(newId)].includes(baronyId)) canonicalLandMap[canonicalKey(newId)].push(baronyId);
       }
       row.dataset.canonicalId = newId;
       if (onChange) onChange();
@@ -248,11 +252,12 @@ function openCanonicalPopup(baronyId, baroniesList, onChange){
     delBtn.type = 'button';
     delBtn.textContent = '-';
     delBtn.addEventListener('click', async () => {
-      const key = canonicalKey(baronyId);
+      const canonicalKeyId = canonicalKey(baronyId);
       const oldId = parseInt(row.dataset.canonicalId || '0', 10);
       if (oldId) {
         await fetchJSON(`/api/canonical_lands?barony_id=${oldId}&canonical_barony_id=${baronyId}`, { method: 'DELETE' });
-        if (canonicalLandMap[key]) canonicalLandMap[key] = canonicalLandMap[key].filter(id => id !== oldId);
+        if (canonicalDependents[canonicalKeyId]) canonicalDependents[canonicalKeyId] = canonicalDependents[canonicalKeyId].filter(id => id !== oldId);
+        if (canonicalLandMap[canonicalKey(oldId)]) canonicalLandMap[canonicalKey(oldId)] = canonicalLandMap[canonicalKey(oldId)].filter(id => id !== baronyId);
       }
       row.remove();
       if (onChange) onChange();
@@ -262,7 +267,7 @@ function openCanonicalPopup(baronyId, baroniesList, onChange){
     list.appendChild(row);
   }
 
-  const existing = canonicalLandMap[canonicalKey(baronyId)] || [];
+  const existing = canonicalDependents[canonicalKey(baronyId)] || [];
   if (existing.length) {
     existing.forEach(id => addRow(id));
   } else {
@@ -293,7 +298,7 @@ function createCanonicalCell(item, baroniesList){
   btn.textContent = 'Modifier';
 
   function updateSummary(){
-    const ids = canonicalLandMap[canonicalKey(item.id)] || [];
+    const ids = canonicalDependents[canonicalKey(item.id)] || [];
     if (!ids.length) {
       summary.textContent = 'Aucune';
       return;
@@ -1689,10 +1694,14 @@ async function loadBaronies(){
   const countiesSelect = counties.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const viscountiesSelect = viscounties.slice().sort((a,b)=>a.name.localeCompare(b.name));
   canonicalLandMap = {};
+  canonicalDependents = {};
   canonicalLands.forEach(cl => {
-    const key = canonicalKey(cl.canonical_barony_id);
-    if (!canonicalLandMap[key]) canonicalLandMap[key] = [];
-    canonicalLandMap[key].push(cl.barony_id);
+    const baronyKey = canonicalKey(cl.barony_id);
+    const canonicalKeyId = canonicalKey(cl.canonical_barony_id);
+    if (!canonicalLandMap[baronyKey]) canonicalLandMap[baronyKey] = [];
+    canonicalLandMap[baronyKey].push(cl.canonical_barony_id);
+    if (!canonicalDependents[canonicalKeyId]) canonicalDependents[canonicalKeyId] = [];
+    canonicalDependents[canonicalKeyId].push(cl.barony_id);
   });
   const baroniesById = baronies.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableBaronies'), baroniesById, {

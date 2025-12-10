@@ -27,6 +27,7 @@
   let empireMap = {};
   let seigneurToViscounty = {}, seigneurToCounty = {}, seigneurToMarquisate = {}, seigneurToDuchy = {}, seigneurToArchduchy = {}, seigneurToKingdom = {}, seigneurToEmpire = {};
   let canonicalLandMap = {};
+  let canonicalDependents = {};
   let canonicalParents = {};
   let sanctuaryMap = {};
   let baronyAdjacency = {};
@@ -277,7 +278,7 @@
     const owner = info.seigneur_id ? seigneurMap[info.seigneur_id] : null;
     if (owner?.bishop) buildings.push('Évêque');
     setList(religiousSection, infoReligiousList, buildings);
-    const ownedCanonicals = (canonicalLandMap[id] || []).map(cid => `${cid} - ${baronyMeta[cid]?.name || ''}`);
+    const ownedCanonicals = (canonicalDependents[id] || []).map(cid => `${cid} - ${baronyMeta[cid]?.name || ''}`);
     setList(canonicalOwnedSection, canonicalOwnedList, ownedCanonicals);
     const parentCanonicals = (canonicalParents[id] || [])
       .filter(pid => pid !== id)
@@ -292,6 +293,7 @@
     const endpoint = mapMode === 'sea' ? '/api/maritime_zone_pixels' : '/api/barony_pixels';
     pixelData = mapMode === 'sea' ? await fetch(API_BASE + endpoint).then(r => r.json()) : {};
     canonicalLandMap = {};
+    canonicalDependents = {};
     canonicalParents = {};
     if (mapMode === 'sea') {
       const [zones, seigneurs, connections, zoneBaronies] = await Promise.all([
@@ -370,8 +372,10 @@
     canonicalLandMap = {};
     canonicalParents = {};
     canonicalLands.forEach(cl => {
-      if (!canonicalLandMap[cl.canonical_barony_id]) canonicalLandMap[cl.canonical_barony_id] = [];
-      canonicalLandMap[cl.canonical_barony_id].push(cl.barony_id);
+      if (!canonicalLandMap[cl.barony_id]) canonicalLandMap[cl.barony_id] = [];
+      canonicalLandMap[cl.barony_id].push(cl.canonical_barony_id);
+      if (!canonicalDependents[cl.canonical_barony_id]) canonicalDependents[cl.canonical_barony_id] = [];
+      canonicalDependents[cl.canonical_barony_id].push(cl.barony_id);
       if (cl.barony_id !== cl.canonical_barony_id) {
         if (!canonicalParents[cl.barony_id]) canonicalParents[cl.barony_id] = [];
         canonicalParents[cl.barony_id].push(cl.canonical_barony_id);
@@ -406,6 +410,7 @@
       archduchyMap,
       empireMap,
       canonicalLandMap,
+      canonicalDependents,
       sanctuaryMap,
       baronyAdjacency,
       seigneurToViscounty,
