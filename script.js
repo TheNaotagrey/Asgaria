@@ -108,6 +108,9 @@
   const editCultureSelect = document.getElementById('editCulture');
   const editViscountySelect = document.getElementById('editViscounty');
   const editCountySelect = document.getElementById('editCounty');
+  const seaEditSeigneurSelect = document.getElementById('seaEditSeigneur');
+
+  const canonicalKey = id => (id === null || id === undefined ? '' : String(id));
 
   function updateLegend(groups) {
     if (!legendDiv) return;
@@ -298,6 +301,22 @@
     });
   }
 
+  function saveSeaZoneFields(fields) {
+    if (!currentSelectedId) return;
+    const payload = { ...baronyMeta[currentSelectedId], ...fields };
+    delete payload.id;
+    fetch(`${API_BASE}/api/maritime_zones/${currentSelectedId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then(res => {
+      if (res.ok) {
+        baronyMeta[currentSelectedId] = { ...baronyMeta[currentSelectedId], ...fields };
+        if (core && typeof core.drawAll === 'function') core.drawAll();
+      }
+    });
+  }
+
   if (editSeigneurSelect) {
     editSeigneurSelect.addEventListener('change', () => {
       saveBaronyFields({ seigneur_id: parseInt(editSeigneurSelect.value, 10) || null });
@@ -336,6 +355,11 @@
   if (editCountySelect) {
     editCountySelect.addEventListener('change', () => {
       saveBaronyFields({ county_id: parseInt(editCountySelect.value, 10) || null });
+    });
+  }
+  if (seaEditSeigneurSelect) {
+    seaEditSeigneurSelect.addEventListener('change', () => {
+      saveSeaZoneFields({ seigneur_id: parseInt(seaEditSeigneurSelect.value, 10) || null });
     });
   }
   if (editSanctuariesBtn) {
@@ -462,10 +486,11 @@
         row.dataset.canonicalId = val;
         sel.addEventListener('change', () => {
           const newId = parseInt(sel.value, 10);
+          const key = canonicalKey(currentSelectedId);
           const oldId = parseInt(row.dataset.canonicalId || '0', 10);
           if (oldId) {
             fetch(`${API_BASE}/api/canonical_lands?barony_id=${currentSelectedId}&canonical_barony_id=${oldId}`, { method: 'DELETE' });
-            if (canonicalLandMap[currentSelectedId]) canonicalLandMap[currentSelectedId] = canonicalLandMap[currentSelectedId].filter(id => id !== oldId);
+            if (canonicalLandMap[key]) canonicalLandMap[key] = canonicalLandMap[key].filter(id => id !== oldId);
           }
           if (newId) {
             fetch(`${API_BASE}/api/canonical_lands`, {
@@ -473,8 +498,8 @@
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ barony_id: currentSelectedId, canonical_barony_id: newId })
             });
-            if (!canonicalLandMap[currentSelectedId]) canonicalLandMap[currentSelectedId] = [];
-            canonicalLandMap[currentSelectedId].push(newId);
+            if (!canonicalLandMap[key]) canonicalLandMap[key] = [];
+            canonicalLandMap[key].push(newId);
           }
           row.dataset.canonicalId = newId;
           if (filterManager && filterSelect && filterSelect.value === 'canonical') filterManager.applyFilter('canonical');
@@ -483,10 +508,11 @@
         const delBtn = document.createElement('button');
         delBtn.textContent = '-';
         delBtn.addEventListener('click', () => {
+          const key = canonicalKey(currentSelectedId);
           const oldId = parseInt(row.dataset.canonicalId || '0', 10);
           if (oldId) {
             fetch(`${API_BASE}/api/canonical_lands?barony_id=${currentSelectedId}&canonical_barony_id=${oldId}`, { method: 'DELETE' });
-            if (canonicalLandMap[currentSelectedId]) canonicalLandMap[currentSelectedId] = canonicalLandMap[currentSelectedId].filter(id => id !== oldId);
+            if (canonicalLandMap[key]) canonicalLandMap[key] = canonicalLandMap[key].filter(id => id !== oldId);
           }
           row.remove();
           if (filterManager && filterSelect && filterSelect.value === 'canonical') filterManager.applyFilter('canonical');
@@ -497,7 +523,7 @@
         list.appendChild(row);
       }
 
-      (canonicalLandMap[currentSelectedId] || []).forEach(id => addRow(id));
+      (canonicalLandMap[canonicalKey(currentSelectedId)] || []).forEach(id => addRow(id));
       const addBtn = document.createElement('button');
       addBtn.textContent = '+';
       addBtn.addEventListener('click', () => addRow());
@@ -594,6 +620,7 @@
       if (infoPanel) infoPanel.style.display = 'none';
       if (seaEditIdInput) seaEditIdInput.value = id;
       if (seaEditNameInput) seaEditNameInput.value = baronyMeta[id]?.name || '';
+      if (seaEditSeigneurSelect) seaEditSeigneurSelect.value = baronyMeta[id]?.seigneur_id || '';
       if (filterManager && filterSelect && (filterSelect.value === 'distance' || filterSelect.value === 'baronies')) {
         filterManager.applyFilter(filterSelect.value);
       }
@@ -676,16 +703,17 @@
       empireMap = {};
       seigneurToEmpire = {};
       empires.forEach(e => { empireMap[e.id] = e; if (e.seigneur_id) seigneurToEmpire[e.seigneur_id] = e.id; });
-        canonicalLandMap = {};
-        canonicalLands.forEach(cl => {
-          if (!canonicalLandMap[cl.barony_id]) canonicalLandMap[cl.barony_id] = [];
-          canonicalLandMap[cl.barony_id].push(cl.canonical_barony_id);
-        });
-        sanctuaryMap = {};
-        sanctuaries.forEach(s => {
-          if (!sanctuaryMap[s.barony_id]) sanctuaryMap[s.barony_id] = [];
-          sanctuaryMap[s.barony_id].push({ id: s.id, religion_id: s.religion_id, active: !!s.active });
-        });
+      canonicalLandMap = {};
+      canonicalLands.forEach(cl => {
+        const key = canonicalKey(cl.barony_id);
+        if (!canonicalLandMap[key]) canonicalLandMap[key] = [];
+        canonicalLandMap[key].push(cl.canonical_barony_id);
+      });
+      sanctuaryMap = {};
+      sanctuaries.forEach(s => {
+        if (!sanctuaryMap[s.barony_id]) sanctuaryMap[s.barony_id] = [];
+        sanctuaryMap[s.barony_id].push({ id: s.id, religion_id: s.religion_id, active: !!s.active });
+      });
       baronyAdjacency = {};
       connections.forEach(c => {
         if (!baronyAdjacency[c.barony_id_1]) baronyAdjacency[c.barony_id_1] = [];
@@ -697,10 +725,14 @@
       baronyPixelData = pixelData;
       fetchBaronyPixelsInChunks(baronyIds, pixelData, true).catch(err => console.error(err));
     } else {
-      const [connections, zoneBaronies] = await Promise.all([
+      const [seigneurs, connections, zoneBaronies] = await Promise.all([
+        fetch(API_BASE + '/api/seigneurs').then(r => r.json()),
         fetch(API_BASE + '/api/maritime_zone_connections').then(r => r.json()),
         fetch(API_BASE + '/api/maritime_zone_baronies').then(r => r.json())
       ]);
+      seigneurMap = {};
+      seigneurs.forEach(s => { seigneurMap[s.id] = s; });
+      populateSelect(seaEditSeigneurSelect, seigneurMap, 'Aucun');
       baronyAdjacency = {};
       connections.forEach(c => {
         if (!baronyAdjacency[c.zone_id_1]) baronyAdjacency[c.zone_id_1] = [];
@@ -786,10 +818,11 @@
     const nameInput = mapMode === 'sea' ? seaEditNameInput : editNameInput;
     const newId = idInput ? idInput.value.trim() : currentSelectedId;
     const newName = nameInput ? nameInput.value.trim() : '';
-    fetch(`${API_BASE}${entityEndpoint}`, {
-      method: 'POST',
+    const payload = { ...baronyMeta[currentSelectedId], id: newId, name: newName };
+    fetch(`${API_BASE}${entityEndpoint}/${currentSelectedId}`, {
+      method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: currentSelectedId, newId, name: newName })
+      body: JSON.stringify(payload)
     }).then(() => {
       baronyMeta[newId] = { ...baronyMeta[currentSelectedId], id: newId, name: newName };
       if (newId !== currentSelectedId) {
@@ -801,6 +834,25 @@
           pixelData[newId] = pixelData[currentSelectedId];
           delete pixelData[currentSelectedId];
         }
+        if (mapMode === 'sea') {
+          if (maritimeZoneBaronies[currentSelectedId]) {
+            maritimeZoneBaronies[newId] = maritimeZoneBaronies[currentSelectedId];
+            delete maritimeZoneBaronies[currentSelectedId];
+          }
+        } else if (canonicalLandMap[canonicalKey(currentSelectedId)]) {
+          canonicalLandMap[canonicalKey(newId)] = canonicalLandMap[canonicalKey(currentSelectedId)];
+          delete canonicalLandMap[canonicalKey(currentSelectedId)];
+        }
+        Object.keys(baronyAdjacency).forEach(k => {
+          const list = baronyAdjacency[k];
+          const keyNum = parseInt(k, 10);
+          if (keyNum === currentSelectedId) {
+            baronyAdjacency[newId] = list.map(v => (v === currentSelectedId ? newId : v));
+            delete baronyAdjacency[k];
+          } else {
+            baronyAdjacency[k] = list.map(v => (v === currentSelectedId ? newId : v));
+          }
+        });
       }
       core.selectBarony(newId);
     });
