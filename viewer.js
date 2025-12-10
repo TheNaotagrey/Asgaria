@@ -2,8 +2,8 @@
   const API_BASE = location.origin === 'null' ? 'http://localhost:3000' : '';
   const params = new URLSearchParams(location.search);
   const mapMode = params.get('mode') === 'sea' ? 'sea' : 'land';
-  const PIXEL_CHUNK_SIZE = 50;
-  const MAX_PIXEL_REQUESTS = 3;
+  const PIXEL_CHUNK_SIZE = 25;
+  const MAX_PIXEL_REQUESTS = 2;
 
   let mapWidth = 0;
   let mapHeight = 0;
