@@ -54,6 +54,19 @@ const baronyPropLabels = {
   effects:'Effets'
 };
 
+const baronyFields = ['name','seigneur_id','religion_pop_id','culture_id','county_id','viscounty_id','priory_religion_id','church_religion_id','cathedral_religion_id'];
+const baronyLabels = {
+  name:'Nom',
+  seigneur_id:'Seigneur',
+  religion_pop_id:'Religion (population)',
+  culture_id:'Culture',
+  county_id:'Comté',
+  viscounty_id:'Vicomté',
+  priory_religion_id:'Prieuré',
+  church_religion_id:'Église',
+  cathedral_religion_id:'Cathédrale'
+};
+
 const buildingPropFields = ['label','produces','production','costs','max','workers_per_building','absolute_restrictions','infra_restrictions','effects','description'];
 const buildingPropLabels = {
   label:'Nom',
@@ -1366,9 +1379,9 @@ async function loadSeigneurs(){
   const seigneursById = seigneurs.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableSeigneurs'), seigneursById, {
     endpoint:'seigneurs',
-    fields:['name','user_id','religion_id','overlord_id'],
-    selects:{user_id:userSelectFn, religion_id:religionsSelect, overlord_id:seigneursSelect},
-    labels:{name:'Nom', user_id:'Utilisateur', religion_id:'Religion', overlord_id:'Suzerain'}
+    fields:['name','user_id','religion_id','overlord_id','player','bishop'],
+    selects:{user_id:userSelectFn, religion_id:religionsSelect, overlord_id:seigneursSelect, player:yesNoSelect, bishop:yesNoSelect},
+    labels:{name:'Nom', user_id:'Utilisateur', religion_id:'Religion', overlord_id:'Suzerain', player:'Joueur', bishop:'Évêque'}
   });
 }
 
@@ -1505,6 +1518,48 @@ async function loadSeigneuries(){
   });
 }
 
+async function loadBaronies(){
+  const [baronies,seigneurs,religions,cultures,counties,viscounties] = await Promise.all([
+    getData('baronies','/api/baronies'),
+    getData('seigneurs','/api/seigneurs'),
+    getData('religions','/api/religions'),
+    getData('cultures','/api/cultures'),
+    getData('counties','/api/counties'),
+    getData('viscounties','/api/viscounties'),
+  ]);
+  const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const religionsSelect = religions.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const culturesSelect = cultures.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const countiesSelect = counties.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const viscountiesSelect = viscounties.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const baroniesById = baronies.slice().sort((a,b)=>a.id - b.id);
+  renderTable(document.getElementById('tableBaronies'), baroniesById, {
+    endpoint:'baronies',
+    fields:baronyFields,
+    selects:{
+      seigneur_id:seigneursSelect,
+      religion_pop_id:religionsSelect,
+      culture_id:culturesSelect,
+      county_id:countiesSelect,
+      viscounty_id:viscountiesSelect,
+      priory_religion_id:religionsSelect,
+      church_religion_id:religionsSelect,
+      cathedral_religion_id:religionsSelect,
+    },
+    labels:baronyLabels,
+    nullLabels:{
+      seigneur_id:'Aucun',
+      religion_pop_id:'Aucune',
+      culture_id:'Aucune',
+      county_id:'Aucun',
+      viscounty_id:'Aucune',
+      priory_religion_id:'Aucun',
+      church_religion_id:'Aucune',
+      cathedral_religion_id:'Aucune'
+    }
+  });
+}
+
 async function ensureTags(){
   const tags = await getData('tags','/api/tags');
   tagsSelect = tags.slice().sort((a,b)=>a.label.localeCompare(b.label)).map(t=>({ id:t.id, name:t.label }));
@@ -1605,6 +1660,7 @@ const tabLoaders = {
   counties: loadCounties,
   viscounties: loadViscounties,
   seigneuries: loadSeigneuries,
+  baronies: loadBaronies,
   batiments: loadBatiments,
   spells: loadSpells,
   tags: loadTags,
