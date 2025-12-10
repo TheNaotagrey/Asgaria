@@ -1,0 +1,64 @@
+name: Deploy Node.js App to cPanel
+
+on:
+  push:
+    branches:
+      - main  
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🧩 Checkout code
+        uses: actions/checkout@v3
+
+      - name: ⚙️ Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '22'
+
+      - name: 📦 Install dependencies
+        run: npm install
+
+      - name: 🏗️ Build (if needed)
+        run: npm run build || echo "No build script"
+
+      - name: 🚀 Deploy to cPanel via SSH
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ secrets.SSH_PORT }}
+          source: "., !.git"
+          target: "/home/webhost123/api.exampledomain.com"
+          strip_components: 1
+
+      - name: 🔁 Restart Node.js App via Passenger
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            echo "🔧 Activating virtual environment..."
+            source /home/webhost123/nodevenv/api.exampledomain.com/22/bin/activate
+
+            echo "📂 Navigating to app directory..."
+            cd /home/webhost123/api.exampledomain.com
+
+            echo "📦 Updating dependencies..."
+            npm update
+
+            echo "✅ Node version: $(node --version)"
+            echo "✅ NPM version: $(npm --version)"
+
+            echo "♻️ Restarting Node.js app via Passenger..."
+            mkdir -p tmp && touch tmp/restart.txt
+
+            echo "✅ Application deployed and restarted successfully!"
+
+      - name: ✅ Deployment Success
+        run: echo "🎉 Deployment to api.exampledomain.com was successful!"
