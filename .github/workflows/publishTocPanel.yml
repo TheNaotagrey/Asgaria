@@ -3,7 +3,7 @@ name: Deploy Node.js App to cPanel
 on:
   push:
     branches:
-      - main  
+      - live  
 
 jobs:
   deploy:
@@ -32,7 +32,7 @@ jobs:
           password: ${{ secrets.SSH_PASSWORD }}
           port: ${{ secrets.SSH_PORT }}
           source: "., !.git"
-          target: "/home/webhost123/api.exampledomain.com"
+          target: "/home/wkkgb451/repositories/Asgaria"
           strip_components: 1
 
       - name: 🔁 Restart Node.js App via Passenger
@@ -44,10 +44,10 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           script: |
             echo "🔧 Activating virtual environment..."
-            source /home/webhost123/nodevenv/api.exampledomain.com/22/bin/activate
-
+            source /home/wkkgb451/nodevenv/repositories/Asgaria/18/bin/activate
+            
             echo "📂 Navigating to app directory..."
-            cd /home/webhost123/api.exampledomain.com
+            cd /home/wkkgb451/repositories/Asgaria
 
             echo "📦 Updating dependencies..."
             npm update
