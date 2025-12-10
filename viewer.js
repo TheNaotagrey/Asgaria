@@ -169,7 +169,7 @@
     pixelLoading.textContent = `Chargement des pixels... ${loaded}/${total}`;
   }
 
-  async function fetchBaronyPixelsInChunks(ids, target = {}) {
+  async function fetchBaronyPixelsInChunks(ids, target = {}, applyToCore = true) {
     if (!ids || ids.length === 0) return target;
     const queue = [...ids];
     const active = [];
@@ -186,8 +186,10 @@
           Object.assign(target, data);
           loaded = Math.min(total, loaded + batch.length);
           updatePixelLoading(loaded, total, true);
-          if (core && typeof core.setPixelData === 'function') {
+          if (applyToCore && core && typeof core.setPixelData === 'function') {
             core.setPixelData(target);
+          } else if (core && typeof core.drawAll === 'function') {
+            core.drawAll();
           }
         })
         .catch(err => console.warn('Erreur lors du chargement des pixels', err))
@@ -293,7 +295,7 @@
       });
       const baronyIds = [...new Set(zoneBaronies.map(zb => zb.barony_id))];
       baronyPixels = {};
-      fetchBaronyPixelsInChunks(baronyIds, baronyPixels).catch(err => console.error(err));
+      fetchBaronyPixelsInChunks(baronyIds, baronyPixels, false).catch(err => console.error(err));
       maritimeZoneBaronies = {};
       zoneBaronies.forEach(zb => {
         if (!maritimeZoneBaronies[zb.zone_id]) maritimeZoneBaronies[zb.zone_id] = [];
