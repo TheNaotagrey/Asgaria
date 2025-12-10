@@ -27,6 +27,7 @@
   let empireMap = {};
   let seigneurToCounty = {}, seigneurToDuchy = {}, seigneurToKingdom = {}, seigneurToViscounty = {}, seigneurToMarquisate = {}, seigneurToArchduchy = {}, seigneurToEmpire = {};
   let canonicalLandMap = {};
+  let canonicalDependents = {};
   let sanctuaryMap = {};
   let baronyAdjacency = {};
   let mapData = {};
@@ -484,46 +485,50 @@
         });
         sel.value = val;
         row.dataset.canonicalId = val;
-        sel.addEventListener('change', () => {
-          const newId = parseInt(sel.value, 10);
-          const key = canonicalKey(currentSelectedId);
-          const oldId = parseInt(row.dataset.canonicalId || '0', 10);
-          if (oldId) {
-            fetch(`${API_BASE}/api/canonical_lands?barony_id=${currentSelectedId}&canonical_barony_id=${oldId}`, { method: 'DELETE' });
-            if (canonicalLandMap[key]) canonicalLandMap[key] = canonicalLandMap[key].filter(id => id !== oldId);
-          }
-          if (newId) {
-            fetch(`${API_BASE}/api/canonical_lands`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ barony_id: currentSelectedId, canonical_barony_id: newId })
-            });
-            if (!canonicalLandMap[key]) canonicalLandMap[key] = [];
-            canonicalLandMap[key].push(newId);
-          }
-          row.dataset.canonicalId = newId;
-          if (filterManager && filterSelect && filterSelect.value === 'canonical') filterManager.applyFilter('canonical');
+    sel.addEventListener('change', () => {
+      const newId = parseInt(sel.value, 10);
+      const canonicalKeyId = canonicalKey(currentSelectedId);
+      const oldId = parseInt(row.dataset.canonicalId || '0', 10);
+      if (oldId) {
+        fetch(`${API_BASE}/api/canonical_lands?barony_id=${oldId}&canonical_barony_id=${currentSelectedId}`, { method: 'DELETE' });
+        if (canonicalDependents[canonicalKeyId]) canonicalDependents[canonicalKeyId] = canonicalDependents[canonicalKeyId].filter(id => id !== oldId);
+        if (canonicalLandMap[canonicalKey(oldId)]) canonicalLandMap[canonicalKey(oldId)] = canonicalLandMap[canonicalKey(oldId)].filter(id => id !== currentSelectedId);
+      }
+      if (newId) {
+        fetch(`${API_BASE}/api/canonical_lands`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ barony_id: newId, canonical_barony_id: currentSelectedId })
         });
+        if (!canonicalDependents[canonicalKeyId]) canonicalDependents[canonicalKeyId] = [];
+        canonicalDependents[canonicalKeyId].push(newId);
+        if (!canonicalLandMap[canonicalKey(newId)]) canonicalLandMap[canonicalKey(newId)] = [];
+        canonicalLandMap[canonicalKey(newId)].push(currentSelectedId);
+      }
+      row.dataset.canonicalId = newId;
+      if (filterManager && filterSelect && filterSelect.value === 'canonical') filterManager.applyFilter('canonical');
+    });
 
         const delBtn = document.createElement('button');
         delBtn.textContent = '-';
-        delBtn.addEventListener('click', () => {
-          const key = canonicalKey(currentSelectedId);
-          const oldId = parseInt(row.dataset.canonicalId || '0', 10);
-          if (oldId) {
-            fetch(`${API_BASE}/api/canonical_lands?barony_id=${currentSelectedId}&canonical_barony_id=${oldId}`, { method: 'DELETE' });
-            if (canonicalLandMap[key]) canonicalLandMap[key] = canonicalLandMap[key].filter(id => id !== oldId);
-          }
-          row.remove();
-          if (filterManager && filterSelect && filterSelect.value === 'canonical') filterManager.applyFilter('canonical');
-        });
+    delBtn.addEventListener('click', () => {
+      const canonicalKeyId = canonicalKey(currentSelectedId);
+      const oldId = parseInt(row.dataset.canonicalId || '0', 10);
+      if (oldId) {
+        fetch(`${API_BASE}/api/canonical_lands?barony_id=${oldId}&canonical_barony_id=${currentSelectedId}`, { method: 'DELETE' });
+        if (canonicalDependents[canonicalKeyId]) canonicalDependents[canonicalKeyId] = canonicalDependents[canonicalKeyId].filter(id => id !== oldId);
+        if (canonicalLandMap[canonicalKey(oldId)]) canonicalLandMap[canonicalKey(oldId)] = canonicalLandMap[canonicalKey(oldId)].filter(id => id !== currentSelectedId);
+      }
+      row.remove();
+      if (filterManager && filterSelect && filterSelect.value === 'canonical') filterManager.applyFilter('canonical');
+    });
 
         row.appendChild(sel);
         row.appendChild(delBtn);
         list.appendChild(row);
       }
 
-      (canonicalLandMap[canonicalKey(currentSelectedId)] || []).forEach(id => addRow(id));
+      (canonicalDependents[canonicalKey(currentSelectedId)] || []).forEach(id => addRow(id));
       const addBtn = document.createElement('button');
       addBtn.textContent = '+';
       addBtn.addEventListener('click', () => addRow());
@@ -704,10 +709,14 @@
       seigneurToEmpire = {};
       empires.forEach(e => { empireMap[e.id] = e; if (e.seigneur_id) seigneurToEmpire[e.seigneur_id] = e.id; });
       canonicalLandMap = {};
+      canonicalDependents = {};
       canonicalLands.forEach(cl => {
-        const key = canonicalKey(cl.barony_id);
-        if (!canonicalLandMap[key]) canonicalLandMap[key] = [];
-        canonicalLandMap[key].push(cl.canonical_barony_id);
+        const baronyKey = canonicalKey(cl.barony_id);
+        const canonicalKeyId = canonicalKey(cl.canonical_barony_id);
+        if (!canonicalLandMap[baronyKey]) canonicalLandMap[baronyKey] = [];
+        canonicalLandMap[baronyKey].push(cl.canonical_barony_id);
+        if (!canonicalDependents[canonicalKeyId]) canonicalDependents[canonicalKeyId] = [];
+        canonicalDependents[canonicalKeyId].push(cl.barony_id);
       });
       sanctuaryMap = {};
       sanctuaries.forEach(s => {
@@ -764,6 +773,7 @@
       archduchyMap,
       empireMap,
       canonicalLandMap,
+      canonicalDependents,
       sanctuaryMap,
       baronyAdjacency,
       baronyPixels: baronyPixelData,
@@ -839,10 +849,21 @@
             maritimeZoneBaronies[newId] = maritimeZoneBaronies[currentSelectedId];
             delete maritimeZoneBaronies[currentSelectedId];
           }
-        } else if (canonicalLandMap[canonicalKey(currentSelectedId)]) {
+        }
+        if (canonicalLandMap[canonicalKey(currentSelectedId)]) {
           canonicalLandMap[canonicalKey(newId)] = canonicalLandMap[canonicalKey(currentSelectedId)];
           delete canonicalLandMap[canonicalKey(currentSelectedId)];
         }
+        Object.keys(canonicalLandMap).forEach(k => {
+          canonicalLandMap[k] = canonicalLandMap[k].map(val => (val === currentSelectedId ? newId : val));
+        });
+        if (canonicalDependents[canonicalKey(currentSelectedId)]) {
+          canonicalDependents[canonicalKey(newId)] = canonicalDependents[canonicalKey(currentSelectedId)];
+          delete canonicalDependents[canonicalKey(currentSelectedId)];
+        }
+        Object.keys(canonicalDependents).forEach(k => {
+          canonicalDependents[k] = canonicalDependents[k].map(val => (val === currentSelectedId ? newId : val));
+        });
         Object.keys(baronyAdjacency).forEach(k => {
           const list = baronyAdjacency[k];
           const keyNum = parseInt(k, 10);
