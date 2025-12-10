@@ -1,4 +1,5 @@
 node_modules/
 asgaria.db
+sessions.db
 /tmp/
 app.log
