@@ -167,30 +167,42 @@
     let loaded = 0;
     const total = ids.length;
 
-    const scheduleNext = () => {
-      if (active.length >= MAX_PIXEL_REQUESTS) return;
-      const batch = queue.splice(0, PIXEL_CHUNK_SIZE);
-      if (batch.length === 0) return;
-      const promise = fetch(`${API_BASE}/api/barony_pixels?ids=${batch.join(',')}`)
-        .then(r => r.json())
-        .then(data => {
-          Object.assign(target, data);
-          loaded = Math.min(total, loaded + batch.length);
-          updatePixelLoading(loaded, total, true);
-          if (applyToMap && core && typeof core.setPixelData === 'function') {
-            core.setPixelData(target);
-          } else if (core && typeof core.drawAll === 'function') {
-            core.drawAll();
-          }
-        })
-        .catch(err => console.warn('Erreur lors du chargement des pixels', err))
-        .finally(() => {
-          const idx = active.indexOf(promise);
-          if (idx >= 0) active.splice(idx, 1);
-          scheduleNext();
-        });
-      active.push(promise);
-    };
+      const scheduleNext = () => {
+        if (active.length >= MAX_PIXEL_REQUESTS) return;
+        const batch = queue.splice(0, PIXEL_CHUNK_SIZE);
+        if (batch.length === 0) return;
+        const promise = fetch(`${API_BASE}/api/barony_pixels?ids=${batch.join(',')}`)
+          .then(async r => {
+            if (!r.ok) {
+              throw new Error(`HTTP ${r.status}`);
+            }
+            const text = await r.text();
+            if (!text) return {};
+            try {
+              return JSON.parse(text);
+            } catch (e) {
+              console.warn('Réponse pixels invalide, texte brutes :', text);
+              throw e;
+            }
+          })
+          .then(data => {
+            Object.assign(target, data);
+            loaded = Math.min(total, loaded + batch.length);
+            updatePixelLoading(loaded, total, true);
+            if (applyToMap && core && typeof core.setPixelData === 'function') {
+              core.setPixelData(target);
+            } else if (core && typeof core.drawAll === 'function') {
+              core.drawAll();
+            }
+          })
+          .catch(err => console.warn('Erreur lors du chargement des pixels', err))
+          .finally(() => {
+            const idx = active.indexOf(promise);
+            if (idx >= 0) active.splice(idx, 1);
+            scheduleNext();
+          });
+        active.push(promise);
+      };
 
     for (let i = 0; i < MAX_PIXEL_REQUESTS; i++) {
       scheduleNext();
