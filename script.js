@@ -489,14 +489,14 @@
           const key = canonicalKey(currentSelectedId);
           const oldId = parseInt(row.dataset.canonicalId || '0', 10);
           if (oldId) {
-            fetch(`${API_BASE}/api/canonical_lands?barony_id=${currentSelectedId}&canonical_barony_id=${oldId}`, { method: 'DELETE' });
+            fetch(`${API_BASE}/api/canonical_lands?barony_id=${oldId}&canonical_barony_id=${currentSelectedId}`, { method: 'DELETE' });
             if (canonicalLandMap[key]) canonicalLandMap[key] = canonicalLandMap[key].filter(id => id !== oldId);
           }
           if (newId) {
             fetch(`${API_BASE}/api/canonical_lands`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ barony_id: currentSelectedId, canonical_barony_id: newId })
+              body: JSON.stringify({ barony_id: newId, canonical_barony_id: currentSelectedId })
             });
             if (!canonicalLandMap[key]) canonicalLandMap[key] = [];
             canonicalLandMap[key].push(newId);
@@ -511,7 +511,7 @@
           const key = canonicalKey(currentSelectedId);
           const oldId = parseInt(row.dataset.canonicalId || '0', 10);
           if (oldId) {
-            fetch(`${API_BASE}/api/canonical_lands?barony_id=${currentSelectedId}&canonical_barony_id=${oldId}`, { method: 'DELETE' });
+            fetch(`${API_BASE}/api/canonical_lands?barony_id=${oldId}&canonical_barony_id=${currentSelectedId}`, { method: 'DELETE' });
             if (canonicalLandMap[key]) canonicalLandMap[key] = canonicalLandMap[key].filter(id => id !== oldId);
           }
           row.remove();
@@ -705,9 +705,9 @@
       empires.forEach(e => { empireMap[e.id] = e; if (e.seigneur_id) seigneurToEmpire[e.seigneur_id] = e.id; });
       canonicalLandMap = {};
       canonicalLands.forEach(cl => {
-        const key = canonicalKey(cl.barony_id);
+        const key = canonicalKey(cl.canonical_barony_id);
         if (!canonicalLandMap[key]) canonicalLandMap[key] = [];
-        canonicalLandMap[key].push(cl.canonical_barony_id);
+        canonicalLandMap[key].push(cl.barony_id);
       });
       sanctuaryMap = {};
       sanctuaries.forEach(s => {
@@ -843,6 +843,9 @@
           canonicalLandMap[canonicalKey(newId)] = canonicalLandMap[canonicalKey(currentSelectedId)];
           delete canonicalLandMap[canonicalKey(currentSelectedId)];
         }
+        Object.keys(canonicalLandMap).forEach(k => {
+          canonicalLandMap[k] = canonicalLandMap[k].map(val => (val === currentSelectedId ? newId : val));
+        });
         Object.keys(baronyAdjacency).forEach(k => {
           const list = baronyAdjacency[k];
           const keyNum = parseInt(k, 10);

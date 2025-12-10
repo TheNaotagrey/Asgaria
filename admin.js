@@ -229,14 +229,14 @@ function openCanonicalPopup(baronyId, baroniesList, onChange){
       const key = canonicalKey(baronyId);
       const oldId = parseInt(row.dataset.canonicalId || '0', 10);
       if (oldId) {
-        await fetchJSON(`/api/canonical_lands?barony_id=${baronyId}&canonical_barony_id=${oldId}`, { method: 'DELETE' });
+        await fetchJSON(`/api/canonical_lands?barony_id=${oldId}&canonical_barony_id=${baronyId}`, { method: 'DELETE' });
         if (canonicalLandMap[key]) canonicalLandMap[key] = canonicalLandMap[key].filter(id => id !== oldId);
       }
       if (newId) {
         await fetchJSON('/api/canonical_lands', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ barony_id: baronyId, canonical_barony_id: newId })
+          body: JSON.stringify({ barony_id: newId, canonical_barony_id: baronyId })
         });
         if (!canonicalLandMap[key]) canonicalLandMap[key] = [];
         if (!canonicalLandMap[key].includes(newId)) canonicalLandMap[key].push(newId);
@@ -251,7 +251,7 @@ function openCanonicalPopup(baronyId, baroniesList, onChange){
       const key = canonicalKey(baronyId);
       const oldId = parseInt(row.dataset.canonicalId || '0', 10);
       if (oldId) {
-        await fetchJSON(`/api/canonical_lands?barony_id=${baronyId}&canonical_barony_id=${oldId}`, { method: 'DELETE' });
+        await fetchJSON(`/api/canonical_lands?barony_id=${oldId}&canonical_barony_id=${baronyId}`, { method: 'DELETE' });
         if (canonicalLandMap[key]) canonicalLandMap[key] = canonicalLandMap[key].filter(id => id !== oldId);
       }
       row.remove();
@@ -1690,9 +1690,9 @@ async function loadBaronies(){
   const viscountiesSelect = viscounties.slice().sort((a,b)=>a.name.localeCompare(b.name));
   canonicalLandMap = {};
   canonicalLands.forEach(cl => {
-    const key = canonicalKey(cl.barony_id);
+    const key = canonicalKey(cl.canonical_barony_id);
     if (!canonicalLandMap[key]) canonicalLandMap[key] = [];
-    canonicalLandMap[key].push(cl.canonical_barony_id);
+    canonicalLandMap[key].push(cl.barony_id);
   });
   const baroniesById = baronies.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableBaronies'), baroniesById, {
