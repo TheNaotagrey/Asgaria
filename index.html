@@ -6,27 +6,20 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <script src="renderHeader.js"></script>
-  <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      renderHeader('Carte des baronnies', () => {
-        const header = document.querySelector('.app-header');
-        header.insertAdjacentHTML('beforeend', `
-          <nav class="tabs">
-            <a href="index.html">Baronnies</a>
-            <a href="index.html?mode=sea">Carte Maritime</a>
-          </nav>
-        `);
-        const controls = document.getElementById('controls');
-        controls.insertAdjacentHTML('afterbegin', `
-          <button id="randomBtn" class="control-btn">Couleurs aléatoires</button>
-          <label for="filterSelect">Filtre :</label>
-          <select id="filterSelect" class="control-btn"></select>
-          <span id="pixelLoading" class="loading-indicator" style="display:none;"></span>
-        `);
-      });
-    });
-  </script>
+  <header class="app-header">
+    <h1>Carte des baronnies</h1>
+    <nav class="tabs">
+      <a href="index.html">Baronnies</a>
+      <a href="index.html?mode=sea">Carte Maritime</a>
+    </nav>
+    <div id="controls" class="controls-row">
+      <button id="randomBtn" class="control-btn">Couleurs aléatoires</button>
+      <label for="filterSelect">Filtre :</label>
+      <select id="filterSelect" class="control-btn"></select>
+      <span id="pixelLoading" class="loading-indicator" style="display:none;"></span>
+      <span id="authArea" class="auth-area"></span>
+    </div>
+  </header>
   <main>
     <div id="mapContainer" class="map-container">
       <div id="panZoomGroup" class="panzoom-group">
