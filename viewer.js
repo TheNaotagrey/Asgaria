@@ -265,7 +265,8 @@
     if (info.priory_religion_id) buildings.push(`Prieuré: ${religionMap[info.priory_religion_id]?.name || ''}`);
     if (info.church_religion_id) buildings.push(`Église: ${religionMap[info.church_religion_id]?.name || ''}`);
     if (info.cathedral_religion_id) buildings.push(`Cathédrale: ${religionMap[info.cathedral_religion_id]?.name || ''}`);
-    if (info.bishop) buildings.push('Évêque');
+    const owner = info.seigneur_id ? seigneurMap[info.seigneur_id] : null;
+    if (owner?.bishop) buildings.push('Évêque');
     setList(religiousSection, infoReligiousList, buildings);
     if (filterManager && filterSelect && filterSelect.value === 'distance') {
       filterManager.applyFilter('distance');

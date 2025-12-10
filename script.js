@@ -108,8 +108,6 @@
   const editCultureSelect = document.getElementById('editCulture');
   const editViscountySelect = document.getElementById('editViscounty');
   const editCountySelect = document.getElementById('editCounty');
-  const editPlayerCheckbox = document.getElementById('editPlayer');
-  const editBishopCheckbox = document.getElementById('editBishop');
 
   function updateLegend(groups) {
     if (!legendDiv) return;
@@ -340,17 +338,6 @@
       saveBaronyFields({ county_id: parseInt(editCountySelect.value, 10) || null });
     });
   }
-  if (editPlayerCheckbox) {
-    editPlayerCheckbox.addEventListener('change', () => {
-      saveBaronyFields({ player: editPlayerCheckbox.checked ? 1 : 0 });
-    });
-  }
-  if (editBishopCheckbox) {
-    editBishopCheckbox.addEventListener('change', () => {
-      saveBaronyFields({ bishop: editBishopCheckbox.checked ? 1 : 0 });
-    });
-  }
-
   if (editSanctuariesBtn) {
     editSanctuariesBtn.addEventListener('click', () => {
       if (!currentSelectedId) return;
@@ -630,8 +617,6 @@
     if (editCultureSelect) editCultureSelect.value = baronyMeta[id]?.culture_id || '';
     if (editViscountySelect) editViscountySelect.value = baronyMeta[id]?.viscounty_id || '';
     if (editCountySelect) editCountySelect.value = baronyMeta[id]?.county_id || '';
-    if (editPlayerCheckbox) editPlayerCheckbox.checked = !!baronyMeta[id]?.player;
-    if (editBishopCheckbox) editBishopCheckbox.checked = !!baronyMeta[id]?.bishop;
 
     if (filterManager && filterSelect && filterSelect.value === 'distance') {
       filterManager.applyFilter('distance');
