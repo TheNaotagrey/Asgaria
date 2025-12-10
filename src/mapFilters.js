@@ -297,16 +297,17 @@
             groupName = data.religionMap[groupId]?.name || '';
           }
         } else if (type === 'occupation') {
-          if (!info.seigneur_id) {
+          const owner = info.seigneur_id && data.seigneurMap ? data.seigneurMap[info.seigneur_id] : null;
+          if (!owner) {
             groupId = 'unoccupied';
             groupName = 'Non occupée';
-          } else if (info.player && info.bishop) {
+          } else if (owner.player && owner.bishop) {
             groupId = 'player_bishop';
             groupName = 'Joueur Évêque';
-          } else if (info.player) {
+          } else if (owner.player) {
             groupId = 'player_seigneur';
             groupName = 'Joueur Seigneur';
-          } else if (info.bishop) {
+          } else if (owner.bishop) {
             groupId = 'npc_bishop';
             groupName = 'PNJ Évêque';
           } else {

@@ -58,6 +58,8 @@ CREATE TABLE IF NOT EXISTS seigneurs (
   religion_id INTEGER,
   overlord_id INTEGER,
   user_id INTEGER UNIQUE,
+  player INTEGER DEFAULT 0,
+  bishop INTEGER DEFAULT 0,
   FOREIGN KEY(religion_id) REFERENCES religions(id),
   FOREIGN KEY(overlord_id) REFERENCES seigneurs(id),
   FOREIGN KEY(user_id) REFERENCES users(id)
@@ -125,8 +127,6 @@ CREATE TABLE IF NOT EXISTS baronies (
   priory_religion_id INTEGER,
   church_religion_id INTEGER,
   cathedral_religion_id INTEGER,
-  player INTEGER DEFAULT 0,
-  bishop INTEGER DEFAULT 0,
   FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id) ON DELETE SET NULL,
   FOREIGN KEY(religion_pop_id) REFERENCES religions(id),
   FOREIGN KEY(county_id) REFERENCES counties(id),
@@ -424,11 +424,14 @@ db.exec(initSql, () => {
     if (!rows.some(r => r.name === 'cathedral_religion_id')) {
       db.run('ALTER TABLE baronies ADD COLUMN cathedral_religion_id INTEGER');
     }
+  });
+  db.all("PRAGMA table_info(seigneurs)", (err, rows) => {
+    if (err || !rows) return;
     if (!rows.some(r => r.name === 'player')) {
-      db.run('ALTER TABLE baronies ADD COLUMN player INTEGER DEFAULT 0');
+      db.run('ALTER TABLE seigneurs ADD COLUMN player INTEGER DEFAULT 0');
     }
     if (!rows.some(r => r.name === 'bishop')) {
-      db.run('ALTER TABLE baronies ADD COLUMN bishop INTEGER DEFAULT 0');
+      db.run('ALTER TABLE seigneurs ADD COLUMN bishop INTEGER DEFAULT 0');
     }
   });
   db.all("PRAGMA table_info(counties)", (err, rows) => {
@@ -774,7 +777,7 @@ app.use('/api/counties', crudRoutes('counties',['name','seigneur_id','duchy_id',
 app.use('/api/viscounties', crudRoutes('viscounties',['name','seigneur_id']));
 app.use('/api/religions', crudRoutes('religions',['name','color']));
 app.use('/api/cultures', crudRoutes('cultures',['name','color']));
-app.use('/api/seigneurs', crudRoutes('seigneurs',['name','religion_id','overlord_id','user_id']));
+app.use('/api/seigneurs', crudRoutes('seigneurs',['name','religion_id','overlord_id','user_id','player','bishop']));
 app.use('/api/inventaire', crudRoutes('inventaire', inventaireFields));
 
 app.get('/api/seigneuries', requireAdmin, (req, res) => {
@@ -1291,7 +1294,7 @@ app.post('/api/transactions', requireAdmin, (req,res)=>{
 
 const baronyFields = [
   'id','name','seigneur_id','religion_pop_id','county_id','viscounty_id','culture_id',
-  'priory_religion_id','church_religion_id','cathedral_religion_id','player','bishop'
+  'priory_religion_id','church_religion_id','cathedral_religion_id'
 ];
 
 app.get('/api/baronies', (req, res) => {
