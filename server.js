@@ -170,7 +170,9 @@ CREATE TABLE IF NOT EXISTS trade_routes (
 );
 CREATE TABLE IF NOT EXISTS maritime_zones (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT
+  name TEXT,
+  seigneur_id INTEGER,
+  FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id)
 );
 CREATE TABLE IF NOT EXISTS maritime_zone_pixels (
   zone_id INTEGER PRIMARY KEY REFERENCES maritime_zones(id),
@@ -462,6 +464,12 @@ db.exec(initSql, () => {
       if (!rows.some(r => r.name === 'seigneur_id')) {
         db.run('ALTER TABLE kingdoms ADD COLUMN seigneur_id INTEGER REFERENCES seigneurs(id)');
       }
+    }
+  });
+  db.all("PRAGMA table_info(maritime_zones)", (err, rows) => {
+    if (err || !rows) return;
+    if (!rows.some(r => r.name === 'seigneur_id')) {
+      db.run('ALTER TABLE maritime_zones ADD COLUMN seigneur_id INTEGER');
     }
   });
   db.all("PRAGMA table_info(canonical_lands)", (err, rows) => {
@@ -2675,7 +2683,7 @@ app.post('/api/trade_routes/build', (req, res) => {
 });
 
 // Maritime zones CRUD
-const maritimeZoneFields = ['name'];
+const maritimeZoneFields = ['name','seigneur_id'];
 const maritimeZonesRouter = crudRoutes('maritime_zones', maritimeZoneFields);
 maritimeZonesRouter.use((req,res,next)=>{
   if(['POST','PUT','DELETE'].includes(req.method)) return requireAdmin(req,res,next);

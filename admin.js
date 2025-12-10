@@ -100,6 +100,8 @@ let infraPropsSelect = [];
 let tagsSelect = [];
 const dataCache = {};
 const tabLoaded = {};
+const canonicalKey = id => (id === null || id === undefined ? '' : String(id));
+let canonicalLandMap = {};
 const maxOptions = [
   ...Array.from({length:10}, (_,i)=>({ id:String(i+1), name:String(i+1) })),
   ...baronyPropIntFields.map(f=>({ id:f, name:baronyPropLabels[f] || f })),
@@ -197,6 +199,124 @@ function createCostEditor(val) {
     });
     return JSON.stringify(res);
   };
+  return container;
+}
+
+function openCanonicalPopup(baronyId, baroniesList, onChange){
+  const overlay = document.createElement('div');
+  overlay.className = 'popup-overlay';
+  const popup = document.createElement('div');
+  popup.className = 'popup';
+  const list = document.createElement('div');
+
+  function addRow(val = ''){
+    const row = document.createElement('div');
+    row.className = 'cost-row';
+    const sel = document.createElement('select');
+    const blank = document.createElement('option');
+    blank.value = '';
+    sel.appendChild(blank);
+    baroniesList.forEach(b => {
+      const op = document.createElement('option');
+      op.value = b.id;
+      op.textContent = `${b.id} - ${b.name}`;
+      if (String(b.id) === String(val)) op.selected = true;
+      sel.appendChild(op);
+    });
+    row.dataset.canonicalId = val;
+    sel.addEventListener('change', async () => {
+      const newId = parseInt(sel.value, 10);
+      const key = canonicalKey(baronyId);
+      const oldId = parseInt(row.dataset.canonicalId || '0', 10);
+      if (oldId) {
+        await fetchJSON(`/api/canonical_lands?barony_id=${baronyId}&canonical_barony_id=${oldId}`, { method: 'DELETE' });
+        if (canonicalLandMap[key]) canonicalLandMap[key] = canonicalLandMap[key].filter(id => id !== oldId);
+      }
+      if (newId) {
+        await fetchJSON('/api/canonical_lands', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ barony_id: baronyId, canonical_barony_id: newId })
+        });
+        if (!canonicalLandMap[key]) canonicalLandMap[key] = [];
+        if (!canonicalLandMap[key].includes(newId)) canonicalLandMap[key].push(newId);
+      }
+      row.dataset.canonicalId = newId;
+      if (onChange) onChange();
+    });
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.textContent = '-';
+    delBtn.addEventListener('click', async () => {
+      const key = canonicalKey(baronyId);
+      const oldId = parseInt(row.dataset.canonicalId || '0', 10);
+      if (oldId) {
+        await fetchJSON(`/api/canonical_lands?barony_id=${baronyId}&canonical_barony_id=${oldId}`, { method: 'DELETE' });
+        if (canonicalLandMap[key]) canonicalLandMap[key] = canonicalLandMap[key].filter(id => id !== oldId);
+      }
+      row.remove();
+      if (onChange) onChange();
+    });
+    row.appendChild(sel);
+    row.appendChild(delBtn);
+    list.appendChild(row);
+  }
+
+  const existing = canonicalLandMap[canonicalKey(baronyId)] || [];
+  if (existing.length) {
+    existing.forEach(id => addRow(id));
+  } else {
+    addRow();
+  }
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.textContent = '+';
+  addBtn.addEventListener('click', () => addRow());
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.textContent = 'Fermer';
+  closeBtn.addEventListener('click', () => overlay.remove());
+
+  popup.appendChild(list);
+  popup.appendChild(addBtn);
+  popup.appendChild(closeBtn);
+  overlay.appendChild(popup);
+  document.body.appendChild(overlay);
+}
+
+function createCanonicalCell(item, baroniesList){
+  const container = document.createElement('div');
+  const summary = document.createElement('div');
+  summary.style.marginBottom = '4px';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.textContent = 'Modifier';
+
+  function updateSummary(){
+    const ids = canonicalLandMap[canonicalKey(item.id)] || [];
+    if (!ids.length) {
+      summary.textContent = 'Aucune';
+      return;
+    }
+    const labels = ids.map(cid => {
+      const b = baroniesList.find(x => String(x.id) === String(cid));
+      return b ? `${cid} - ${b.name}` : cid;
+    });
+    const short = labels.slice(0, 3);
+    if (labels.length > 3) short.push('…');
+    summary.textContent = short.join(', ');
+  }
+
+  btn.addEventListener('click', () => {
+    openCanonicalPopup(item.id, baroniesList, () => {
+      updateSummary();
+      showSaveIndicator(container);
+    });
+  });
+
+  updateSummary();
+  container.appendChild(summary);
+  container.appendChild(btn);
   return container;
 }
 
@@ -950,6 +1070,8 @@ function renderTable(container, rows, opts){
   let sortCol = 'id';
   let sortDir = 'asc';
 
+  const extraColumns = opts.extraColumns || [];
+
   const headers = [{label:'ID', key:'id'}].concat(
     opts.fields.map(f => ({
       label: opts.labels && opts.labels[f] ? opts.labels[f] : f,
@@ -970,6 +1092,11 @@ function renderTable(container, rows, opts){
       updateHeaders();
       renderBody();
     });
+    headRow.appendChild(th);
+  });
+  extraColumns.forEach(col => {
+    const th = document.createElement('th');
+    th.textContent = col.label || '';
     headRow.appendChild(th);
   });
   headRow.appendChild(document.createElement('th'));
@@ -1219,6 +1346,12 @@ function renderTable(container, rows, opts){
       td.appendChild(makeInput(item[f], f, item));
       tr.appendChild(td);
     });
+    extraColumns.forEach(col => {
+      const tdExtra = document.createElement('td');
+      const content = col.render ? col.render(item, tr) : document.createTextNode('');
+      tdExtra.appendChild(content);
+      tr.appendChild(tdExtra);
+    });
     td = document.createElement('td');
     const btn = document.createElement('button');
     btn.textContent = 'Enregistrer';
@@ -1269,6 +1402,11 @@ function renderTable(container, rows, opts){
         const inp = makeInput('', f, null);
         addInputs[f]=inp;
         td.appendChild(inp);
+        addRow.appendChild(td);
+      });
+      extraColumns.forEach(()=>{
+        const td = document.createElement('td');
+        td.textContent = '';
         addRow.appendChild(td);
       });
       const addTd = document.createElement('td');
@@ -1500,6 +1638,22 @@ async function loadViscounties(){
   });
 }
 
+async function loadMaritimeZones(){
+  const [zones, seigneurs] = await Promise.all([
+    getData('maritime_zones','/api/maritime_zones'),
+    getData('seigneurs','/api/seigneurs'),
+  ]);
+  const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const zonesById = zones.slice().sort((a,b)=>a.id - b.id);
+  renderTable(document.getElementById('tableMaritime'), zonesById, {
+    endpoint:'maritime_zones',
+    fields:['name','seigneur_id'],
+    selects:{ seigneur_id: seigneursSelect },
+    labels:{ name:'Nom', seigneur_id:'Seigneur maritime' },
+    nullLabels:{ seigneur_id:'Aucun' }
+  });
+}
+
 async function loadSeigneuries(){
   const [seigneuries,baronies,seigneurs] = await Promise.all([
     getData('seigneuries','/api/seigneuries'),
@@ -1519,19 +1673,27 @@ async function loadSeigneuries(){
 }
 
 async function loadBaronies(){
-  const [baronies,seigneurs,religions,cultures,counties,viscounties] = await Promise.all([
+  const [baronies,seigneurs,religions,cultures,counties,viscounties,canonicalLands] = await Promise.all([
     getData('baronies','/api/baronies'),
     getData('seigneurs','/api/seigneurs'),
     getData('religions','/api/religions'),
     getData('cultures','/api/cultures'),
     getData('counties','/api/counties'),
     getData('viscounties','/api/viscounties'),
+    fetchJSON('/api/canonical_lands')
   ]);
+  dataCache.canonical_lands = canonicalLands;
   const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const religionsSelect = religions.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const culturesSelect = cultures.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const countiesSelect = counties.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const viscountiesSelect = viscounties.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  canonicalLandMap = {};
+  canonicalLands.forEach(cl => {
+    const key = canonicalKey(cl.barony_id);
+    if (!canonicalLandMap[key]) canonicalLandMap[key] = [];
+    canonicalLandMap[key].push(cl.canonical_barony_id);
+  });
   const baroniesById = baronies.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableBaronies'), baroniesById, {
     endpoint:'baronies',
@@ -1556,7 +1718,13 @@ async function loadBaronies(){
       priory_religion_id:'Aucun',
       church_religion_id:'Aucune',
       cathedral_religion_id:'Aucune'
-    }
+    },
+    extraColumns:[
+      {
+        label:'Terres canoniques',
+        render:item => createCanonicalCell(item, baroniesById)
+      }
+    ]
   });
 }
 
@@ -1659,6 +1827,7 @@ const tabLoaders = {
   marquisates: loadMarquisates,
   counties: loadCounties,
   viscounties: loadViscounties,
+  maritime: loadMaritimeZones,
   seigneuries: loadSeigneuries,
   baronies: loadBaronies,
   batiments: loadBatiments,

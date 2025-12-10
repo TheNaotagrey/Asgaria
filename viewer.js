@@ -50,6 +50,7 @@
   const seaInfoPanel = document.getElementById('seaInfoPanel');
   const seaInfoId = document.getElementById('seaInfoId');
   const seaInfoName = document.getElementById('seaInfoName');
+  const seaInfoSeigneur = document.getElementById('seaInfoSeigneur');
   const legendDiv = document.getElementById('legend');
   const filterSelect = document.getElementById('filterSelect');
   const randomBtn = document.getElementById('randomBtn');
@@ -224,6 +225,7 @@
       if (infoPanel) infoPanel.style.display = 'none';
       if (seaInfoId) seaInfoId.textContent = info.id || '';
       if (seaInfoName) seaInfoName.textContent = info.name || '';
+      if (seaInfoSeigneur) seaInfoSeigneur.textContent = info.seigneur_id ? (seigneurMap[info.seigneur_id]?.name || info.seigneur_id) : '';
       if (filterManager && filterSelect && (filterSelect.value === 'distance' || filterSelect.value === 'baronies')) {
         filterManager.applyFilter(filterSelect.value);
       }
@@ -279,13 +281,16 @@
     const endpoint = mapMode === 'sea' ? '/api/maritime_zone_pixels' : '/api/barony_pixels';
     pixelData = mapMode === 'sea' ? await fetch(API_BASE + endpoint).then(r => r.json()) : {};
     if (mapMode === 'sea') {
-      const [zones, connections, zoneBaronies] = await Promise.all([
+      const [zones, seigneurs, connections, zoneBaronies] = await Promise.all([
         fetch(API_BASE + '/api/maritime_zones').then(r => r.json()),
+        fetch(API_BASE + '/api/seigneurs').then(r => r.json()),
         fetch(API_BASE + '/api/maritime_zone_connections').then(r => r.json()),
         fetch(API_BASE + '/api/maritime_zone_baronies').then(r => r.json())
       ]);
       baronyMeta = {};
       zones.forEach(z => { baronyMeta[z.id] = z; });
+      seigneurMap = {};
+      seigneurs.forEach(s => { seigneurMap[s.id] = s; });
       baronyAdjacency = {};
       connections.forEach(c => {
         if (!baronyAdjacency[c.zone_id_1]) baronyAdjacency[c.zone_id_1] = [];
@@ -301,7 +306,7 @@
         if (!maritimeZoneBaronies[zb.zone_id]) maritimeZoneBaronies[zb.zone_id] = [];
         maritimeZoneBaronies[zb.zone_id].push(zb.barony_id);
       });
-      mapData = { pixelData, baronyMeta, baronyAdjacency, baronyPixels, maritimeZoneBaronies, mapWidth, mapHeight, mapMode };
+      mapData = { pixelData, baronyMeta, baronyAdjacency, baronyPixels, maritimeZoneBaronies, seigneurMap, mapWidth, mapHeight, mapMode };
       return mapData;
     }
     const [baronies, seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires, canonicalLands, sanctuaries, connections] = await Promise.all([
