@@ -104,6 +104,7 @@ const tabLoaded = {};
 const canonicalKey = id => (id === null || id === undefined ? '' : String(id));
 let canonicalLandMap = {};
 let canonicalDependents = {};
+const relationUpdaters = {};
 const maxOptions = [
   ...Array.from({length:10}, (_,i)=>({ id:String(i+1), name:String(i+1) })),
   ...baronyPropIntFields.map(f=>({ id:f, name:baronyPropLabels[f] || f })),
@@ -321,6 +322,192 @@ function createCanonicalCell(item, baroniesList){
   });
 
   updateSummary();
+  container.appendChild(summary);
+  container.appendChild(btn);
+  return container;
+}
+
+function registerRelationUpdater(field, parentId, fn){
+  const key = canonicalKey(parentId);
+  if(!relationUpdaters[field]) relationUpdaters[field] = {};
+  if(!relationUpdaters[field][key]) relationUpdaters[field][key] = [];
+  relationUpdaters[field][key].push(fn);
+}
+
+function notifyRelationUpdate(field, parentId){
+  if(parentId === undefined || parentId === null) return;
+  const key = canonicalKey(parentId);
+  const list = relationUpdaters[field] && relationUpdaters[field][key];
+  if(list){
+    list.forEach(fn=> fn());
+  }
+}
+
+function updateRenderedSelect(containerId, fields, itemId, fieldKey, value){
+  const container = document.getElementById(containerId);
+  const table = container && container.querySelector('table');
+  if(!table) return;
+  const colIndex = fields.indexOf(fieldKey);
+  if(colIndex === -1) return;
+  const rows = table.querySelectorAll('tbody tr');
+  rows.forEach(tr => {
+    const idCell = tr.children[0];
+    if(!idCell) return;
+    if(String(idCell.textContent.trim()) !== String(itemId)) return;
+    const cell = tr.children[colIndex + 1];
+    if(!cell) return;
+    const sel = cell.querySelector('select');
+    if(sel){
+      sel.value = value == null ? '' : String(value);
+    }else{
+      const input = cell.querySelector('input');
+      if(input){
+        input.value = value == null ? '' : value;
+      }
+    }
+  });
+}
+
+function createRelationCell(item, children, opts){
+  const { childField, endpoint, labelField = 'name', tableId, tableFields, placeholder = 'Aucun' } = opts;
+  const container = document.createElement('div');
+  const summary = document.createElement('div');
+  summary.style.marginBottom = '4px';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.textContent = 'Modifier';
+
+  const getDisplayName = (child) => `${child.id} - ${child[labelField] || child.name || child.id}`;
+
+  const getCurrentChildren = () => children.filter(c => String(c[childField]) === String(item.id));
+
+  const updateSummary = () => {
+    const names = getCurrentChildren().map(getDisplayName);
+    const short = names.slice(0, 3);
+    if (names.length > 3) short.push('…');
+    summary.textContent = names.length ? short.join(', ') : placeholder;
+  };
+
+  registerRelationUpdater(childField, item.id, updateSummary);
+
+  const setParent = async (childId, parentId) => {
+    const child = children.find(c => String(c.id) === String(childId));
+    if (!child) return;
+    const oldParent = child ? child[childField] : null;
+    const payload = {};
+    const fieldsForUpdate = tableFields && Array.isArray(tableFields) ? tableFields : [childField];
+    fieldsForUpdate.forEach(f => {
+      if (f === childField) {
+        payload[f] = parentId == null ? null : parentId;
+      } else {
+        payload[f] = child[f] ?? null;
+      }
+    });
+    await fetchJSON(`/api/${endpoint}/${childId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (child) child[childField] = parentId == null ? null : parentId;
+    if (tableId && tableFields) updateRenderedSelect(tableId, tableFields, childId, childField, parentId);
+    if (oldParent !== undefined && oldParent !== parentId) notifyRelationUpdate(childField, oldParent);
+    if (parentId != null) notifyRelationUpdate(childField, parentId);
+  };
+
+  function getUsedIds(exceptRow) {
+    const used = new Set();
+    Array.from(list.querySelectorAll('.relation-row')).forEach(row => {
+      if (row === exceptRow) return;
+      const cid = parseInt(row.dataset.childId || '', 10);
+      if (cid) used.add(cid);
+    });
+    return used;
+  }
+
+  function populateOptions(select, row) {
+    const current = row ? row.dataset.childId : null;
+    const used = getUsedIds(row);
+    select.innerHTML = '';
+    const blank = document.createElement('option');
+    blank.value = '';
+    blank.textContent = placeholder;
+    select.appendChild(blank);
+    children.slice().sort((a, b) => (a[labelField] || '').localeCompare(b[labelField] || '')).forEach(ch => {
+      const op = document.createElement('option');
+      op.value = ch.id;
+      op.textContent = getDisplayName(ch);
+      if (used.has(ch.id)) op.disabled = true;
+      if (String(ch.id) === String(current)) op.selected = true;
+      select.appendChild(op);
+    });
+  }
+
+  function addRow(initialId = '') {
+    const row = document.createElement('div');
+    row.className = 'relation-row';
+    row.dataset.childId = initialId;
+    const sel = document.createElement('select');
+    populateOptions(sel, row);
+    sel.addEventListener('change', async () => {
+      const prevId = parseInt(row.dataset.childId || '', 10) || null;
+      const newId = sel.value ? parseInt(sel.value, 10) : null;
+      if (prevId === newId) return;
+      if (prevId) await setParent(prevId, null);
+      if (newId) await setParent(newId, item.id);
+      row.dataset.childId = newId || '';
+      populateOptions(sel, row);
+      updateSummary();
+      showSaveIndicator(container);
+    });
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.textContent = '-';
+    del.addEventListener('click', async () => {
+      const prevId = parseInt(row.dataset.childId || '', 10) || null;
+      if (prevId) await setParent(prevId, null);
+      row.remove();
+      updateSummary();
+      showSaveIndicator(container);
+    });
+    row.appendChild(sel);
+    row.appendChild(del);
+    list.appendChild(row);
+  }
+
+  const list = document.createElement('div');
+
+  const existing = getCurrentChildren();
+  if (existing.length) {
+    existing.forEach(ch => addRow(ch.id));
+  } else {
+    addRow();
+  }
+
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.textContent = '+';
+  addBtn.addEventListener('click', () => addRow());
+
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.textContent = 'Fermer';
+  closeBtn.addEventListener('click', () => overlay.remove());
+
+  const overlay = document.createElement('div');
+  overlay.className = 'popup-overlay';
+  const popup = document.createElement('div');
+  popup.className = 'popup';
+  popup.appendChild(list);
+  popup.appendChild(addBtn);
+  popup.appendChild(closeBtn);
+  overlay.appendChild(popup);
+  updateSummary();
+
+  btn.addEventListener('click', () => {
+    updateSummary();
+    document.body.appendChild(overlay);
+  });
+
   container.appendChild(summary);
   container.appendChild(btn);
   return container;
@@ -1554,133 +1741,236 @@ async function loadSeigneurs(){
   const assignedUserIds = new Set(seigneurs.filter(s=>s.user_id).map(s=>s.user_id));
   const userSelectFn = (item) => usersSelect.filter(u=>!assignedUserIds.has(u.id) || (item && u.id===item.user_id));
   const seigneursById = seigneurs.slice().sort((a,b)=>a.id - b.id);
+  const seigneurFields = ['name','user_id','religion_id','overlord_id','player','bishop'];
   renderTable(document.getElementById('tableSeigneurs'), seigneursById, {
     endpoint:'seigneurs',
-    fields:['name','user_id','religion_id','overlord_id','player','bishop'],
+    fields:seigneurFields,
     selects:{user_id:userSelectFn, religion_id:religionsSelect, overlord_id:seigneursSelect, player:yesNoSelect, bishop:yesNoSelect},
-    labels:{name:'Nom', user_id:'Utilisateur', religion_id:'Religion', overlord_id:'Suzerain', player:'Joueur', bishop:'Évêque'}
+    labels:{name:'Nom', user_id:'Utilisateur', religion_id:'Religion', overlord_id:'Suzerain', player:'Joueur', bishop:'Évêque'},
+    extraColumns:[{
+      label:'Vassaux',
+      render:item => createRelationCell(item, seigneurs, {
+        childField:'overlord_id',
+        endpoint:'seigneurs',
+        tableId:'tableSeigneurs',
+        tableFields: seigneurFields,
+        placeholder:'Aucun vassal',
+      })
+    }]
   });
 }
 
 async function loadEmpires(){
-  const [empires,seigneurs] = await Promise.all([
+  const [empires,seigneurs,kingdoms] = await Promise.all([
     getData('empires','/api/empires'),
-    getData('seigneurs','/api/seigneurs')
+    getData('seigneurs','/api/seigneurs'),
+    getData('kingdoms','/api/kingdoms'),
   ]);
   const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const empiresById = empires.slice().sort((a,b)=>a.id - b.id);
+  const kingdomsByName = kingdoms.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const kingdomFields = ['name','seigneur_id','empire_id','color'];
   renderTable(document.getElementById('tableEmpires'), empiresById, {
     endpoint:'empires',
     fields:['name','seigneur_id','color'],
     selects:{seigneur_id:seigneursSelect},
     labels:{name:'Nom', seigneur_id:'Détenteur du titre', color:'Couleur'},
-    colorFields:['color']
+    colorFields:['color'],
+    extraColumns:[{
+      label:'Royaumes',
+      render:item => createRelationCell(item, kingdomsByName, {
+        childField:'empire_id',
+        endpoint:'kingdoms',
+        tableId:'tableKingdoms',
+        tableFields: kingdomFields,
+        placeholder:'Aucun royaume'
+      })
+    }]
   });
 }
 
 async function loadKingdoms(){
-  const [kingdoms,seigneurs,empires] = await Promise.all([
+  const [kingdoms,seigneurs,empires,duchies] = await Promise.all([
     getData('kingdoms','/api/kingdoms'),
     getData('seigneurs','/api/seigneurs'),
     getData('empires','/api/empires'),
+    getData('duchies','/api/duchies'),
   ]);
   const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const empiresSelect = empires.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const kingdomsById = kingdoms.slice().sort((a,b)=>a.id - b.id);
+  const duchiesByName = duchies.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const duchyFields = ['name','seigneur_id','kingdom_id','archduchy_id','color'];
   renderTable(document.getElementById('tableKingdoms'), kingdomsById, {
     endpoint:'kingdoms',
     fields:['name','seigneur_id','empire_id','color'],
     selects:{seigneur_id:seigneursSelect, empire_id:empiresSelect},
     labels:{name:'Nom', seigneur_id:'Détenteur du titre', empire_id:'Empire', color:'Couleur'},
-    colorFields:['color']
+    colorFields:['color'],
+    extraColumns:[{
+      label:'Duchés de jure',
+      render:item => createRelationCell(item, duchiesByName, {
+        childField:'kingdom_id',
+        endpoint:'duchies',
+        tableId:'tableDuchies',
+        tableFields: duchyFields,
+        placeholder:'Aucun duché'
+      })
+    }]
   });
 }
 
 async function loadArchduchies(){
-  const [archduchies,seigneurs] = await Promise.all([
+  const [archduchies,seigneurs,duchies] = await Promise.all([
     getData('archduchies','/api/archduchies'),
     getData('seigneurs','/api/seigneurs'),
+    getData('duchies','/api/duchies'),
   ]);
   const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const archduchiesById = archduchies.slice().sort((a,b)=>a.id - b.id);
+  const duchiesByName = duchies.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const duchyFields = ['name','seigneur_id','kingdom_id','archduchy_id','color'];
   renderTable(document.getElementById('tableArchduchies'), archduchiesById, {
     endpoint:'archduchies',
     fields:['name','seigneur_id','color'],
     selects:{seigneur_id:seigneursSelect},
     labels:{name:'Nom', seigneur_id:'Détenteur du titre', color:'Couleur'},
-    colorFields:['color']
+    colorFields:['color'],
+    extraColumns:[{
+      label:'Duchés rattachés',
+      render:item => createRelationCell(item, duchiesByName, {
+        childField:'archduchy_id',
+        endpoint:'duchies',
+        tableId:'tableDuchies',
+        tableFields: duchyFields,
+        placeholder:'Aucun duché'
+      })
+    }]
   });
 }
 
 async function loadDuchies(){
-  const [duchies,seigneurs,kingdoms,archduchies] = await Promise.all([
+  const [duchies,seigneurs,kingdoms,archduchies,counties] = await Promise.all([
     getData('duchies','/api/duchies'),
     getData('seigneurs','/api/seigneurs'),
     getData('kingdoms','/api/kingdoms'),
     getData('archduchies','/api/archduchies'),
+    getData('counties','/api/counties'),
   ]);
   const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const kingdomsSelect = kingdoms.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const archduchiesSelect = archduchies.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const duchiesById = duchies.slice().sort((a,b)=>a.id - b.id);
+  const countiesByName = counties.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const countyFields = ['name','seigneur_id','duchy_id','marquisate_id','color'];
   renderTable(document.getElementById('tableDuchies'), duchiesById, {
     endpoint:'duchies',
     fields:['name','seigneur_id','kingdom_id','archduchy_id','color'],
     selects:{seigneur_id:seigneursSelect, kingdom_id:kingdomsSelect, archduchy_id:archduchiesSelect},
     labels:{name:'Nom', seigneur_id:'Détenteur du titre', kingdom_id:'Royaume', archduchy_id:'Archiduché', color:'Couleur'},
-    colorFields:['color']
+    colorFields:['color'],
+    extraColumns:[{
+      label:'Comtés de jure',
+      render:item => createRelationCell(item, countiesByName, {
+        childField:'duchy_id',
+        endpoint:'counties',
+        tableId:'tableCounties',
+        tableFields: countyFields,
+        placeholder:'Aucun comté'
+      })
+    }]
   });
 }
 
 async function loadMarquisates(){
-  const [marquisates,seigneurs] = await Promise.all([
+  const [marquisates,seigneurs,counties] = await Promise.all([
     getData('marquisates','/api/marquisates'),
     getData('seigneurs','/api/seigneurs'),
+    getData('counties','/api/counties'),
   ]);
   const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const marquisatesById = marquisates.slice().sort((a,b)=>a.id - b.id);
+  const countiesByName = counties.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const countyFields = ['name','seigneur_id','duchy_id','marquisate_id','color'];
   renderTable(document.getElementById('tableMarquisates'), marquisatesById, {
     endpoint:'marquisates',
     fields:['name','seigneur_id','color'],
     selects:{seigneur_id:seigneursSelect},
     labels:{name:'Nom', seigneur_id:'Détenteur du titre', color:'Couleur'},
-    colorFields:['color']
+    colorFields:['color'],
+    extraColumns:[{
+      label:'Comtés de marche',
+      render:item => createRelationCell(item, countiesByName, {
+        childField:'marquisate_id',
+        endpoint:'counties',
+        tableId:'tableCounties',
+        tableFields: countyFields,
+        placeholder:'Aucun comté'
+      })
+    }]
   });
 }
 
 async function loadCounties(){
-  const [counties,seigneurs,duchies,marquisates] = await Promise.all([
+  const [counties,seigneurs,duchies,marquisates,baronies] = await Promise.all([
     getData('counties','/api/counties'),
     getData('seigneurs','/api/seigneurs'),
     getData('duchies','/api/duchies'),
     getData('marquisates','/api/marquisates'),
+    getData('baronies','/api/baronies'),
   ]);
   const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const duchiesSelect = duchies.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const marquisatesSelect = marquisates.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const countiesById = counties.slice().sort((a,b)=>a.id - b.id);
+  const baroniesByName = baronies.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const baronyFieldList = baronyFields;
+  const countyFields = ['name','seigneur_id','duchy_id','marquisate_id','color'];
   renderTable(document.getElementById('tableCounties'), countiesById, {
     endpoint:'counties',
     fields:['name','seigneur_id','duchy_id','marquisate_id','color'],
     selects:{seigneur_id:seigneursSelect, duchy_id:duchiesSelect, marquisate_id:marquisatesSelect},
     labels:{name:'Nom', seigneur_id:'Détenteur du titre', duchy_id:'Duché', marquisate_id:'Marquisat', color:'Couleur'},
-    colorFields:['color']
+    colorFields:['color'],
+    extraColumns:[{
+      label:'Baronnies de jure',
+      render:item => createRelationCell(item, baroniesByName, {
+        childField:'county_id',
+        endpoint:'baronies',
+        tableId:'tableBaronies',
+        tableFields: baronyFieldList,
+        placeholder:'Aucune baronnie'
+      })
+    }]
   });
 }
 
 async function loadViscounties(){
-  const [viscounties,seigneurs] = await Promise.all([
+  const [viscounties,seigneurs,baronies] = await Promise.all([
     getData('viscounties','/api/viscounties'),
     getData('seigneurs','/api/seigneurs'),
+    getData('baronies','/api/baronies'),
   ]);
   const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const viscountiesById = viscounties.slice().sort((a,b)=>a.id - b.id);
+  const baroniesByName = baronies.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const baronyFieldList = baronyFields;
   renderTable(document.getElementById('tableViscounties'), viscountiesById, {
     endpoint:'viscounties',
     fields:['name','seigneur_id','color'],
     selects:{seigneur_id:seigneursSelect},
     labels:{name:'Nom', seigneur_id:'Détenteur du titre', color:'Couleur'},
-    colorFields:['color']
+    colorFields:['color'],
+    extraColumns:[{
+      label:'Baronnies',
+      render:item => createRelationCell(item, baroniesByName, {
+        childField:'viscounty_id',
+        endpoint:'baronies',
+        tableId:'tableBaronies',
+        tableFields: baronyFieldList,
+        placeholder:'Aucune baronnie'
+      })
+    }]
   });
 }
 
@@ -1772,7 +2062,7 @@ async function loadBaronies(){
     colorFields:['color'],
     extraColumns:[
       {
-        label:'Terres canoniques',
+        label:'Terres canoniques (Évêché)',
         render:item => createCanonicalCell(item, baroniesById)
       }
     ]
