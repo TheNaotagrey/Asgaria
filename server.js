@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS empires (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT UNIQUE,
   seigneur_id INTEGER,
+  color TEXT,
   FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id)
 );
 CREATE TABLE IF NOT EXISTS kingdoms (
@@ -75,6 +76,7 @@ CREATE TABLE IF NOT EXISTS kingdoms (
   name TEXT UNIQUE,
   seigneur_id INTEGER,
   empire_id INTEGER,
+  color TEXT,
   FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id),
   FOREIGN KEY(empire_id) REFERENCES empires(id)
 );
@@ -82,6 +84,7 @@ CREATE TABLE IF NOT EXISTS archduchies (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT UNIQUE,
   seigneur_id INTEGER,
+  color TEXT,
   FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id)
 );
 CREATE TABLE IF NOT EXISTS duchies (
@@ -90,6 +93,7 @@ CREATE TABLE IF NOT EXISTS duchies (
   seigneur_id INTEGER,
   kingdom_id INTEGER,
   archduchy_id INTEGER,
+  color TEXT,
   FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id),
   FOREIGN KEY(kingdom_id) REFERENCES kingdoms(id),
   FOREIGN KEY(archduchy_id) REFERENCES archduchies(id)
@@ -98,6 +102,7 @@ CREATE TABLE IF NOT EXISTS marquisates (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT UNIQUE,
   seigneur_id INTEGER,
+  color TEXT,
   FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id)
 );
 CREATE TABLE IF NOT EXISTS counties (
@@ -106,6 +111,7 @@ CREATE TABLE IF NOT EXISTS counties (
   seigneur_id INTEGER,
   duchy_id INTEGER,
   marquisate_id INTEGER,
+  color TEXT,
   FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id),
   FOREIGN KEY(duchy_id) REFERENCES duchies(id),
   FOREIGN KEY(marquisate_id) REFERENCES marquisates(id)
@@ -114,6 +120,7 @@ CREATE TABLE IF NOT EXISTS viscounties (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT UNIQUE,
   seigneur_id INTEGER,
+  color TEXT,
   FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id)
 );
 CREATE TABLE IF NOT EXISTS baronies (
@@ -127,6 +134,7 @@ CREATE TABLE IF NOT EXISTS baronies (
   priory_religion_id INTEGER,
   church_religion_id INTEGER,
   cathedral_religion_id INTEGER,
+  color TEXT,
   FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id) ON DELETE SET NULL,
   FOREIGN KEY(religion_pop_id) REFERENCES religions(id),
   FOREIGN KEY(county_id) REFERENCES counties(id),
@@ -170,7 +178,9 @@ CREATE TABLE IF NOT EXISTS trade_routes (
 );
 CREATE TABLE IF NOT EXISTS maritime_zones (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT
+  name TEXT,
+  seigneur_id INTEGER,
+  FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id)
 );
 CREATE TABLE IF NOT EXISTS maritime_zone_pixels (
   zone_id INTEGER PRIMARY KEY REFERENCES maritime_zones(id),
@@ -361,6 +371,41 @@ db.exec(initSql, () => {
       db.run('ALTER TABLE religions ADD COLUMN color TEXT');
     }
   });
+  db.all("PRAGMA table_info(empires)", (err, rows) => {
+    if (!err && rows && !rows.some(r => r.name === 'color')) {
+      db.run('ALTER TABLE empires ADD COLUMN color TEXT');
+    }
+  });
+  db.all("PRAGMA table_info(kingdoms)", (err, rows) => {
+    if (!err && rows && !rows.some(r => r.name === 'color')) {
+      db.run('ALTER TABLE kingdoms ADD COLUMN color TEXT');
+    }
+  });
+  db.all("PRAGMA table_info(archduchies)", (err, rows) => {
+    if (!err && rows && !rows.some(r => r.name === 'color')) {
+      db.run('ALTER TABLE archduchies ADD COLUMN color TEXT');
+    }
+  });
+  db.all("PRAGMA table_info(duchies)", (err, rows) => {
+    if (!err && rows && !rows.some(r => r.name === 'color')) {
+      db.run('ALTER TABLE duchies ADD COLUMN color TEXT');
+    }
+  });
+  db.all("PRAGMA table_info(marquisates)", (err, rows) => {
+    if (!err && rows && !rows.some(r => r.name === 'color')) {
+      db.run('ALTER TABLE marquisates ADD COLUMN color TEXT');
+    }
+  });
+  db.all("PRAGMA table_info(counties)", (err, rows) => {
+    if (!err && rows && !rows.some(r => r.name === 'color')) {
+      db.run('ALTER TABLE counties ADD COLUMN color TEXT');
+    }
+  });
+  db.all("PRAGMA table_info(viscounties)", (err, rows) => {
+    if (!err && rows && !rows.some(r => r.name === 'color')) {
+      db.run('ALTER TABLE viscounties ADD COLUMN color TEXT');
+    }
+  });
   db.all("PRAGMA table_info(seigneuries)", (err, rows) => {
     if (!err && rows) {
       if (!rows.some(r => r.name === 'buildings')) {
@@ -424,6 +469,9 @@ db.exec(initSql, () => {
     if (!rows.some(r => r.name === 'cathedral_religion_id')) {
       db.run('ALTER TABLE baronies ADD COLUMN cathedral_religion_id INTEGER');
     }
+    if (!rows.some(r => r.name === 'color')) {
+      db.run('ALTER TABLE baronies ADD COLUMN color TEXT');
+    }
   });
   db.all("PRAGMA table_info(seigneurs)", (err, rows) => {
     if (err || !rows) return;
@@ -462,6 +510,12 @@ db.exec(initSql, () => {
       if (!rows.some(r => r.name === 'seigneur_id')) {
         db.run('ALTER TABLE kingdoms ADD COLUMN seigneur_id INTEGER REFERENCES seigneurs(id)');
       }
+    }
+  });
+  db.all("PRAGMA table_info(maritime_zones)", (err, rows) => {
+    if (err || !rows) return;
+    if (!rows.some(r => r.name === 'seigneur_id')) {
+      db.run('ALTER TABLE maritime_zones ADD COLUMN seigneur_id INTEGER');
     }
   });
   db.all("PRAGMA table_info(canonical_lands)", (err, rows) => {
@@ -768,13 +822,13 @@ app.post('/api/profile', (req, res) => {
   }
 });
 
-app.use('/api/empires', crudRoutes('empires',['name','seigneur_id']));
-app.use('/api/kingdoms', crudRoutes('kingdoms',['name','seigneur_id','empire_id']));
-app.use('/api/archduchies', crudRoutes('archduchies',['name','seigneur_id']));
-app.use('/api/duchies', crudRoutes('duchies',['name','seigneur_id','kingdom_id','archduchy_id']));
-app.use('/api/marquisates', crudRoutes('marquisates',['name','seigneur_id']));
-app.use('/api/counties', crudRoutes('counties',['name','seigneur_id','duchy_id','marquisate_id']));
-app.use('/api/viscounties', crudRoutes('viscounties',['name','seigneur_id']));
+app.use('/api/empires', crudRoutes('empires',['name','seigneur_id','color']));
+app.use('/api/kingdoms', crudRoutes('kingdoms',['name','seigneur_id','empire_id','color']));
+app.use('/api/archduchies', crudRoutes('archduchies',['name','seigneur_id','color']));
+app.use('/api/duchies', crudRoutes('duchies',['name','seigneur_id','kingdom_id','archduchy_id','color']));
+app.use('/api/marquisates', crudRoutes('marquisates',['name','seigneur_id','color']));
+app.use('/api/counties', crudRoutes('counties',['name','seigneur_id','duchy_id','marquisate_id','color']));
+app.use('/api/viscounties', crudRoutes('viscounties',['name','seigneur_id','color']));
 app.use('/api/religions', crudRoutes('religions',['name','color']));
 app.use('/api/cultures', crudRoutes('cultures',['name','color']));
 app.use('/api/seigneurs', crudRoutes('seigneurs',['name','religion_id','overlord_id','user_id','player','bishop']));
@@ -1294,7 +1348,7 @@ app.post('/api/transactions', requireAdmin, (req,res)=>{
 
 const baronyFields = [
   'id','name','seigneur_id','religion_pop_id','county_id','viscounty_id','culture_id',
-  'priory_religion_id','church_religion_id','cathedral_religion_id'
+  'priory_religion_id','church_religion_id','cathedral_religion_id','color'
 ];
 
 app.get('/api/baronies', (req, res) => {
@@ -2675,7 +2729,7 @@ app.post('/api/trade_routes/build', (req, res) => {
 });
 
 // Maritime zones CRUD
-const maritimeZoneFields = ['name'];
+const maritimeZoneFields = ['name','seigneur_id'];
 const maritimeZonesRouter = crudRoutes('maritime_zones', maritimeZoneFields);
 maritimeZonesRouter.use((req,res,next)=>{
   if(['POST','PUT','DELETE'].includes(req.method)) return requireAdmin(req,res,next);

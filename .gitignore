@@ -3,3 +3,4 @@ asgaria.db
 sessions.db
 /tmp/
 app.log
+*.db

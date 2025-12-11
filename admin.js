@@ -54,7 +54,7 @@ const baronyPropLabels = {
   effects:'Effets'
 };
 
-const baronyFields = ['name','seigneur_id','religion_pop_id','culture_id','county_id','viscounty_id','priory_religion_id','church_religion_id','cathedral_religion_id'];
+const baronyFields = ['name','seigneur_id','religion_pop_id','culture_id','county_id','viscounty_id','priory_religion_id','church_religion_id','cathedral_religion_id','color'];
 const baronyLabels = {
   name:'Nom',
   seigneur_id:'Seigneur',
@@ -64,7 +64,8 @@ const baronyLabels = {
   viscounty_id:'Vicomté',
   priory_religion_id:'Prieuré',
   church_religion_id:'Église',
-  cathedral_religion_id:'Cathédrale'
+  cathedral_religion_id:'Cathédrale',
+  color:'Couleur'
 };
 
 const buildingPropFields = ['label','produces','production','costs','max','workers_per_building','absolute_restrictions','infra_restrictions','effects','description'];
@@ -100,6 +101,9 @@ let infraPropsSelect = [];
 let tagsSelect = [];
 const dataCache = {};
 const tabLoaded = {};
+const canonicalKey = id => (id === null || id === undefined ? '' : String(id));
+let canonicalLandMap = {};
+let canonicalDependents = {};
 const maxOptions = [
   ...Array.from({length:10}, (_,i)=>({ id:String(i+1), name:String(i+1) })),
   ...baronyPropIntFields.map(f=>({ id:f, name:baronyPropLabels[f] || f })),
@@ -197,6 +201,128 @@ function createCostEditor(val) {
     });
     return JSON.stringify(res);
   };
+  return container;
+}
+
+function openCanonicalPopup(baronyId, baroniesList, onChange){
+  const overlay = document.createElement('div');
+  overlay.className = 'popup-overlay';
+  const popup = document.createElement('div');
+  popup.className = 'popup';
+  const list = document.createElement('div');
+
+  function addRow(val = ''){
+    const row = document.createElement('div');
+    row.className = 'cost-row';
+    const sel = document.createElement('select');
+    const blank = document.createElement('option');
+    blank.value = '';
+    sel.appendChild(blank);
+    baroniesList.forEach(b => {
+      const op = document.createElement('option');
+      op.value = b.id;
+      op.textContent = `${b.id} - ${b.name}`;
+      if (String(b.id) === String(val)) op.selected = true;
+      sel.appendChild(op);
+    });
+    row.dataset.canonicalId = val;
+    sel.addEventListener('change', async () => {
+      const newId = parseInt(sel.value, 10);
+      const canonicalKeyId = canonicalKey(baronyId);
+      const oldId = parseInt(row.dataset.canonicalId || '0', 10);
+      if (oldId) {
+        await fetchJSON(`/api/canonical_lands?barony_id=${oldId}&canonical_barony_id=${baronyId}`, { method: 'DELETE' });
+        if (canonicalDependents[canonicalKeyId]) canonicalDependents[canonicalKeyId] = canonicalDependents[canonicalKeyId].filter(id => id !== oldId);
+        if (canonicalLandMap[canonicalKey(oldId)]) canonicalLandMap[canonicalKey(oldId)] = canonicalLandMap[canonicalKey(oldId)].filter(id => id !== baronyId);
+      }
+      if (newId) {
+        await fetchJSON('/api/canonical_lands', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ barony_id: newId, canonical_barony_id: baronyId })
+        });
+        if (!canonicalDependents[canonicalKeyId]) canonicalDependents[canonicalKeyId] = [];
+        if (!canonicalDependents[canonicalKeyId].includes(newId)) canonicalDependents[canonicalKeyId].push(newId);
+        if (!canonicalLandMap[canonicalKey(newId)]) canonicalLandMap[canonicalKey(newId)] = [];
+        if (!canonicalLandMap[canonicalKey(newId)].includes(baronyId)) canonicalLandMap[canonicalKey(newId)].push(baronyId);
+      }
+      row.dataset.canonicalId = newId;
+      if (onChange) onChange();
+    });
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.textContent = '-';
+    delBtn.addEventListener('click', async () => {
+      const canonicalKeyId = canonicalKey(baronyId);
+      const oldId = parseInt(row.dataset.canonicalId || '0', 10);
+      if (oldId) {
+        await fetchJSON(`/api/canonical_lands?barony_id=${oldId}&canonical_barony_id=${baronyId}`, { method: 'DELETE' });
+        if (canonicalDependents[canonicalKeyId]) canonicalDependents[canonicalKeyId] = canonicalDependents[canonicalKeyId].filter(id => id !== oldId);
+        if (canonicalLandMap[canonicalKey(oldId)]) canonicalLandMap[canonicalKey(oldId)] = canonicalLandMap[canonicalKey(oldId)].filter(id => id !== baronyId);
+      }
+      row.remove();
+      if (onChange) onChange();
+    });
+    row.appendChild(sel);
+    row.appendChild(delBtn);
+    list.appendChild(row);
+  }
+
+  const existing = canonicalDependents[canonicalKey(baronyId)] || [];
+  if (existing.length) {
+    existing.forEach(id => addRow(id));
+  } else {
+    addRow();
+  }
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.textContent = '+';
+  addBtn.addEventListener('click', () => addRow());
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.textContent = 'Fermer';
+  closeBtn.addEventListener('click', () => overlay.remove());
+
+  popup.appendChild(list);
+  popup.appendChild(addBtn);
+  popup.appendChild(closeBtn);
+  overlay.appendChild(popup);
+  document.body.appendChild(overlay);
+}
+
+function createCanonicalCell(item, baroniesList){
+  const container = document.createElement('div');
+  const summary = document.createElement('div');
+  summary.style.marginBottom = '4px';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.textContent = 'Modifier';
+
+  function updateSummary(){
+    const ids = canonicalDependents[canonicalKey(item.id)] || [];
+    if (!ids.length) {
+      summary.textContent = 'Aucune';
+      return;
+    }
+    const labels = ids.map(cid => {
+      const b = baroniesList.find(x => String(x.id) === String(cid));
+      return b ? `${cid} - ${b.name}` : cid;
+    });
+    const short = labels.slice(0, 3);
+    if (labels.length > 3) short.push('…');
+    summary.textContent = short.join(', ');
+  }
+
+  btn.addEventListener('click', () => {
+    openCanonicalPopup(item.id, baroniesList, () => {
+      updateSummary();
+      showSaveIndicator(container);
+    });
+  });
+
+  updateSummary();
+  container.appendChild(summary);
+  container.appendChild(btn);
   return container;
 }
 
@@ -950,6 +1076,8 @@ function renderTable(container, rows, opts){
   let sortCol = 'id';
   let sortDir = 'asc';
 
+  const extraColumns = opts.extraColumns || [];
+
   const headers = [{label:'ID', key:'id'}].concat(
     opts.fields.map(f => ({
       label: opts.labels && opts.labels[f] ? opts.labels[f] : f,
@@ -970,6 +1098,11 @@ function renderTable(container, rows, opts){
       updateHeaders();
       renderBody();
     });
+    headRow.appendChild(th);
+  });
+  extraColumns.forEach(col => {
+    const th = document.createElement('th');
+    th.textContent = col.label || '';
     headRow.appendChild(th);
   });
   headRow.appendChild(document.createElement('th'));
@@ -1199,10 +1332,26 @@ function renderTable(container, rows, opts){
       return select;
     }
     if(opts.colorFields && opts.colorFields.includes(field)){
+      const wrapper = document.createElement('div');
+      wrapper.className = 'color-input';
       const input = document.createElement('input');
       input.type = 'color';
       input.value = val || '#000000';
-      return input;
+      if (!val) input.dataset.empty = '1';
+      const clearBtn = document.createElement('button');
+      clearBtn.type = 'button';
+      clearBtn.textContent = 'Effacer';
+      clearBtn.addEventListener('click', () => {
+        input.dataset.empty = '1';
+        input.value = '#000000';
+      });
+      const markFilled = () => { delete input.dataset.empty; };
+      input.addEventListener('input', markFilled);
+      input.addEventListener('change', markFilled);
+      wrapper.getValue = () => input.dataset.empty === '1' ? null : input.value;
+      wrapper.appendChild(input);
+      wrapper.appendChild(clearBtn);
+      return wrapper;
     }
     const input = document.createElement('input');
     input.value = val ?? '';
@@ -1218,6 +1367,12 @@ function renderTable(container, rows, opts){
       td = document.createElement('td');
       td.appendChild(makeInput(item[f], f, item));
       tr.appendChild(td);
+    });
+    extraColumns.forEach(col => {
+      const tdExtra = document.createElement('td');
+      const content = col.render ? col.render(item, tr) : document.createTextNode('');
+      tdExtra.appendChild(content);
+      tr.appendChild(tdExtra);
     });
     td = document.createElement('td');
     const btn = document.createElement('button');
@@ -1269,6 +1424,11 @@ function renderTable(container, rows, opts){
         const inp = makeInput('', f, null);
         addInputs[f]=inp;
         td.appendChild(inp);
+        addRow.appendChild(td);
+      });
+      extraColumns.forEach(()=>{
+        const td = document.createElement('td');
+        td.textContent = '';
         addRow.appendChild(td);
       });
       const addTd = document.createElement('td');
@@ -1394,9 +1554,10 @@ async function loadEmpires(){
   const empiresById = empires.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableEmpires'), empiresById, {
     endpoint:'empires',
-    fields:['name','seigneur_id'],
+    fields:['name','seigneur_id','color'],
     selects:{seigneur_id:seigneursSelect},
-    labels:{name:'Nom', seigneur_id:'Détenteur du titre'}
+    labels:{name:'Nom', seigneur_id:'Détenteur du titre', color:'Couleur'},
+    colorFields:['color']
   });
 }
 
@@ -1411,9 +1572,10 @@ async function loadKingdoms(){
   const kingdomsById = kingdoms.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableKingdoms'), kingdomsById, {
     endpoint:'kingdoms',
-    fields:['name','seigneur_id','empire_id'],
+    fields:['name','seigneur_id','empire_id','color'],
     selects:{seigneur_id:seigneursSelect, empire_id:empiresSelect},
-    labels:{name:'Nom', seigneur_id:'Détenteur du titre', empire_id:'Empire'}
+    labels:{name:'Nom', seigneur_id:'Détenteur du titre', empire_id:'Empire', color:'Couleur'},
+    colorFields:['color']
   });
 }
 
@@ -1426,9 +1588,10 @@ async function loadArchduchies(){
   const archduchiesById = archduchies.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableArchduchies'), archduchiesById, {
     endpoint:'archduchies',
-    fields:['name','seigneur_id'],
+    fields:['name','seigneur_id','color'],
     selects:{seigneur_id:seigneursSelect},
-    labels:{name:'Nom', seigneur_id:'Détenteur du titre'}
+    labels:{name:'Nom', seigneur_id:'Détenteur du titre', color:'Couleur'},
+    colorFields:['color']
   });
 }
 
@@ -1445,9 +1608,10 @@ async function loadDuchies(){
   const duchiesById = duchies.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableDuchies'), duchiesById, {
     endpoint:'duchies',
-    fields:['name','seigneur_id','kingdom_id','archduchy_id'],
+    fields:['name','seigneur_id','kingdom_id','archduchy_id','color'],
     selects:{seigneur_id:seigneursSelect, kingdom_id:kingdomsSelect, archduchy_id:archduchiesSelect},
-    labels:{name:'Nom', seigneur_id:'Détenteur du titre', kingdom_id:'Royaume', archduchy_id:'Archiduché'}
+    labels:{name:'Nom', seigneur_id:'Détenteur du titre', kingdom_id:'Royaume', archduchy_id:'Archiduché', color:'Couleur'},
+    colorFields:['color']
   });
 }
 
@@ -1460,9 +1624,10 @@ async function loadMarquisates(){
   const marquisatesById = marquisates.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableMarquisates'), marquisatesById, {
     endpoint:'marquisates',
-    fields:['name','seigneur_id'],
+    fields:['name','seigneur_id','color'],
     selects:{seigneur_id:seigneursSelect},
-    labels:{name:'Nom', seigneur_id:'Détenteur du titre'}
+    labels:{name:'Nom', seigneur_id:'Détenteur du titre', color:'Couleur'},
+    colorFields:['color']
   });
 }
 
@@ -1479,9 +1644,10 @@ async function loadCounties(){
   const countiesById = counties.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableCounties'), countiesById, {
     endpoint:'counties',
-    fields:['name','seigneur_id','duchy_id','marquisate_id'],
+    fields:['name','seigneur_id','duchy_id','marquisate_id','color'],
     selects:{seigneur_id:seigneursSelect, duchy_id:duchiesSelect, marquisate_id:marquisatesSelect},
-    labels:{name:'Nom', seigneur_id:'Détenteur du titre', duchy_id:'Duché', marquisate_id:'Marquisat'}
+    labels:{name:'Nom', seigneur_id:'Détenteur du titre', duchy_id:'Duché', marquisate_id:'Marquisat', color:'Couleur'},
+    colorFields:['color']
   });
 }
 
@@ -1494,9 +1660,26 @@ async function loadViscounties(){
   const viscountiesById = viscounties.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableViscounties'), viscountiesById, {
     endpoint:'viscounties',
-    fields:['name','seigneur_id'],
+    fields:['name','seigneur_id','color'],
     selects:{seigneur_id:seigneursSelect},
-    labels:{name:'Nom', seigneur_id:'Détenteur du titre'}
+    labels:{name:'Nom', seigneur_id:'Détenteur du titre', color:'Couleur'},
+    colorFields:['color']
+  });
+}
+
+async function loadMaritimeZones(){
+  const [zones, seigneurs] = await Promise.all([
+    getData('maritime_zones','/api/maritime_zones'),
+    getData('seigneurs','/api/seigneurs'),
+  ]);
+  const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const zonesById = zones.slice().sort((a,b)=>a.id - b.id);
+  renderTable(document.getElementById('tableMaritime'), zonesById, {
+    endpoint:'maritime_zones',
+    fields:['name','seigneur_id'],
+    selects:{ seigneur_id: seigneursSelect },
+    labels:{ name:'Nom', seigneur_id:'Seigneur maritime' },
+    nullLabels:{ seigneur_id:'Aucun' }
   });
 }
 
@@ -1519,19 +1702,31 @@ async function loadSeigneuries(){
 }
 
 async function loadBaronies(){
-  const [baronies,seigneurs,religions,cultures,counties,viscounties] = await Promise.all([
+  const [baronies,seigneurs,religions,cultures,counties,viscounties,canonicalLands] = await Promise.all([
     getData('baronies','/api/baronies'),
     getData('seigneurs','/api/seigneurs'),
     getData('religions','/api/religions'),
     getData('cultures','/api/cultures'),
     getData('counties','/api/counties'),
     getData('viscounties','/api/viscounties'),
+    fetchJSON('/api/canonical_lands')
   ]);
+  dataCache.canonical_lands = canonicalLands;
   const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const religionsSelect = religions.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const culturesSelect = cultures.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const countiesSelect = counties.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const viscountiesSelect = viscounties.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  canonicalLandMap = {};
+  canonicalDependents = {};
+  canonicalLands.forEach(cl => {
+    const baronyKey = canonicalKey(cl.barony_id);
+    const canonicalKeyId = canonicalKey(cl.canonical_barony_id);
+    if (!canonicalLandMap[baronyKey]) canonicalLandMap[baronyKey] = [];
+    canonicalLandMap[baronyKey].push(cl.canonical_barony_id);
+    if (!canonicalDependents[canonicalKeyId]) canonicalDependents[canonicalKeyId] = [];
+    canonicalDependents[canonicalKeyId].push(cl.barony_id);
+  });
   const baroniesById = baronies.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableBaronies'), baroniesById, {
     endpoint:'baronies',
@@ -1556,7 +1751,14 @@ async function loadBaronies(){
       priory_religion_id:'Aucun',
       church_religion_id:'Aucune',
       cathedral_religion_id:'Aucune'
-    }
+    },
+    colorFields:['color'],
+    extraColumns:[
+      {
+        label:'Terres canoniques',
+        render:item => createCanonicalCell(item, baroniesById)
+      }
+    ]
   });
 }
 
@@ -1659,6 +1861,7 @@ const tabLoaders = {
   marquisates: loadMarquisates,
   counties: loadCounties,
   viscounties: loadViscounties,
+  maritime: loadMaritimeZones,
   seigneuries: loadSeigneuries,
   baronies: loadBaronies,
   batiments: loadBatiments,

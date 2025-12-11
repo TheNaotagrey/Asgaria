@@ -27,6 +27,8 @@
   let empireMap = {};
   let seigneurToViscounty = {}, seigneurToCounty = {}, seigneurToMarquisate = {}, seigneurToDuchy = {}, seigneurToArchduchy = {}, seigneurToKingdom = {}, seigneurToEmpire = {};
   let canonicalLandMap = {};
+  let canonicalDependents = {};
+  let canonicalParents = {};
   let sanctuaryMap = {};
   let baronyAdjacency = {};
   let mapData = {};
@@ -47,9 +49,14 @@
   const infoFeudalList = document.getElementById('infoFeudalList');
   const religiousSection = document.getElementById('religiousBuildingsSection');
   const infoReligiousList = document.getElementById('infoReligiousList');
+  const canonicalOwnedSection = document.getElementById('canonicalOwnedSection');
+  const canonicalOwnedList = document.getElementById('canonicalOwnedList');
+  const canonicalParentSection = document.getElementById('canonicalParentSection');
+  const canonicalParentList = document.getElementById('canonicalParentList');
   const seaInfoPanel = document.getElementById('seaInfoPanel');
   const seaInfoId = document.getElementById('seaInfoId');
   const seaInfoName = document.getElementById('seaInfoName');
+  const seaInfoSeigneur = document.getElementById('seaInfoSeigneur');
   const legendDiv = document.getElementById('legend');
   const filterSelect = document.getElementById('filterSelect');
   const randomBtn = document.getElementById('randomBtn');
@@ -224,6 +231,7 @@
       if (infoPanel) infoPanel.style.display = 'none';
       if (seaInfoId) seaInfoId.textContent = info.id || '';
       if (seaInfoName) seaInfoName.textContent = info.name || '';
+      if (seaInfoSeigneur) seaInfoSeigneur.textContent = info.seigneur_id ? (seigneurMap[info.seigneur_id]?.name || info.seigneur_id) : '';
       if (filterManager && filterSelect && (filterSelect.value === 'distance' || filterSelect.value === 'baronies')) {
         filterManager.applyFilter(filterSelect.value);
       }
@@ -270,6 +278,12 @@
     const owner = info.seigneur_id ? seigneurMap[info.seigneur_id] : null;
     if (owner?.bishop) buildings.push('Évêque');
     setList(religiousSection, infoReligiousList, buildings);
+    const ownedCanonicals = (canonicalDependents[id] || []).map(cid => `${cid} - ${baronyMeta[cid]?.name || ''}`);
+    setList(canonicalOwnedSection, canonicalOwnedList, ownedCanonicals);
+    const parentCanonicals = (canonicalParents[id] || [])
+      .filter(pid => pid !== id)
+      .map(pid => `${pid} - ${baronyMeta[pid]?.name || ''}`);
+    setList(canonicalParentSection, canonicalParentList, parentCanonicals);
     if (filterManager && filterSelect && filterSelect.value === 'distance') {
       filterManager.applyFilter('distance');
     }
@@ -278,14 +292,20 @@
   async function fetchData() {
     const endpoint = mapMode === 'sea' ? '/api/maritime_zone_pixels' : '/api/barony_pixels';
     pixelData = mapMode === 'sea' ? await fetch(API_BASE + endpoint).then(r => r.json()) : {};
+    canonicalLandMap = {};
+    canonicalDependents = {};
+    canonicalParents = {};
     if (mapMode === 'sea') {
-      const [zones, connections, zoneBaronies] = await Promise.all([
+      const [zones, seigneurs, connections, zoneBaronies] = await Promise.all([
         fetch(API_BASE + '/api/maritime_zones').then(r => r.json()),
+        fetch(API_BASE + '/api/seigneurs').then(r => r.json()),
         fetch(API_BASE + '/api/maritime_zone_connections').then(r => r.json()),
         fetch(API_BASE + '/api/maritime_zone_baronies').then(r => r.json())
       ]);
       baronyMeta = {};
       zones.forEach(z => { baronyMeta[z.id] = z; });
+      seigneurMap = {};
+      seigneurs.forEach(s => { seigneurMap[s.id] = s; });
       baronyAdjacency = {};
       connections.forEach(c => {
         if (!baronyAdjacency[c.zone_id_1]) baronyAdjacency[c.zone_id_1] = [];
@@ -301,7 +321,7 @@
         if (!maritimeZoneBaronies[zb.zone_id]) maritimeZoneBaronies[zb.zone_id] = [];
         maritimeZoneBaronies[zb.zone_id].push(zb.barony_id);
       });
-      mapData = { pixelData, baronyMeta, baronyAdjacency, baronyPixels, maritimeZoneBaronies, mapWidth, mapHeight, mapMode };
+      mapData = { pixelData, baronyMeta, baronyAdjacency, baronyPixels, maritimeZoneBaronies, seigneurMap, mapWidth, mapHeight, mapMode };
       return mapData;
     }
     const [baronies, seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires, canonicalLands, sanctuaries, connections] = await Promise.all([
@@ -349,11 +369,18 @@
     empireMap = {};
     seigneurToEmpire = {};
     empires.forEach(e => { empireMap[e.id] = e; if (e.seigneur_id) seigneurToEmpire[e.seigneur_id] = e.id; });
-      canonicalLandMap = {};
-      canonicalLands.forEach(cl => {
-        if (!canonicalLandMap[cl.barony_id]) canonicalLandMap[cl.barony_id] = [];
-        canonicalLandMap[cl.barony_id].push(cl.canonical_barony_id);
-      });
+    canonicalLandMap = {};
+    canonicalParents = {};
+    canonicalLands.forEach(cl => {
+      if (!canonicalLandMap[cl.barony_id]) canonicalLandMap[cl.barony_id] = [];
+      canonicalLandMap[cl.barony_id].push(cl.canonical_barony_id);
+      if (!canonicalDependents[cl.canonical_barony_id]) canonicalDependents[cl.canonical_barony_id] = [];
+      canonicalDependents[cl.canonical_barony_id].push(cl.barony_id);
+      if (cl.barony_id !== cl.canonical_barony_id) {
+        if (!canonicalParents[cl.barony_id]) canonicalParents[cl.barony_id] = [];
+        canonicalParents[cl.barony_id].push(cl.canonical_barony_id);
+      }
+    });
     sanctuaryMap = {};
     sanctuaries.forEach(s => {
       if (!sanctuaryMap[s.barony_id]) sanctuaryMap[s.barony_id] = [];
@@ -383,6 +410,7 @@
       archduchyMap,
       empireMap,
       canonicalLandMap,
+      canonicalDependents,
       sanctuaryMap,
       baronyAdjacency,
       seigneurToViscounty,
