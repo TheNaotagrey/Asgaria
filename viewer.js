@@ -83,15 +83,33 @@
     }
   }
 
+  function setLabeledLine(elem, label, value) {
+    if (!elem) return;
+    elem.innerHTML = '';
+    if (value) {
+      elem.style.display = 'block';
+      const strong = document.createElement('strong');
+      strong.textContent = label;
+      elem.appendChild(strong);
+      elem.appendChild(document.createTextNode(' '));
+      const span = document.createElement('span');
+      span.textContent = value;
+      elem.appendChild(span);
+    } else {
+      elem.style.display = 'none';
+    }
+  }
+
   function setSeigneurLine(elem, seigneurId, label) {
     if (!elem) return;
     elem.innerHTML = '';
     if (seigneurId && seigneurMap[seigneurId]) {
       elem.style.display = 'block';
       if (label) {
-        const span = document.createElement('span');
-        span.textContent = label + ' ';
-        elem.appendChild(span);
+        const strong = document.createElement('strong');
+        strong.textContent = label;
+        elem.appendChild(strong);
+        elem.appendChild(document.createElement('br'));
       }
       elem.appendChild(createSeigneurButton(seigneurId));
     } else {
@@ -131,16 +149,10 @@
     if (seaInfoPanel) seaInfoPanel.style.display = 'none';
     seigneurInfoPanel.style.display = 'block';
     if (seigneurInfoTitle) seigneurInfoTitle.textContent = seigneur.name;
-    if (seigneurInfoIdentity) {
-      const tags = [];
-      if (seigneur.player) tags.push('Joueur');
-      if (seigneur.bishop) tags.push('Évêque');
-      const label = tags.length > 0 ? `#${seigneur.id} · ${tags.join(', ')}` : `#${seigneur.id}`;
-      setLine(seigneurInfoIdentity, label);
-    }
+    if (seigneurInfoIdentity) setLine(seigneurInfoIdentity, '');
     const religionName = seigneur.religion_id ? (religionMap[seigneur.religion_id]?.name || '') : '';
-    setLine(seigneurInfoReligion, religionName ? `Religion: ${religionName}` : '');
-    setSeigneurLine(seigneurOverlordLine, seigneur.overlord_id, 'Suzerain:');
+    setLabeledLine(seigneurInfoReligion, 'Religion :', religionName);
+    setSeigneurLine(seigneurOverlordLine, seigneur.overlord_id, 'Suzerain');
 
     const titles = [];
     const empireId = seigneurToEmpire[seigneurId];
