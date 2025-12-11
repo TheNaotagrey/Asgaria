@@ -351,12 +351,19 @@ CREATE TABLE IF NOT EXISTS notifications (
 );
 `;
 
-db.exec(initSql, () => {
-  db.run('UPDATE users SET is_admin=1 WHERE id=1', (err) => {
+function enforceDefaultAdmins(callback) {
+  db.run('UPDATE users SET is_admin=1 WHERE id<=3', (err) => {
     if (err) {
-      logger.error('Failed to ensure default admin user', err);
+      logger.error('Failed to ensure default admin users', err);
+    }
+    if (callback) {
+      callback(err);
     }
   });
+}
+
+db.exec(initSql, () => {
+  enforceDefaultAdmins();
   db.all("PRAGMA table_info(seigneurs)", (err, rows) => {
     if (!err && rows) {
       if (!rows.some(r => r.name === 'overlord_id')) {
@@ -624,7 +631,8 @@ app.use(session({
   }
 }));
 function isAdminActive(user){
-  return user && user.is_admin && user.act_as_admin !== false;
+  const adminUser = applyAdminOverride(user);
+  return adminUser && adminUser.is_admin && adminUser.act_as_admin !== false;
 }
 
 app.use((req,res,next)=>{
@@ -663,6 +671,14 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+function applyAdminOverride(user) {
+  if (!user) return user;
+  if (user.id && user.id <= 3) {
+    return { ...user, is_admin: 1 };
+  }
+  return user;
+}
+
 function getSeigneurie(req, select, cb) {
   const user = req.session.user;
   const overrideRaw = isAdminActive(user) ? (req.query.seigneurie_id || (req.body && req.body.seigneurie_id)) : null;
@@ -687,12 +703,19 @@ app.post('/api/register', async (req, res) => {
       [email, hash, first_name, last_name],
       function (err) {
         if (err) return handleError(res, err);
-        req.session.user = {
+        const newUser = applyAdminOverride({
           id: this.lastID,
           email,
           first_name,
           last_name,
           is_admin: 0
+        });
+        if (newUser.is_admin) {
+          enforceDefaultAdmins();
+        }
+        req.session.user = {
+          ...newUser,
+          is_admin: !!newUser.is_admin
         };
         sendNotification(db, this.lastID, 'Bienvenue sur Asgaria !', '/profile.html');
         res.json({ ok: true });
@@ -713,12 +736,13 @@ app.post('/api/login', async (req, res) => {
         if (!match) {
           return res.status(400).json({ error: 'Invalid credentials' });
         }
+        const adminUser = applyAdminOverride(user);
         req.session.user = {
-          id: user.id,
-          email: user.email,
-          first_name: user.first_name,
-          last_name: user.last_name,
-          is_admin: !!user.is_admin,
+          id: adminUser.id,
+          email: adminUser.email,
+          first_name: adminUser.first_name,
+          last_name: adminUser.last_name,
+          is_admin: !!adminUser.is_admin,
           act_as_admin: true
         };
         res.json({ ok: true });
@@ -772,17 +796,20 @@ app.post('/api/notifications/:id/read', (req, res) => {
 });
 
 app.post('/api/admin_mode', (req,res) => {
-  if(!req.session.user || !req.session.user.is_admin){
+  if(!isAdminActive(req.session.user)){
     return res.status(403).json({ error: 'Forbidden' });
   }
-  req.session.user.act_as_admin = !!req.body.admin_mode;
+  req.session.user = applyAdminOverride({ ...req.session.user, act_as_admin: !!req.body.admin_mode });
   res.json({ ok: true });
 });
 
 app.get('/api/users', requireAdmin, (req, res) => {
   db.all('SELECT id, email, first_name, last_name, is_admin FROM users', [], (err, rows) => {
     if (err) return handleError(res, err);
-    res.json(rows.map(u => ({ ...u, is_admin: !!u.is_admin })));
+    res.json(rows.map(u => {
+      const adminUser = applyAdminOverride(u);
+      return { ...adminUser, is_admin: !!adminUser.is_admin };
+    }));
   });
 });
 
@@ -798,7 +825,7 @@ app.put('/api/users/:id', requireAdmin, (req, res) => {
   if (fields.length === 0 && is_admin === undefined) {
     return res.json({ ok: true });
   }
-  if (id === 1) {
+  if (id <= 3) {
     fields.push('is_admin=1');
   } else if (is_admin !== undefined) {
     fields.push('is_admin=?');
@@ -807,6 +834,7 @@ app.put('/api/users/:id', requireAdmin, (req, res) => {
   values.push(id);
   db.run(`UPDATE users SET ${fields.join(',')} WHERE id=?`, values, function(err){
     if (err) return handleError(res, err);
+    enforceDefaultAdmins();
     res.json({ changes: this.changes, id });
   });
 });
