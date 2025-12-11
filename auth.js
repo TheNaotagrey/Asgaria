@@ -141,7 +141,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     navButtons.push(mapBtn);
   }
 
-  if (user && controls && authArea) {
+  const hasControls = typeof controls !== 'undefined' && controls;
+
+  if (user && hasControls && authArea) {
     const adminActive = user.is_admin && user.act_as_admin !== false;
     if (adminActive && current !== 'admin.html') {
 
