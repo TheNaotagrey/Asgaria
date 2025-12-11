@@ -150,6 +150,10 @@
         } else if (type === 'religion') {
           groupId = info.religion_pop_id;
           groupName = data.religionMap[groupId]?.name || '';
+        } else if (type === 'seigneur_religion') {
+          const owner = info.seigneur_id ? data.seigneurMap?.[info.seigneur_id] : null;
+          groupId = owner?.religion_id;
+          groupName = data.religionMap[groupId]?.name || '';
         } else if (type === 'culture') {
           groupId = info.culture_id;
           groupName = data.cultureMapInfo[groupId]?.name || '';
@@ -349,6 +353,7 @@
           } else { 
             if (
               type === 'religion' ||
+              type === 'seigneur_religion' ||
               type === 'priory' ||
               type === 'church' ||
               type === 'cathedral'
