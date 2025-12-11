@@ -352,6 +352,11 @@ CREATE TABLE IF NOT EXISTS notifications (
 `;
 
 db.exec(initSql, () => {
+  db.run('UPDATE users SET is_admin=1 WHERE id=1', (err) => {
+    if (err) {
+      logger.error('Failed to ensure default admin user', err);
+    }
+  });
   db.all("PRAGMA table_info(seigneurs)", (err, rows) => {
     if (!err && rows) {
       if (!rows.some(r => r.name === 'overlord_id')) {
@@ -774,10 +779,35 @@ app.post('/api/admin_mode', (req,res) => {
   res.json({ ok: true });
 });
 
-app.get('/api/users', (req, res) => {
-  db.all('SELECT id, email, first_name, last_name FROM users', [], (err, rows) => {
+app.get('/api/users', requireAdmin, (req, res) => {
+  db.all('SELECT id, email, first_name, last_name, is_admin FROM users', [], (err, rows) => {
     if (err) return handleError(res, err);
-    res.json(rows);
+    res.json(rows.map(u => ({ ...u, is_admin: !!u.is_admin })));
+  });
+});
+
+app.put('/api/users/:id', requireAdmin, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!id) return res.status(400).json({ error: 'Invalid user id' });
+  const { email, first_name, last_name, is_admin } = req.body;
+  const fields = [];
+  const values = [];
+  if (email !== undefined) { fields.push('email=?'); values.push(email); }
+  if (first_name !== undefined) { fields.push('first_name=?'); values.push(first_name); }
+  if (last_name !== undefined) { fields.push('last_name=?'); values.push(last_name); }
+  if (fields.length === 0 && is_admin === undefined) {
+    return res.json({ ok: true });
+  }
+  if (id === 1) {
+    fields.push('is_admin=1');
+  } else if (is_admin !== undefined) {
+    fields.push('is_admin=?');
+    values.push(is_admin ? 1 : 0);
+  }
+  values.push(id);
+  db.run(`UPDATE users SET ${fields.join(',')} WHERE id=?`, values, function(err){
+    if (err) return handleError(res, err);
+    res.json({ changes: this.changes, id });
   });
 });
 
