@@ -1077,6 +1077,7 @@ function renderTable(container, rows, opts){
   let sortDir = 'asc';
 
   const extraColumns = opts.extraColumns || [];
+  const allowAdd = opts.allowAdd !== false;
 
   const headers = [{label:'ID', key:'id'}].concat(
     opts.fields.map(f => ({
@@ -1475,7 +1476,7 @@ function renderTable(container, rows, opts){
         tbody.appendChild(frag);
         if(idx < sorted.length){
           requestAnimationFrame(renderChunk);
-        }else{
+        }else if (allowAdd){
           appendAddRow();
         }
       };
@@ -1486,7 +1487,7 @@ function renderTable(container, rows, opts){
         frag.appendChild(renderRow(item));
       });
       tbody.appendChild(frag);
-      appendAddRow();
+      if (allowAdd) appendAddRow();
     }
   };
 
@@ -1521,6 +1522,23 @@ async function loadCultures(){
     fields:['name','color'],
     labels:{name:'Nom', color:'Couleur'},
     colorFields:['color']
+  });
+}
+
+async function loadUsers(){
+  const users = await getData('users','/api/users');
+  const usersById = users.slice().sort((a,b)=>a.id - b.id);
+  renderTable(document.getElementById('tableUsers'), usersById, {
+    endpoint:'users',
+    fields:['email','first_name','last_name','is_admin'],
+    labels:{email:'Email', first_name:'Prénom', last_name:'Nom', is_admin:'Admin'},
+    selects:{is_admin:yesNoSelect},
+    beforeSave:(payload)=>{
+      if(payload.is_admin !== undefined){
+        payload.is_admin = payload.is_admin ? 1 : 0;
+      }
+    },
+    allowAdd:false,
   });
 }
 
@@ -1852,6 +1870,7 @@ function showLoading(panel, show){
 
 const tabLoaders = {
   seigneurs: loadSeigneurs,
+  users: loadUsers,
   religions: loadReligions,
   cultures: loadCultures,
   empires: loadEmpires,
