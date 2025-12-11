@@ -2,8 +2,8 @@
   const API_BASE = location.origin === 'null' ? 'http://localhost:3000' : '';
   const params = new URLSearchParams(location.search);
   const mapMode = params.get('mode') === 'sea' ? 'sea' : 'land';
-  const PIXEL_CHUNK_SIZE = 25;
-  const MAX_PIXEL_REQUESTS = 2;
+  const PIXEL_CHUNK_SIZE = 15;
+  const MAX_PIXEL_REQUESTS = 3;
 
   let mapWidth = 0;
   let mapHeight = 0;
@@ -179,17 +179,45 @@
 
   async function fetchBaronyPixelsInChunks(ids, target = {}, applyToCore = true) {
     if (!ids || ids.length === 0) return target;
-    const queue = [...ids];
+    const queue = shuffle([...ids]);
     const active = [];
     let loaded = 0;
     const total = ids.length;
+
+    function shuffle(list) {
+      for (let i = list.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [list[i], list[j]] = [list[j], list[i]];
+      }
+      return list;
+    }
+
+    async function parseJsonResponse(res) {
+      const text = await res.text();
+      try {
+        return JSON.parse(text);
+      } catch (e) {
+        throw new Error(`Invalid JSON (${e.message}): ${text.slice(0, 200)}...`);
+      }
+    }
+
+    async function fetchChunk(batch) {
+      const res = await fetch(`${API_BASE}/api/barony_pixels?ids=${batch.join(',')}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return parseJsonResponse(res);
+    }
+
+    async function fetchSinglePixel(id) {
+      const res = await fetch(`${API_BASE}/api/barony_pixels?id=${id}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return parseJsonResponse(res);
+    }
 
     const scheduleNext = () => {
       if (active.length >= MAX_PIXEL_REQUESTS) return;
       const batch = queue.splice(0, PIXEL_CHUNK_SIZE);
       if (batch.length === 0) return;
-      const promise = fetch(`${API_BASE}/api/barony_pixels?ids=${batch.join(',')}`)
-        .then(r => r.json())
+      const promise = fetchChunk(batch)
         .then(data => {
           Object.assign(target, data);
           loaded = Math.min(total, loaded + batch.length);
@@ -200,7 +228,25 @@
             core.drawAll();
           }
         })
-        .catch(err => console.warn('Erreur lors du chargement des pixels', err))
+        .catch(async err => {
+          console.warn('Erreur lors du chargement des pixels, tentative par id', err);
+          await Promise.all(batch.map(async id => {
+            try {
+              const single = await fetchSinglePixel(id);
+              target[id] = single;
+            } catch (e) {
+              console.warn(`Echec sur la baronnie ${id}`, e);
+            } finally {
+              loaded = Math.min(total, loaded + 1);
+              updatePixelLoading(loaded, total, true);
+            }
+          }));
+          if (applyToCore && core && typeof core.setPixelData === 'function') {
+            core.setPixelData(target);
+          } else if (core && typeof core.drawAll === 'function') {
+            core.drawAll();
+          }
+        })
         .finally(() => {
           const idx = active.indexOf(promise);
           if (idx >= 0) active.splice(idx, 1);
