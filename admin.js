@@ -104,6 +104,7 @@ const tabLoaded = {};
 const canonicalKey = id => (id === null || id === undefined ? '' : String(id));
 let canonicalLandMap = {};
 let canonicalDependents = {};
+let sanctuaryMap = {};
 const relationUpdaters = {};
 const maxOptions = [
   ...Array.from({length:10}, (_,i)=>({ id:String(i+1), name:String(i+1) })),
@@ -321,6 +322,137 @@ function createCanonicalCell(item, baroniesList){
     });
   });
 
+  updateSummary();
+  container.appendChild(summary);
+  container.appendChild(btn);
+  return container;
+}
+
+function createSanctuaryCell(item, religionsList){
+  const container = document.createElement('div');
+  const summary = document.createElement('div');
+  summary.style.marginBottom = '4px';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+
+  function updateSummary(){
+    const sanctuaries = sanctuaryMap[item.id] || [];
+    btn.textContent = `Sanctuaires (${sanctuaries.length})`;
+    if(!sanctuaries.length){
+      summary.textContent = 'Aucun';
+      return;
+    }
+    const labels = sanctuaries.map(s => {
+      const rel = religionsList.find(r => String(r.id) === String(s.religion_id));
+      const name = rel ? rel.name : s.religion_id;
+      return `${name}${s.active ? ' (actif)' : ''}`;
+    });
+    const short = labels.slice(0, 3);
+    if(labels.length > 3) short.push('…');
+    summary.textContent = short.join(', ');
+  }
+
+  function openPopup(){
+    const overlay = document.createElement('div');
+    overlay.className = 'popup-overlay';
+    const popup = document.createElement('div');
+    popup.className = 'popup';
+    const list = document.createElement('div');
+
+    function addRow(data = { id:null, religion_id:'', active:0 }){
+      const row = document.createElement('div');
+      row.className = 'cost-row';
+
+      const sel = document.createElement('select');
+      const blank = document.createElement('option');
+      blank.value = '';
+      sel.appendChild(blank);
+      religionsList.forEach(r => {
+        const op = document.createElement('option');
+        op.value = r.id;
+        op.textContent = r.name;
+        if(String(r.id) === String(data.religion_id)) op.selected = true;
+        sel.appendChild(op);
+      });
+
+      const chk = document.createElement('input');
+      chk.type = 'checkbox';
+      chk.checked = !!data.active;
+
+      sel.addEventListener('change', async ()=>{
+        const rid = parseInt(sel.value, 10);
+        if(!rid) return;
+        if(data.id){
+          await fetchJSON(`/api/sanctuaries/${data.id}`, {
+            method:'PUT',
+            headers:{ 'Content-Type':'application/json' },
+            body:JSON.stringify({ barony_id:item.id, religion_id: rid, active:data.active ? 1 : 0 })
+          });
+          data.religion_id = rid;
+        } else {
+          const res = await fetchJSON('/api/sanctuaries', {
+            method:'POST',
+            headers:{ 'Content-Type':'application/json' },
+            body:JSON.stringify({ barony_id:item.id, religion_id: rid, active:data.active ? 1 : 0 })
+          });
+          data.id = res.id;
+          data.religion_id = rid;
+          if(!sanctuaryMap[item.id]) sanctuaryMap[item.id] = [];
+          sanctuaryMap[item.id].push(data);
+        }
+        updateSummary();
+        showSaveIndicator(container);
+      });
+
+      chk.addEventListener('change', async ()=>{
+        data.active = chk.checked ? 1 : 0;
+        if(!data.id) return;
+        await fetchJSON(`/api/sanctuaries/${data.id}`, {
+          method:'PUT',
+          headers:{ 'Content-Type':'application/json' },
+          body:JSON.stringify({ barony_id:item.id, religion_id:data.religion_id, active:data.active })
+        });
+        updateSummary();
+        showSaveIndicator(container);
+      });
+
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.textContent = '-';
+      delBtn.addEventListener('click', async ()=>{
+        if(data.id){
+          await fetchJSON(`/api/sanctuaries/${data.id}`, { method:'DELETE' });
+          sanctuaryMap[item.id] = (sanctuaryMap[item.id] || []).filter(s => String(s.id) !== String(data.id));
+        }
+        row.remove();
+        updateSummary();
+        showSaveIndicator(container);
+      });
+
+      row.appendChild(sel);
+      row.appendChild(chk);
+      row.appendChild(delBtn);
+      list.appendChild(row);
+    }
+
+    (sanctuaryMap[item.id] || []).forEach(s => addRow(s));
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.textContent = '+';
+    addBtn.addEventListener('click', ()=> addRow());
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.textContent = 'Fermer';
+    closeBtn.addEventListener('click', ()=> overlay.remove());
+
+    popup.appendChild(list);
+    popup.appendChild(addBtn);
+    popup.appendChild(closeBtn);
+    overlay.appendChild(popup);
+    document.body.appendChild(overlay);
+  }
+
+  btn.addEventListener('click', openPopup);
   updateSummary();
   container.appendChild(summary);
   container.appendChild(btn);
@@ -2009,14 +2141,15 @@ async function loadSeigneuries(){
 }
 
 async function loadBaronies(){
-  const [baronies,seigneurs,religions,cultures,counties,viscounties,canonicalLands] = await Promise.all([
+  const [baronies,seigneurs,religions,cultures,counties,viscounties,canonicalLands,sanctuaries] = await Promise.all([
     getData('baronies','/api/baronies'),
     getData('seigneurs','/api/seigneurs'),
     getData('religions','/api/religions'),
     getData('cultures','/api/cultures'),
     getData('counties','/api/counties'),
     getData('viscounties','/api/viscounties'),
-    fetchJSON('/api/canonical_lands')
+    fetchJSON('/api/canonical_lands'),
+    fetchJSON('/api/sanctuaries')
   ]);
   dataCache.canonical_lands = canonicalLands;
   const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
@@ -2033,6 +2166,11 @@ async function loadBaronies(){
     canonicalLandMap[baronyKey].push(cl.canonical_barony_id);
     if (!canonicalDependents[canonicalKeyId]) canonicalDependents[canonicalKeyId] = [];
     canonicalDependents[canonicalKeyId].push(cl.barony_id);
+  });
+  sanctuaryMap = {};
+  sanctuaries.forEach(s => {
+    if (!sanctuaryMap[s.barony_id]) sanctuaryMap[s.barony_id] = [];
+    sanctuaryMap[s.barony_id].push({ id:s.id, religion_id:s.religion_id, active:!!s.active });
   });
   const baroniesById = baronies.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableBaronies'), baroniesById, {
@@ -2061,6 +2199,10 @@ async function loadBaronies(){
     },
     colorFields:['color'],
     extraColumns:[
+      {
+        label:'Sanctuaires',
+        render:item => createSanctuaryCell(item, religionsSelect)
+      },
       {
         label:'Terres canoniques (Évêché)',
         render:item => createCanonicalCell(item, baroniesById)
