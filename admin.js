@@ -26,6 +26,7 @@ const inventaireFields = [...basicResources, ...luxuryResources, ...militaryReso
 const inventaireLabels = Object.fromEntries([...basicResources, ...luxuryResources, ...militaryResources, ...extraResources]);
 
 const yesNoSelect = [{id:1,name:'Oui'},{id:0,name:'Non'}];
+const BOOLEAN_TOGGLE_CLASS = 'boolean-toggle';
 const baronyPropBoolFields = ['water_access','sea_access','has_or','has_argent','has_fer','has_pierre','has_epices','has_perle','has_encens','has_huiles','has_pierre_precieuses','has_soie','has_sel','has_fourrure','has_teinture','has_ivoire','has_vin'];
 const baronyPropIntFields = ['field_limit','fishing_limit','high_sea_boat_limit'];
 const baronyPropFields = ['barony_id', ...baronyPropBoolFields, ...baronyPropIntFields, 'effects'];
@@ -143,6 +144,74 @@ function showSaveIndicator(target) {
   setTimeout(() => {
     el.style.display = 'none';
   }, 2000);
+}
+
+function isBooleanOptionList(optList){
+  if(!Array.isArray(optList) || optList.length !== 2) return false;
+  const ids = optList.map(o => String(o.id)).sort();
+  return ids[0] === '0' && ids[1] === '1';
+}
+
+function setBooleanToggleState(input, val){
+  if(val === undefined || val === null || val === ''){
+    input.checked = false;
+    input.indeterminate = true;
+    input.dataset.state = 'null';
+  }else{
+    input.checked = !!val;
+    input.indeterminate = false;
+    input.dataset.state = 'set';
+  }
+}
+
+function createBooleanToggle(val){
+  const container = document.createElement('div');
+  container.className = BOOLEAN_TOGGLE_CLASS;
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.dataset.boolToggle = '1';
+  const label = document.createElement('span');
+  label.className = 'boolean-toggle-label';
+  const clearBtn = document.createElement('button');
+  clearBtn.type = 'button';
+  clearBtn.textContent = '✖';
+  clearBtn.title = 'Réinitialiser';
+
+  const updateLabel = () => {
+    if(input.indeterminate){
+      label.textContent = '—';
+    }else{
+      label.textContent = input.checked ? 'Oui' : 'Non';
+    }
+  };
+
+  container.setValue = (v) => {
+    setBooleanToggleState(input, v);
+    updateLabel();
+  };
+
+  container.getValue = () => input.dataset.state === 'null' ? null : (input.checked ? 1 : 0);
+
+  input._updateLabel = updateLabel;
+
+  setBooleanToggleState(input, val);
+  updateLabel();
+
+  input.addEventListener('change', () => {
+    input.dataset.state = 'set';
+    input.indeterminate = false;
+    updateLabel();
+  });
+
+  clearBtn.addEventListener('click', () => {
+    setBooleanToggleState(input, null);
+    updateLabel();
+  });
+
+  container.appendChild(input);
+  container.appendChild(label);
+  container.appendChild(clearBtn);
+  return container;
 }
 
 function createCostEditor(val) {
@@ -488,20 +557,31 @@ function updateRenderedSelect(containerId, fields, itemId, fieldKey, value){
     if(String(idCell.textContent.trim()) !== String(itemId)) return;
     const cell = tr.children[colIndex + 1];
     if(!cell) return;
+    const toggle = cell.querySelector(`.${BOOLEAN_TOGGLE_CLASS}`);
+    if(toggle && typeof toggle.setValue === 'function'){
+      toggle.setValue(value);
+      return;
+    }
     const sel = cell.querySelector('select');
     if(sel){
       sel.value = value == null ? '' : String(value);
-    }else{
-      const input = cell.querySelector('input');
-      if(input){
-        input.value = value == null ? '' : value;
-      }
+      return;
+    }
+    const checkbox = cell.querySelector('input[type="checkbox"][data-bool-toggle="1"]');
+    if(checkbox){
+      setBooleanToggleState(checkbox, value);
+      if(typeof checkbox._updateLabel === 'function') checkbox._updateLabel();
+      return;
+    }
+    const input = cell.querySelector('input');
+    if(input){
+      input.value = value == null ? '' : value;
     }
   });
 }
 
 function createRelationCell(item, children, opts){
-  const { childField, endpoint, labelField = 'name', tableId, tableFields, placeholder = 'Aucun' } = opts;
+  const { childField, endpoint, labelField = 'name', tableId, tableFields, placeholder = 'Aucun', showId = true } = opts;
   const container = document.createElement('div');
   const summary = document.createElement('div');
   summary.style.marginBottom = '4px';
@@ -509,7 +589,10 @@ function createRelationCell(item, children, opts){
   btn.type = 'button';
   btn.textContent = 'Modifier';
 
-  const getDisplayName = (child) => `${child.id} - ${child[labelField] || child.name || child.id}`;
+  const getDisplayName = (child) => {
+    const name = child[labelField] || child.name || child.id;
+    return showId ? `${child.id} - ${name}` : name;
+  };
 
   const getCurrentChildren = () => children.filter(c => String(c[childField]) === String(item.id));
 
@@ -1397,6 +1480,24 @@ function renderTable(container, rows, opts){
 
   const extraColumns = opts.extraColumns || [];
   const allowAdd = opts.allowAdd !== false;
+  const relationWatch = opts.relationWatch || [];
+
+  const captureRelationValues = (row) => {
+    const res = {};
+    relationWatch.forEach(f => { res[f] = row ? row[f] : null; });
+    return res;
+  };
+
+  const notifyRelationChanges = (previous, updated) => {
+    relationWatch.forEach(f => {
+      const oldVal = previous[f];
+      const newVal = updated ? updated[f] : null;
+      if(oldVal !== newVal){
+        notifyRelationUpdate(f, oldVal);
+        notifyRelationUpdate(f, newVal);
+      }
+    });
+  };
 
   const headers = [{label:'ID', key:'id'}].concat(
     opts.fields.map(f => ({
@@ -1624,6 +1725,9 @@ function renderTable(container, rows, opts){
       };
       return container;
     }
+    if(opts.booleanFields && opts.booleanFields.includes(field)){
+      return createBooleanToggle(val);
+    }
     if(field === 'description'){
       const textarea = document.createElement('textarea');
       textarea.value = val ?? '';
@@ -1632,6 +1736,9 @@ function renderTable(container, rows, opts){
     if(opts.selects && opts.selects[field]){
       let optList = opts.selects[field];
       if (typeof optList === 'function') optList = optList(item);
+      if (isBooleanOptionList(optList)) {
+        return createBooleanToggle(val);
+      }
       const select = document.createElement('select');
       const blank = document.createElement('option');
       blank.value = '';
@@ -1698,6 +1805,7 @@ function renderTable(container, rows, opts){
     const btn = document.createElement('button');
     btn.textContent = 'Enregistrer';
     btn.addEventListener('click', async ()=>{
+      const previousRelations = captureRelationValues(item);
       const payload = {};
       opts.fields.forEach((f,i)=>{
         const el = tr.children[i+1].firstChild;
@@ -1719,6 +1827,7 @@ function renderTable(container, rows, opts){
       });
       showSaveIndicator(btn.parentElement);
       const updated = { ...item, ...payload, ...(resp && typeof resp === 'object' ? resp : {}) };
+      notifyRelationChanges(previousRelations, updated);
       const idx = rows.findIndex(r=>r.id === item.id);
       if(idx !== -1) rows[idx] = updated;
       const newRow = renderRow(updated);
@@ -1775,6 +1884,7 @@ function renderTable(container, rows, opts){
         showSaveIndicator(addBtn.parentElement);
         const newItem = { ...payload, ...created };
         rows.push(newItem);
+        notifyRelationChanges(captureRelationValues(null), newItem);
         renderBody();
       });
       addTd.appendChild(addBtn);
@@ -1851,6 +1961,7 @@ async function loadUsers(){
     fields:['email','first_name','last_name','is_admin'],
     labels:{email:'Email', first_name:'Prénom', last_name:'Nom', is_admin:'Admin'},
     selects:{is_admin:yesNoSelect},
+    booleanFields:['is_admin'],
     beforeSave:(payload)=>{
       if(payload.is_admin !== undefined){
         payload.is_admin = payload.is_admin ? 1 : 0;
@@ -1879,6 +1990,8 @@ async function loadSeigneurs(){
     fields:seigneurFields,
     selects:{user_id:userSelectFn, religion_id:religionsSelect, overlord_id:seigneursSelect, player:yesNoSelect, bishop:yesNoSelect},
     labels:{name:'Nom', user_id:'Utilisateur', religion_id:'Religion', overlord_id:'Suzerain', player:'Joueur', bishop:'Évêque'},
+    booleanFields:['player','bishop'],
+    relationWatch:['overlord_id'],
     extraColumns:[{
       label:'Vassaux',
       render:item => createRelationCell(item, seigneurs, {
@@ -1887,6 +2000,7 @@ async function loadSeigneurs(){
         tableId:'tableSeigneurs',
         tableFields: seigneurFields,
         placeholder:'Aucun vassal',
+        showId:false,
       })
     }]
   });
@@ -2244,7 +2358,8 @@ async function loadBaronyProps(){
     endpoint:'barony_properties',
     fields:baronyPropFields,
     selects:{barony_id:baroniesSelect, ...boolSelects},
-    labels:baronyPropLabels
+    labels:baronyPropLabels,
+    booleanFields:baronyPropBoolFields,
   });
 }
 
