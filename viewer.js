@@ -91,6 +91,7 @@
   const landFilters = [
     { value: '', label: 'Aucun' },
     { value: 'religion', label: 'Religion' },
+    { value: 'seigneur_religion', label: 'Religion du seigneur' },
     { value: 'sanctuary', label: 'Sanctuaire' },
     { value: 'priory', label: 'Prieuré' },
     { value: 'church', label: 'Église' },
