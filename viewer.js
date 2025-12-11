@@ -15,6 +15,7 @@
   let baronyPixels = {};
   let maritimeZoneBaronies = {};
   let baronyMeta = {};
+  let baronyLookup = {};
   let seigneurMap = {};
   let religionMap = {};
   let cultureMapInfo = {};
@@ -57,6 +58,15 @@
   const seaInfoId = document.getElementById('seaInfoId');
   const seaInfoName = document.getElementById('seaInfoName');
   const seaInfoSeigneur = document.getElementById('seaInfoSeigneur');
+  const seigneurInfoPanel = document.getElementById('seigneurInfoPanel');
+  const seigneurInfoTitle = document.getElementById('seigneurInfoTitle');
+  const seigneurInfoIdentity = document.getElementById('seigneurInfoIdentity');
+  const seigneurInfoReligion = document.getElementById('seigneurInfoReligion');
+  const seigneurOverlordLine = document.getElementById('seigneurOverlordLine');
+  const seigneurTitlesSection = document.getElementById('seigneurTitlesSection');
+  const seigneurTitlesList = document.getElementById('seigneurTitlesList');
+  const seigneurVassalsSection = document.getElementById('seigneurVassalsSection');
+  const seigneurVassalList = document.getElementById('seigneurVassalList');
   const legendDiv = document.getElementById('legend');
   const filterSelect = document.getElementById('filterSelect');
   const randomBtn = document.getElementById('randomBtn');
@@ -71,6 +81,96 @@
       elem.style.display = 'none';
       elem.textContent = '';
     }
+  }
+
+  function setSeigneurLine(elem, seigneurId, label) {
+    if (!elem) return;
+    elem.innerHTML = '';
+    if (seigneurId && seigneurMap[seigneurId]) {
+      elem.style.display = 'block';
+      if (label) {
+        const span = document.createElement('span');
+        span.textContent = label + ' ';
+        elem.appendChild(span);
+      }
+      elem.appendChild(createSeigneurButton(seigneurId));
+    } else {
+      elem.style.display = 'none';
+    }
+  }
+
+  function createSeigneurButton(seigneurId) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'seigneur-link';
+    btn.textContent = seigneurMap[seigneurId]?.name || `Seigneur #${seigneurId}`;
+    btn.addEventListener('click', () => showSeigneurInfo(seigneurId));
+    return btn;
+  }
+
+  function setSeigneurList(section, list, ids) {
+    if (!section || !list) return;
+    list.innerHTML = '';
+    if (ids && ids.length > 0) {
+      section.style.display = 'block';
+      ids.forEach(id => {
+        const li = document.createElement('li');
+        li.appendChild(createSeigneurButton(id));
+        list.appendChild(li);
+      });
+    } else {
+      section.style.display = 'none';
+    }
+  }
+
+  function showSeigneurInfo(seigneurId) {
+    if (!seigneurInfoPanel) return;
+    const seigneur = seigneurMap[seigneurId];
+    if (!seigneur) return;
+    if (infoPanel) infoPanel.style.display = 'none';
+    if (seaInfoPanel) seaInfoPanel.style.display = 'none';
+    seigneurInfoPanel.style.display = 'block';
+    if (seigneurInfoTitle) seigneurInfoTitle.textContent = seigneur.name;
+    if (seigneurInfoIdentity) {
+      const tags = [];
+      if (seigneur.player) tags.push('Joueur');
+      if (seigneur.bishop) tags.push('Évêque');
+      const label = tags.length > 0 ? `#${seigneur.id} · ${tags.join(', ')}` : `#${seigneur.id}`;
+      setLine(seigneurInfoIdentity, label);
+    }
+    const religionName = seigneur.religion_id ? (religionMap[seigneur.religion_id]?.name || '') : '';
+    setLine(seigneurInfoReligion, religionName ? `Religion: ${religionName}` : '');
+    setSeigneurLine(seigneurOverlordLine, seigneur.overlord_id, 'Suzerain:');
+
+    const titles = [];
+    const empireId = seigneurToEmpire[seigneurId];
+    if (empireId && empireMap[empireId]) titles.push(`Empereur de ${empireMap[empireId].name}`);
+    const kingdomId = seigneurToKingdom[seigneurId];
+    if (kingdomId && kingdomMap[kingdomId]) titles.push(`Roi de ${kingdomMap[kingdomId].name}`);
+    const archduchyId = seigneurToArchduchy[seigneurId];
+    if (archduchyId && archduchyMap[archduchyId]) titles.push(`Archiduc de ${archduchyMap[archduchyId].name}`);
+    const duchyId = seigneurToDuchy[seigneurId];
+    if (duchyId && duchyMap[duchyId]) titles.push(`Duc de ${duchyMap[duchyId].name}`);
+    const marquisateId = seigneurToMarquisate[seigneurId];
+    if (marquisateId && marquisateMap[marquisateId]) titles.push(`Marquis de ${marquisateMap[marquisateId].name}`);
+    const countyId = seigneurToCounty[seigneurId];
+    if (countyId && countyMap[countyId]) titles.push(`Comte de ${countyMap[countyId].name}`);
+    const viscountyId = seigneurToViscounty[seigneurId];
+    if (viscountyId && viscountyMap[viscountyId]) titles.push(`Vicomte de ${viscountyMap[viscountyId].name}`);
+    const ownedBaronies = Object.values(baronyLookup)
+      .filter(b => b.seigneur_id === seigneurId)
+      .map(b => `Baron de ${b.name}`);
+    titles.push(...ownedBaronies);
+    setList(seigneurTitlesSection, seigneurTitlesList, titles);
+
+    const vassals = Object.values(seigneurMap)
+      .filter(s => s.overlord_id === seigneurId)
+      .map(s => s.id);
+    setSeigneurList(seigneurVassalsSection, seigneurVassalList, vassals);
+  }
+
+  function hideSeigneurInfo() {
+    if (seigneurInfoPanel) seigneurInfoPanel.style.display = 'none';
   }
 
   function setList(section, list, items) {
@@ -268,6 +368,7 @@
   }
 
   function handleSelect(id) {
+    hideSeigneurInfo();
     if (mapMode === 'sea') {
       if (!id) {
         if (seaInfoPanel) seaInfoPanel.style.display = 'none';
@@ -278,7 +379,12 @@
       if (infoPanel) infoPanel.style.display = 'none';
       if (seaInfoId) seaInfoId.textContent = info.id || '';
       if (seaInfoName) seaInfoName.textContent = info.name || '';
-      if (seaInfoSeigneur) seaInfoSeigneur.textContent = info.seigneur_id ? (seigneurMap[info.seigneur_id]?.name || info.seigneur_id) : '';
+      if (seaInfoSeigneur) {
+        seaInfoSeigneur.innerHTML = '';
+        if (info.seigneur_id && seigneurMap[info.seigneur_id]) {
+          seaInfoSeigneur.appendChild(createSeigneurButton(info.seigneur_id));
+        }
+      }
       if (filterManager && filterSelect && (filterSelect.value === 'distance' || filterSelect.value === 'baronies')) {
         filterManager.applyFilter(filterSelect.value);
       }
@@ -294,7 +400,7 @@
     if (baronyTitle) {
       baronyTitle.textContent = `Baronnie: ${info.name || ''} (#${info.id || ''})`;
     }
-    setLine(infoOwnerLine, info.seigneur_id ? `Propriétaire: ${seigneurMap[info.seigneur_id]?.name || ''}` : '');
+    setSeigneurLine(infoOwnerLine, info.seigneur_id, 'Propriétaire:');
     setLine(infoReligionLine, info.religion_pop_id ? `Religion: ${religionMap[info.religion_pop_id]?.name || ''}` : '');
     setLine(infoCultureLine, info.culture_id ? `Culture: ${cultureMapInfo[info.culture_id]?.name || ''}` : '');
     const viscounty = viscountyMap[info.viscounty_id];
@@ -343,16 +449,50 @@
     canonicalDependents = {};
     canonicalParents = {};
     if (mapMode === 'sea') {
-      const [zones, seigneurs, connections, zoneBaronies] = await Promise.all([
+      const [zones, seigneurs, connections, zoneBaronies, baronies, religions, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires] = await Promise.all([
         fetch(API_BASE + '/api/maritime_zones').then(r => r.json()),
         fetch(API_BASE + '/api/seigneurs').then(r => r.json()),
         fetch(API_BASE + '/api/maritime_zone_connections').then(r => r.json()),
-        fetch(API_BASE + '/api/maritime_zone_baronies').then(r => r.json())
+        fetch(API_BASE + '/api/maritime_zone_baronies').then(r => r.json()),
+        fetch(API_BASE + '/api/baronies').then(r => r.json()),
+        fetch(API_BASE + '/api/religions').then(r => r.json()),
+        fetch(API_BASE + '/api/counties').then(r => r.json()),
+        fetch(API_BASE + '/api/duchies').then(r => r.json()),
+        fetch(API_BASE + '/api/kingdoms').then(r => r.json()),
+        fetch(API_BASE + '/api/viscounties').then(r => r.json()),
+        fetch(API_BASE + '/api/marquisates').then(r => r.json()),
+        fetch(API_BASE + '/api/archduchies').then(r => r.json()),
+        fetch(API_BASE + '/api/empires').then(r => r.json())
       ]);
       baronyMeta = {};
       zones.forEach(z => { baronyMeta[z.id] = z; });
+      baronyLookup = {};
+      baronies.forEach(b => { baronyLookup[b.id] = b; });
       seigneurMap = {};
       seigneurs.forEach(s => { seigneurMap[s.id] = s; });
+      religionMap = {};
+      religions.forEach(r => { religionMap[r.id] = r; });
+      countyMap = {};
+      duchyMap = {};
+      kingdomMap = {};
+      viscountyMap = {};
+      marquisateMap = {};
+      archduchyMap = {};
+      empireMap = {};
+      seigneurToCounty = {};
+      counties.forEach(c => { countyMap[c.id] = c; if (c.seigneur_id) seigneurToCounty[c.seigneur_id] = c.id; });
+      seigneurToDuchy = {};
+      duchies.forEach(d => { duchyMap[d.id] = d; if (d.seigneur_id) seigneurToDuchy[d.seigneur_id] = d.id; });
+      seigneurToKingdom = {};
+      kingdoms.forEach(k => { kingdomMap[k.id] = k; if (k.seigneur_id) seigneurToKingdom[k.seigneur_id] = k.id; });
+      seigneurToViscounty = {};
+      viscounties.forEach(v => { viscountyMap[v.id] = v; if (v.seigneur_id) seigneurToViscounty[v.seigneur_id] = v.id; });
+      seigneurToMarquisate = {};
+      marquisates.forEach(m => { marquisateMap[m.id] = m; if (m.seigneur_id) seigneurToMarquisate[m.seigneur_id] = m.id; });
+      seigneurToArchduchy = {};
+      archduchies.forEach(a => { archduchyMap[a.id] = a; if (a.seigneur_id) seigneurToArchduchy[a.seigneur_id] = a.id; });
+      seigneurToEmpire = {};
+      empires.forEach(e => { empireMap[e.id] = e; if (e.seigneur_id) seigneurToEmpire[e.seigneur_id] = e.id; });
       baronyAdjacency = {};
       connections.forEach(c => {
         if (!baronyAdjacency[c.zone_id_1]) baronyAdjacency[c.zone_id_1] = [];
@@ -368,7 +508,33 @@
         if (!maritimeZoneBaronies[zb.zone_id]) maritimeZoneBaronies[zb.zone_id] = [];
         maritimeZoneBaronies[zb.zone_id].push(zb.barony_id);
       });
-      mapData = { pixelData, baronyMeta, baronyAdjacency, baronyPixels, maritimeZoneBaronies, seigneurMap, mapWidth, mapHeight, mapMode };
+      mapData = {
+        pixelData,
+        baronyMeta,
+        baronyLookup,
+        baronyAdjacency,
+        baronyPixels,
+        maritimeZoneBaronies,
+        seigneurMap,
+        religionMap,
+        countyMap,
+        duchyMap,
+        kingdomMap,
+        viscountyMap,
+        marquisateMap,
+        archduchyMap,
+        empireMap,
+        seigneurToViscounty,
+        seigneurToCounty,
+        seigneurToMarquisate,
+        seigneurToDuchy,
+        seigneurToArchduchy,
+        seigneurToKingdom,
+        seigneurToEmpire,
+        mapWidth,
+        mapHeight,
+        mapMode
+      };
       return mapData;
     }
     const [baronies, seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires, canonicalLands, sanctuaries, connections] = await Promise.all([
@@ -388,7 +554,8 @@
       fetch(API_BASE + '/api/barony_connections').then(r => r.json())
     ]);
     baronyMeta = {};
-    baronies.forEach(b => { baronyMeta[b.id] = b; });
+    baronyLookup = {};
+    baronies.forEach(b => { baronyMeta[b.id] = b; baronyLookup[b.id] = b; });
     seigneurMap = {};
     seigneurs.forEach(s => { seigneurMap[s.id] = s; });
     religionMap = {};
@@ -460,6 +627,7 @@
       canonicalDependents,
       sanctuaryMap,
       baronyAdjacency,
+      baronyLookup,
       seigneurToViscounty,
       seigneurToCounty,
       seigneurToMarquisate,
