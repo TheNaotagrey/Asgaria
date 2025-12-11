@@ -54,7 +54,7 @@ const baronyPropLabels = {
   effects:'Effets'
 };
 
-const baronyFields = ['name','seigneur_id','religion_pop_id','culture_id','county_id','viscounty_id','priory_religion_id','church_religion_id','cathedral_religion_id'];
+const baronyFields = ['name','seigneur_id','religion_pop_id','culture_id','county_id','viscounty_id','priory_religion_id','church_religion_id','cathedral_religion_id','color'];
 const baronyLabels = {
   name:'Nom',
   seigneur_id:'Seigneur',
@@ -64,7 +64,8 @@ const baronyLabels = {
   viscounty_id:'Vicomté',
   priory_religion_id:'Prieuré',
   church_religion_id:'Église',
-  cathedral_religion_id:'Cathédrale'
+  cathedral_religion_id:'Cathédrale',
+  color:'Couleur'
 };
 
 const buildingPropFields = ['label','produces','production','costs','max','workers_per_building','absolute_restrictions','infra_restrictions','effects','description'];
@@ -1331,10 +1332,26 @@ function renderTable(container, rows, opts){
       return select;
     }
     if(opts.colorFields && opts.colorFields.includes(field)){
+      const wrapper = document.createElement('div');
+      wrapper.className = 'color-input';
       const input = document.createElement('input');
       input.type = 'color';
       input.value = val || '#000000';
-      return input;
+      if (!val) input.dataset.empty = '1';
+      const clearBtn = document.createElement('button');
+      clearBtn.type = 'button';
+      clearBtn.textContent = 'Effacer';
+      clearBtn.addEventListener('click', () => {
+        input.dataset.empty = '1';
+        input.value = '#000000';
+      });
+      const markFilled = () => { delete input.dataset.empty; };
+      input.addEventListener('input', markFilled);
+      input.addEventListener('change', markFilled);
+      wrapper.getValue = () => input.dataset.empty === '1' ? null : input.value;
+      wrapper.appendChild(input);
+      wrapper.appendChild(clearBtn);
+      return wrapper;
     }
     const input = document.createElement('input');
     input.value = val ?? '';
@@ -1537,9 +1554,10 @@ async function loadEmpires(){
   const empiresById = empires.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableEmpires'), empiresById, {
     endpoint:'empires',
-    fields:['name','seigneur_id'],
+    fields:['name','seigneur_id','color'],
     selects:{seigneur_id:seigneursSelect},
-    labels:{name:'Nom', seigneur_id:'Détenteur du titre'}
+    labels:{name:'Nom', seigneur_id:'Détenteur du titre', color:'Couleur'},
+    colorFields:['color']
   });
 }
 
@@ -1554,9 +1572,10 @@ async function loadKingdoms(){
   const kingdomsById = kingdoms.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableKingdoms'), kingdomsById, {
     endpoint:'kingdoms',
-    fields:['name','seigneur_id','empire_id'],
+    fields:['name','seigneur_id','empire_id','color'],
     selects:{seigneur_id:seigneursSelect, empire_id:empiresSelect},
-    labels:{name:'Nom', seigneur_id:'Détenteur du titre', empire_id:'Empire'}
+    labels:{name:'Nom', seigneur_id:'Détenteur du titre', empire_id:'Empire', color:'Couleur'},
+    colorFields:['color']
   });
 }
 
@@ -1569,9 +1588,10 @@ async function loadArchduchies(){
   const archduchiesById = archduchies.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableArchduchies'), archduchiesById, {
     endpoint:'archduchies',
-    fields:['name','seigneur_id'],
+    fields:['name','seigneur_id','color'],
     selects:{seigneur_id:seigneursSelect},
-    labels:{name:'Nom', seigneur_id:'Détenteur du titre'}
+    labels:{name:'Nom', seigneur_id:'Détenteur du titre', color:'Couleur'},
+    colorFields:['color']
   });
 }
 
@@ -1588,9 +1608,10 @@ async function loadDuchies(){
   const duchiesById = duchies.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableDuchies'), duchiesById, {
     endpoint:'duchies',
-    fields:['name','seigneur_id','kingdom_id','archduchy_id'],
+    fields:['name','seigneur_id','kingdom_id','archduchy_id','color'],
     selects:{seigneur_id:seigneursSelect, kingdom_id:kingdomsSelect, archduchy_id:archduchiesSelect},
-    labels:{name:'Nom', seigneur_id:'Détenteur du titre', kingdom_id:'Royaume', archduchy_id:'Archiduché'}
+    labels:{name:'Nom', seigneur_id:'Détenteur du titre', kingdom_id:'Royaume', archduchy_id:'Archiduché', color:'Couleur'},
+    colorFields:['color']
   });
 }
 
@@ -1603,9 +1624,10 @@ async function loadMarquisates(){
   const marquisatesById = marquisates.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableMarquisates'), marquisatesById, {
     endpoint:'marquisates',
-    fields:['name','seigneur_id'],
+    fields:['name','seigneur_id','color'],
     selects:{seigneur_id:seigneursSelect},
-    labels:{name:'Nom', seigneur_id:'Détenteur du titre'}
+    labels:{name:'Nom', seigneur_id:'Détenteur du titre', color:'Couleur'},
+    colorFields:['color']
   });
 }
 
@@ -1622,9 +1644,10 @@ async function loadCounties(){
   const countiesById = counties.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableCounties'), countiesById, {
     endpoint:'counties',
-    fields:['name','seigneur_id','duchy_id','marquisate_id'],
+    fields:['name','seigneur_id','duchy_id','marquisate_id','color'],
     selects:{seigneur_id:seigneursSelect, duchy_id:duchiesSelect, marquisate_id:marquisatesSelect},
-    labels:{name:'Nom', seigneur_id:'Détenteur du titre', duchy_id:'Duché', marquisate_id:'Marquisat'}
+    labels:{name:'Nom', seigneur_id:'Détenteur du titre', duchy_id:'Duché', marquisate_id:'Marquisat', color:'Couleur'},
+    colorFields:['color']
   });
 }
 
@@ -1637,9 +1660,10 @@ async function loadViscounties(){
   const viscountiesById = viscounties.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableViscounties'), viscountiesById, {
     endpoint:'viscounties',
-    fields:['name','seigneur_id'],
+    fields:['name','seigneur_id','color'],
     selects:{seigneur_id:seigneursSelect},
-    labels:{name:'Nom', seigneur_id:'Détenteur du titre'}
+    labels:{name:'Nom', seigneur_id:'Détenteur du titre', color:'Couleur'},
+    colorFields:['color']
   });
 }
 
@@ -1728,6 +1752,7 @@ async function loadBaronies(){
       church_religion_id:'Aucune',
       cathedral_religion_id:'Aucune'
     },
+    colorFields:['color'],
     extraColumns:[
       {
         label:'Terres canoniques',
