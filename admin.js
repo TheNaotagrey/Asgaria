@@ -153,15 +153,8 @@ function isBooleanOptionList(optList){
 }
 
 function setBooleanToggleState(input, val){
-  if(val === undefined || val === null || val === ''){
-    input.checked = false;
-    input.indeterminate = true;
-    input.dataset.state = 'null';
-  }else{
-    input.checked = !!val;
-    input.indeterminate = false;
-    input.dataset.state = 'set';
-  }
+  input.checked = !!val;
+  input.indeterminate = false;
 }
 
 function createBooleanToggle(val){
@@ -170,47 +163,15 @@ function createBooleanToggle(val){
   const input = document.createElement('input');
   input.type = 'checkbox';
   input.dataset.boolToggle = '1';
-  const label = document.createElement('span');
-  label.className = 'boolean-toggle-label';
-  const clearBtn = document.createElement('button');
-  clearBtn.type = 'button';
-  clearBtn.textContent = '✖';
-  clearBtn.title = 'Réinitialiser';
-
-  const updateLabel = () => {
-    if(input.indeterminate){
-      label.textContent = '—';
-    }else{
-      label.textContent = input.checked ? 'Oui' : 'Non';
-    }
-  };
-
   container.setValue = (v) => {
     setBooleanToggleState(input, v);
-    updateLabel();
   };
 
-  container.getValue = () => input.dataset.state === 'null' ? null : (input.checked ? 1 : 0);
-
-  input._updateLabel = updateLabel;
+  container.getValue = () => input.checked ? 1 : 0;
 
   setBooleanToggleState(input, val);
-  updateLabel();
-
-  input.addEventListener('change', () => {
-    input.dataset.state = 'set';
-    input.indeterminate = false;
-    updateLabel();
-  });
-
-  clearBtn.addEventListener('click', () => {
-    setBooleanToggleState(input, null);
-    updateLabel();
-  });
 
   container.appendChild(input);
-  container.appendChild(label);
-  container.appendChild(clearBtn);
   return container;
 }
 
@@ -1827,10 +1788,17 @@ function renderTable(container, rows, opts){
       });
       showSaveIndicator(btn.parentElement);
       const updated = { ...item, ...payload, ...(resp && typeof resp === 'object' ? resp : {}) };
-      notifyRelationChanges(previousRelations, updated);
-      const idx = rows.findIndex(r=>r.id === item.id);
-      if(idx !== -1) rows[idx] = updated;
-      const newRow = renderRow(updated);
+      let updatedRef = updated;
+      let idx = rows.findIndex(r=>r.id === item.id);
+      if(idx !== -1){
+        Object.assign(rows[idx], updated);
+        updatedRef = rows[idx];
+        item = updatedRef;
+      }
+      notifyRelationChanges(previousRelations, updatedRef);
+      idx = rows.findIndex(r=>r.id === item.id);
+      if(idx !== -1) rows[idx] = item;
+      const newRow = renderRow(updatedRef);
       tbody.replaceChild(newRow, tr);
     });
     td.appendChild(btn);
@@ -1994,7 +1962,7 @@ async function loadSeigneurs(){
     relationWatch:['overlord_id'],
     extraColumns:[{
       label:'Vassaux',
-      render:item => createRelationCell(item, seigneurs, {
+      render:item => createRelationCell(item, seigneursById, {
         childField:'overlord_id',
         endpoint:'seigneurs',
         tableId:'tableSeigneurs',
@@ -2053,6 +2021,7 @@ async function loadKingdoms(){
     selects:{seigneur_id:seigneursSelect, empire_id:empiresSelect},
     labels:{name:'Nom', seigneur_id:'Détenteur du titre', empire_id:'Empire', color:'Couleur'},
     colorFields:['color'],
+    relationWatch:['empire_id'],
     extraColumns:[{
       label:'Duchés de jure',
       render:item => createRelationCell(item, duchiesByName, {
@@ -2115,6 +2084,7 @@ async function loadDuchies(){
     selects:{seigneur_id:seigneursSelect, kingdom_id:kingdomsSelect, archduchy_id:archduchiesSelect},
     labels:{name:'Nom', seigneur_id:'Détenteur du titre', kingdom_id:'Royaume', archduchy_id:'Archiduché', color:'Couleur'},
     colorFields:['color'],
+    relationWatch:['kingdom_id','archduchy_id'],
     extraColumns:[{
       label:'Comtés de jure',
       render:item => createRelationCell(item, countiesByName, {
@@ -2178,6 +2148,7 @@ async function loadCounties(){
     selects:{seigneur_id:seigneursSelect, duchy_id:duchiesSelect, marquisate_id:marquisatesSelect},
     labels:{name:'Nom', seigneur_id:'Détenteur du titre', duchy_id:'Duché', marquisate_id:'Marquisat', color:'Couleur'},
     colorFields:['color'],
+    relationWatch:['duchy_id','marquisate_id'],
     extraColumns:[{
       label:'Baronnies de jure',
       render:item => createRelationCell(item, baroniesByName, {
@@ -2312,6 +2283,7 @@ async function loadBaronies(){
       cathedral_religion_id:'Aucune'
     },
     colorFields:['color'],
+    relationWatch:['county_id','viscounty_id'],
     extraColumns:[
       {
         label:'Sanctuaires',
