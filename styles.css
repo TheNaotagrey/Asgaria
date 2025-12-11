@@ -308,6 +308,12 @@ main {
   margin-top: 0;
   font-size: 1rem;
 }
+.info-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
 .info-group {
   margin-bottom: 8px;
 }
@@ -352,6 +358,19 @@ main {
 }
 .info-panel button:hover {
   background-color: #3d6db2;
+}
+.seigneur-link {
+  margin: 0;
+  background-color: #eef3ff;
+  color: #1d56a4;
+  border: 1px solid #c7d6f5;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.seigneur-link:hover {
+  background-color: #dfe9ff;
 }
 
 /* Table d'administration */
