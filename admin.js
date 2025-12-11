@@ -1399,9 +1399,7 @@ function renderTable(container, rows, opts){
         body:JSON.stringify(payload)
       });
       showSaveIndicator(btn.parentElement);
-      const updated = resp && typeof resp === 'object' && 'id' in resp
-        ? resp
-        : { ...item, ...payload };
+      const updated = { ...item, ...payload, ...(resp && typeof resp === 'object' ? resp : {}) };
       const idx = rows.findIndex(r=>r.id === item.id);
       if(idx !== -1) rows[idx] = updated;
       const newRow = renderRow(updated);
@@ -1527,7 +1525,8 @@ async function loadCultures(){
 
 async function loadUsers(){
   const users = await getData('users','/api/users');
-  const usersById = users.slice().sort((a,b)=>a.id - b.id);
+  const normalizedUsers = users.map(u => ({ ...u, is_admin: u.is_admin ? 1 : 0 }));
+  const usersById = normalizedUsers.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableUsers'), usersById, {
     endpoint:'users',
     fields:['email','first_name','last_name','is_admin'],
