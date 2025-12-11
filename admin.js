@@ -26,6 +26,7 @@ const inventaireFields = [...basicResources, ...luxuryResources, ...militaryReso
 const inventaireLabels = Object.fromEntries([...basicResources, ...luxuryResources, ...militaryResources, ...extraResources]);
 
 const yesNoSelect = [{id:1,name:'Oui'},{id:0,name:'Non'}];
+const BOOLEAN_TOGGLE_CLASS = 'boolean-toggle';
 const baronyPropBoolFields = ['water_access','sea_access','has_or','has_argent','has_fer','has_pierre','has_epices','has_perle','has_encens','has_huiles','has_pierre_precieuses','has_soie','has_sel','has_fourrure','has_teinture','has_ivoire','has_vin'];
 const baronyPropIntFields = ['field_limit','fishing_limit','high_sea_boat_limit'];
 const baronyPropFields = ['barony_id', ...baronyPropBoolFields, ...baronyPropIntFields, 'effects'];
@@ -104,6 +105,8 @@ const tabLoaded = {};
 const canonicalKey = id => (id === null || id === undefined ? '' : String(id));
 let canonicalLandMap = {};
 let canonicalDependents = {};
+let sanctuaryMap = {};
+const relationUpdaters = {};
 const maxOptions = [
   ...Array.from({length:10}, (_,i)=>({ id:String(i+1), name:String(i+1) })),
   ...baronyPropIntFields.map(f=>({ id:f, name:baronyPropLabels[f] || f })),
@@ -141,6 +144,35 @@ function showSaveIndicator(target) {
   setTimeout(() => {
     el.style.display = 'none';
   }, 2000);
+}
+
+function isBooleanOptionList(optList){
+  if(!Array.isArray(optList) || optList.length !== 2) return false;
+  const ids = optList.map(o => String(o.id)).sort();
+  return ids[0] === '0' && ids[1] === '1';
+}
+
+function setBooleanToggleState(input, val){
+  input.checked = !!val;
+  input.indeterminate = false;
+}
+
+function createBooleanToggle(val){
+  const container = document.createElement('div');
+  container.className = BOOLEAN_TOGGLE_CLASS;
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.dataset.boolToggle = '1';
+  container.setValue = (v) => {
+    setBooleanToggleState(input, v);
+  };
+
+  container.getValue = () => input.checked ? 1 : 0;
+
+  setBooleanToggleState(input, val);
+
+  container.appendChild(input);
+  return container;
 }
 
 function createCostEditor(val) {
@@ -321,6 +353,337 @@ function createCanonicalCell(item, baroniesList){
   });
 
   updateSummary();
+  container.appendChild(summary);
+  container.appendChild(btn);
+  return container;
+}
+
+function createSanctuaryCell(item, religionsList){
+  const container = document.createElement('div');
+  const summary = document.createElement('div');
+  summary.style.marginBottom = '4px';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+
+  function updateSummary(){
+    const sanctuaries = sanctuaryMap[item.id] || [];
+    btn.textContent = `Sanctuaires (${sanctuaries.length})`;
+    if(!sanctuaries.length){
+      summary.textContent = 'Aucun';
+      return;
+    }
+    const labels = sanctuaries.map(s => {
+      const rel = religionsList.find(r => String(r.id) === String(s.religion_id));
+      const name = rel ? rel.name : s.religion_id;
+      return `${name}${s.active ? ' (actif)' : ''}`;
+    });
+    const short = labels.slice(0, 3);
+    if(labels.length > 3) short.push('…');
+    summary.textContent = short.join(', ');
+  }
+
+  function openPopup(){
+    const overlay = document.createElement('div');
+    overlay.className = 'popup-overlay';
+    const popup = document.createElement('div');
+    popup.className = 'popup';
+    const list = document.createElement('div');
+
+    function addRow(data = { id:null, religion_id:'', active:0 }){
+      const row = document.createElement('div');
+      row.className = 'cost-row';
+
+      const sel = document.createElement('select');
+      const blank = document.createElement('option');
+      blank.value = '';
+      sel.appendChild(blank);
+      religionsList.forEach(r => {
+        const op = document.createElement('option');
+        op.value = r.id;
+        op.textContent = r.name;
+        if(String(r.id) === String(data.religion_id)) op.selected = true;
+        sel.appendChild(op);
+      });
+
+      const chk = document.createElement('input');
+      chk.type = 'checkbox';
+      chk.checked = !!data.active;
+
+      sel.addEventListener('change', async ()=>{
+        const rid = parseInt(sel.value, 10);
+        if(!rid) return;
+        if(data.id){
+          await fetchJSON(`/api/sanctuaries/${data.id}`, {
+            method:'PUT',
+            headers:{ 'Content-Type':'application/json' },
+            body:JSON.stringify({ barony_id:item.id, religion_id: rid, active:data.active ? 1 : 0 })
+          });
+          data.religion_id = rid;
+        } else {
+          const res = await fetchJSON('/api/sanctuaries', {
+            method:'POST',
+            headers:{ 'Content-Type':'application/json' },
+            body:JSON.stringify({ barony_id:item.id, religion_id: rid, active:data.active ? 1 : 0 })
+          });
+          data.id = res.id;
+          data.religion_id = rid;
+          if(!sanctuaryMap[item.id]) sanctuaryMap[item.id] = [];
+          sanctuaryMap[item.id].push(data);
+        }
+        updateSummary();
+        showSaveIndicator(container);
+      });
+
+      chk.addEventListener('change', async ()=>{
+        data.active = chk.checked ? 1 : 0;
+        if(!data.id) return;
+        await fetchJSON(`/api/sanctuaries/${data.id}`, {
+          method:'PUT',
+          headers:{ 'Content-Type':'application/json' },
+          body:JSON.stringify({ barony_id:item.id, religion_id:data.religion_id, active:data.active })
+        });
+        updateSummary();
+        showSaveIndicator(container);
+      });
+
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.textContent = '-';
+      delBtn.addEventListener('click', async ()=>{
+        if(data.id){
+          await fetchJSON(`/api/sanctuaries/${data.id}`, { method:'DELETE' });
+          sanctuaryMap[item.id] = (sanctuaryMap[item.id] || []).filter(s => String(s.id) !== String(data.id));
+        }
+        row.remove();
+        updateSummary();
+        showSaveIndicator(container);
+      });
+
+      row.appendChild(sel);
+      row.appendChild(chk);
+      row.appendChild(delBtn);
+      list.appendChild(row);
+    }
+
+    (sanctuaryMap[item.id] || []).forEach(s => addRow(s));
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.textContent = '+';
+    addBtn.addEventListener('click', ()=> addRow());
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.textContent = 'Fermer';
+    closeBtn.addEventListener('click', ()=> overlay.remove());
+
+    popup.appendChild(list);
+    popup.appendChild(addBtn);
+    popup.appendChild(closeBtn);
+    overlay.appendChild(popup);
+    document.body.appendChild(overlay);
+  }
+
+  btn.addEventListener('click', openPopup);
+  updateSummary();
+  container.appendChild(summary);
+  container.appendChild(btn);
+  return container;
+}
+
+function registerRelationUpdater(field, parentId, fn){
+  const key = canonicalKey(parentId);
+  if(!relationUpdaters[field]) relationUpdaters[field] = {};
+  if(!relationUpdaters[field][key]) relationUpdaters[field][key] = [];
+  relationUpdaters[field][key].push(fn);
+}
+
+function notifyRelationUpdate(field, parentId){
+  if(parentId === undefined || parentId === null) return;
+  const key = canonicalKey(parentId);
+  const list = relationUpdaters[field] && relationUpdaters[field][key];
+  if(list){
+    list.forEach(fn=> fn());
+  }
+}
+
+function updateRenderedSelect(containerId, fields, itemId, fieldKey, value){
+  const container = document.getElementById(containerId);
+  const table = container && container.querySelector('table');
+  if(!table) return;
+  const colIndex = fields.indexOf(fieldKey);
+  if(colIndex === -1) return;
+  const rows = table.querySelectorAll('tbody tr');
+  rows.forEach(tr => {
+    const idCell = tr.children[0];
+    if(!idCell) return;
+    if(String(idCell.textContent.trim()) !== String(itemId)) return;
+    const cell = tr.children[colIndex + 1];
+    if(!cell) return;
+    const toggle = cell.querySelector(`.${BOOLEAN_TOGGLE_CLASS}`);
+    if(toggle && typeof toggle.setValue === 'function'){
+      toggle.setValue(value);
+      return;
+    }
+    const sel = cell.querySelector('select');
+    if(sel){
+      sel.value = value == null ? '' : String(value);
+      return;
+    }
+    const checkbox = cell.querySelector('input[type="checkbox"][data-bool-toggle="1"]');
+    if(checkbox){
+      setBooleanToggleState(checkbox, value);
+      if(typeof checkbox._updateLabel === 'function') checkbox._updateLabel();
+      return;
+    }
+    const input = cell.querySelector('input');
+    if(input){
+      input.value = value == null ? '' : value;
+    }
+  });
+}
+
+function createRelationCell(item, children, opts){
+  const { childField, endpoint, labelField = 'name', tableId, tableFields, placeholder = 'Aucun', showId = true } = opts;
+  const container = document.createElement('div');
+  const summary = document.createElement('div');
+  summary.style.marginBottom = '4px';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.textContent = 'Modifier';
+
+  const getDisplayName = (child) => {
+    const name = child[labelField] || child.name || child.id;
+    return showId ? `${child.id} - ${name}` : name;
+  };
+
+  const getCurrentChildren = () => children.filter(c => String(c[childField]) === String(item.id));
+
+  const updateSummary = () => {
+    const names = getCurrentChildren().map(getDisplayName);
+    const short = names.slice(0, 3);
+    if (names.length > 3) short.push('…');
+    summary.textContent = names.length ? short.join(', ') : placeholder;
+  };
+
+  registerRelationUpdater(childField, item.id, updateSummary);
+
+  const setParent = async (childId, parentId) => {
+    const child = children.find(c => String(c.id) === String(childId));
+    if (!child) return;
+    const oldParent = child ? child[childField] : null;
+    const payload = {};
+    const fieldsForUpdate = tableFields && Array.isArray(tableFields) ? tableFields : [childField];
+    fieldsForUpdate.forEach(f => {
+      if (f === childField) {
+        payload[f] = parentId == null ? null : parentId;
+      } else {
+        payload[f] = child[f] ?? null;
+      }
+    });
+    await fetchJSON(`/api/${endpoint}/${childId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (child) child[childField] = parentId == null ? null : parentId;
+    if (tableId && tableFields) updateRenderedSelect(tableId, tableFields, childId, childField, parentId);
+    if (oldParent !== undefined && oldParent !== parentId) notifyRelationUpdate(childField, oldParent);
+    if (parentId != null) notifyRelationUpdate(childField, parentId);
+  };
+
+  function getUsedIds(exceptRow) {
+    const used = new Set();
+    Array.from(list.querySelectorAll('.relation-row')).forEach(row => {
+      if (row === exceptRow) return;
+      const cid = parseInt(row.dataset.childId || '', 10);
+      if (cid) used.add(cid);
+    });
+    return used;
+  }
+
+  function populateOptions(select, row) {
+    const current = row ? row.dataset.childId : null;
+    const used = getUsedIds(row);
+    select.innerHTML = '';
+    const blank = document.createElement('option');
+    blank.value = '';
+    blank.textContent = placeholder;
+    select.appendChild(blank);
+    children.slice().sort((a, b) => (a[labelField] || '').localeCompare(b[labelField] || '')).forEach(ch => {
+      const op = document.createElement('option');
+      op.value = ch.id;
+      op.textContent = getDisplayName(ch);
+      if (used.has(ch.id)) op.disabled = true;
+      if (String(ch.id) === String(current)) op.selected = true;
+      select.appendChild(op);
+    });
+  }
+
+  function addRow(initialId = '') {
+    const row = document.createElement('div');
+    row.className = 'relation-row';
+    row.dataset.childId = initialId;
+    const sel = document.createElement('select');
+    populateOptions(sel, row);
+    sel.addEventListener('change', async () => {
+      const prevId = parseInt(row.dataset.childId || '', 10) || null;
+      const newId = sel.value ? parseInt(sel.value, 10) : null;
+      if (prevId === newId) return;
+      if (prevId) await setParent(prevId, null);
+      if (newId) await setParent(newId, item.id);
+      row.dataset.childId = newId || '';
+      populateOptions(sel, row);
+      updateSummary();
+      showSaveIndicator(container);
+    });
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.textContent = '-';
+    del.addEventListener('click', async () => {
+      const prevId = parseInt(row.dataset.childId || '', 10) || null;
+      if (prevId) await setParent(prevId, null);
+      row.remove();
+      updateSummary();
+      showSaveIndicator(container);
+    });
+    row.appendChild(sel);
+    row.appendChild(del);
+    list.appendChild(row);
+  }
+
+  const list = document.createElement('div');
+
+  const existing = getCurrentChildren();
+  if (existing.length) {
+    existing.forEach(ch => addRow(ch.id));
+  } else {
+    addRow();
+  }
+
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.textContent = '+';
+  addBtn.addEventListener('click', () => addRow());
+
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.textContent = 'Fermer';
+  closeBtn.addEventListener('click', () => overlay.remove());
+
+  const overlay = document.createElement('div');
+  overlay.className = 'popup-overlay';
+  const popup = document.createElement('div');
+  popup.className = 'popup';
+  popup.appendChild(list);
+  popup.appendChild(addBtn);
+  popup.appendChild(closeBtn);
+  overlay.appendChild(popup);
+  updateSummary();
+
+  btn.addEventListener('click', () => {
+    updateSummary();
+    document.body.appendChild(overlay);
+  });
+
   container.appendChild(summary);
   container.appendChild(btn);
   return container;
@@ -1078,6 +1441,24 @@ function renderTable(container, rows, opts){
 
   const extraColumns = opts.extraColumns || [];
   const allowAdd = opts.allowAdd !== false;
+  const relationWatch = opts.relationWatch || [];
+
+  const captureRelationValues = (row) => {
+    const res = {};
+    relationWatch.forEach(f => { res[f] = row ? row[f] : null; });
+    return res;
+  };
+
+  const notifyRelationChanges = (previous, updated) => {
+    relationWatch.forEach(f => {
+      const oldVal = previous[f];
+      const newVal = updated ? updated[f] : null;
+      if(oldVal !== newVal){
+        notifyRelationUpdate(f, oldVal);
+        notifyRelationUpdate(f, newVal);
+      }
+    });
+  };
 
   const headers = [{label:'ID', key:'id'}].concat(
     opts.fields.map(f => ({
@@ -1305,6 +1686,9 @@ function renderTable(container, rows, opts){
       };
       return container;
     }
+    if(opts.booleanFields && opts.booleanFields.includes(field)){
+      return createBooleanToggle(val);
+    }
     if(field === 'description'){
       const textarea = document.createElement('textarea');
       textarea.value = val ?? '';
@@ -1313,6 +1697,9 @@ function renderTable(container, rows, opts){
     if(opts.selects && opts.selects[field]){
       let optList = opts.selects[field];
       if (typeof optList === 'function') optList = optList(item);
+      if (isBooleanOptionList(optList)) {
+        return createBooleanToggle(val);
+      }
       const select = document.createElement('select');
       const blank = document.createElement('option');
       blank.value = '';
@@ -1379,6 +1766,7 @@ function renderTable(container, rows, opts){
     const btn = document.createElement('button');
     btn.textContent = 'Enregistrer';
     btn.addEventListener('click', async ()=>{
+      const previousRelations = captureRelationValues(item);
       const payload = {};
       opts.fields.forEach((f,i)=>{
         const el = tr.children[i+1].firstChild;
@@ -1400,9 +1788,17 @@ function renderTable(container, rows, opts){
       });
       showSaveIndicator(btn.parentElement);
       const updated = { ...item, ...payload, ...(resp && typeof resp === 'object' ? resp : {}) };
-      const idx = rows.findIndex(r=>r.id === item.id);
-      if(idx !== -1) rows[idx] = updated;
-      const newRow = renderRow(updated);
+      let updatedRef = updated;
+      let idx = rows.findIndex(r=>r.id === item.id);
+      if(idx !== -1){
+        Object.assign(rows[idx], updated);
+        updatedRef = rows[idx];
+        item = updatedRef;
+      }
+      notifyRelationChanges(previousRelations, updatedRef);
+      idx = rows.findIndex(r=>r.id === item.id);
+      if(idx !== -1) rows[idx] = item;
+      const newRow = renderRow(updatedRef);
       tbody.replaceChild(newRow, tr);
     });
     td.appendChild(btn);
@@ -1456,6 +1852,7 @@ function renderTable(container, rows, opts){
         showSaveIndicator(addBtn.parentElement);
         const newItem = { ...payload, ...created };
         rows.push(newItem);
+        notifyRelationChanges(captureRelationValues(null), newItem);
         renderBody();
       });
       addTd.appendChild(addBtn);
@@ -1532,6 +1929,7 @@ async function loadUsers(){
     fields:['email','first_name','last_name','is_admin'],
     labels:{email:'Email', first_name:'Prénom', last_name:'Nom', is_admin:'Admin'},
     selects:{is_admin:yesNoSelect},
+    booleanFields:['is_admin'],
     beforeSave:(payload)=>{
       if(payload.is_admin !== undefined){
         payload.is_admin = payload.is_admin ? 1 : 0;
@@ -1554,133 +1952,242 @@ async function loadSeigneurs(){
   const assignedUserIds = new Set(seigneurs.filter(s=>s.user_id).map(s=>s.user_id));
   const userSelectFn = (item) => usersSelect.filter(u=>!assignedUserIds.has(u.id) || (item && u.id===item.user_id));
   const seigneursById = seigneurs.slice().sort((a,b)=>a.id - b.id);
+  const seigneurFields = ['name','user_id','religion_id','overlord_id','player','bishop'];
   renderTable(document.getElementById('tableSeigneurs'), seigneursById, {
     endpoint:'seigneurs',
-    fields:['name','user_id','religion_id','overlord_id','player','bishop'],
+    fields:seigneurFields,
     selects:{user_id:userSelectFn, religion_id:religionsSelect, overlord_id:seigneursSelect, player:yesNoSelect, bishop:yesNoSelect},
-    labels:{name:'Nom', user_id:'Utilisateur', religion_id:'Religion', overlord_id:'Suzerain', player:'Joueur', bishop:'Évêque'}
+    labels:{name:'Nom', user_id:'Utilisateur', religion_id:'Religion', overlord_id:'Suzerain', player:'Joueur', bishop:'Évêque'},
+    booleanFields:['player','bishop'],
+    relationWatch:['overlord_id'],
+    extraColumns:[{
+      label:'Vassaux',
+      render:item => createRelationCell(item, seigneursById, {
+        childField:'overlord_id',
+        endpoint:'seigneurs',
+        tableId:'tableSeigneurs',
+        tableFields: seigneurFields,
+        placeholder:'Aucun vassal',
+        showId:false,
+      })
+    }]
   });
 }
 
 async function loadEmpires(){
-  const [empires,seigneurs] = await Promise.all([
+  const [empires,seigneurs,kingdoms] = await Promise.all([
     getData('empires','/api/empires'),
-    getData('seigneurs','/api/seigneurs')
+    getData('seigneurs','/api/seigneurs'),
+    getData('kingdoms','/api/kingdoms'),
   ]);
   const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const empiresById = empires.slice().sort((a,b)=>a.id - b.id);
+  const kingdomsByName = kingdoms.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const kingdomFields = ['name','seigneur_id','empire_id','color'];
   renderTable(document.getElementById('tableEmpires'), empiresById, {
     endpoint:'empires',
     fields:['name','seigneur_id','color'],
     selects:{seigneur_id:seigneursSelect},
     labels:{name:'Nom', seigneur_id:'Détenteur du titre', color:'Couleur'},
-    colorFields:['color']
+    colorFields:['color'],
+    extraColumns:[{
+      label:'Royaumes',
+      render:item => createRelationCell(item, kingdomsByName, {
+        childField:'empire_id',
+        endpoint:'kingdoms',
+        tableId:'tableKingdoms',
+        tableFields: kingdomFields,
+        placeholder:'Aucun royaume'
+      })
+    }]
   });
 }
 
 async function loadKingdoms(){
-  const [kingdoms,seigneurs,empires] = await Promise.all([
+  const [kingdoms,seigneurs,empires,duchies] = await Promise.all([
     getData('kingdoms','/api/kingdoms'),
     getData('seigneurs','/api/seigneurs'),
     getData('empires','/api/empires'),
+    getData('duchies','/api/duchies'),
   ]);
   const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const empiresSelect = empires.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const kingdomsById = kingdoms.slice().sort((a,b)=>a.id - b.id);
+  const duchiesByName = duchies.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const duchyFields = ['name','seigneur_id','kingdom_id','archduchy_id','color'];
   renderTable(document.getElementById('tableKingdoms'), kingdomsById, {
     endpoint:'kingdoms',
     fields:['name','seigneur_id','empire_id','color'],
     selects:{seigneur_id:seigneursSelect, empire_id:empiresSelect},
     labels:{name:'Nom', seigneur_id:'Détenteur du titre', empire_id:'Empire', color:'Couleur'},
-    colorFields:['color']
+    colorFields:['color'],
+    relationWatch:['empire_id'],
+    extraColumns:[{
+      label:'Duchés de jure',
+      render:item => createRelationCell(item, duchiesByName, {
+        childField:'kingdom_id',
+        endpoint:'duchies',
+        tableId:'tableDuchies',
+        tableFields: duchyFields,
+        placeholder:'Aucun duché'
+      })
+    }]
   });
 }
 
 async function loadArchduchies(){
-  const [archduchies,seigneurs] = await Promise.all([
+  const [archduchies,seigneurs,duchies] = await Promise.all([
     getData('archduchies','/api/archduchies'),
     getData('seigneurs','/api/seigneurs'),
+    getData('duchies','/api/duchies'),
   ]);
   const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const archduchiesById = archduchies.slice().sort((a,b)=>a.id - b.id);
+  const duchiesByName = duchies.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const duchyFields = ['name','seigneur_id','kingdom_id','archduchy_id','color'];
   renderTable(document.getElementById('tableArchduchies'), archduchiesById, {
     endpoint:'archduchies',
     fields:['name','seigneur_id','color'],
     selects:{seigneur_id:seigneursSelect},
     labels:{name:'Nom', seigneur_id:'Détenteur du titre', color:'Couleur'},
-    colorFields:['color']
+    colorFields:['color'],
+    extraColumns:[{
+      label:'Duchés rattachés',
+      render:item => createRelationCell(item, duchiesByName, {
+        childField:'archduchy_id',
+        endpoint:'duchies',
+        tableId:'tableDuchies',
+        tableFields: duchyFields,
+        placeholder:'Aucun duché'
+      })
+    }]
   });
 }
 
 async function loadDuchies(){
-  const [duchies,seigneurs,kingdoms,archduchies] = await Promise.all([
+  const [duchies,seigneurs,kingdoms,archduchies,counties] = await Promise.all([
     getData('duchies','/api/duchies'),
     getData('seigneurs','/api/seigneurs'),
     getData('kingdoms','/api/kingdoms'),
     getData('archduchies','/api/archduchies'),
+    getData('counties','/api/counties'),
   ]);
   const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const kingdomsSelect = kingdoms.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const archduchiesSelect = archduchies.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const duchiesById = duchies.slice().sort((a,b)=>a.id - b.id);
+  const countiesByName = counties.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const countyFields = ['name','seigneur_id','duchy_id','marquisate_id','color'];
   renderTable(document.getElementById('tableDuchies'), duchiesById, {
     endpoint:'duchies',
     fields:['name','seigneur_id','kingdom_id','archduchy_id','color'],
     selects:{seigneur_id:seigneursSelect, kingdom_id:kingdomsSelect, archduchy_id:archduchiesSelect},
     labels:{name:'Nom', seigneur_id:'Détenteur du titre', kingdom_id:'Royaume', archduchy_id:'Archiduché', color:'Couleur'},
-    colorFields:['color']
+    colorFields:['color'],
+    relationWatch:['kingdom_id','archduchy_id'],
+    extraColumns:[{
+      label:'Comtés de jure',
+      render:item => createRelationCell(item, countiesByName, {
+        childField:'duchy_id',
+        endpoint:'counties',
+        tableId:'tableCounties',
+        tableFields: countyFields,
+        placeholder:'Aucun comté'
+      })
+    }]
   });
 }
 
 async function loadMarquisates(){
-  const [marquisates,seigneurs] = await Promise.all([
+  const [marquisates,seigneurs,counties] = await Promise.all([
     getData('marquisates','/api/marquisates'),
     getData('seigneurs','/api/seigneurs'),
+    getData('counties','/api/counties'),
   ]);
   const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const marquisatesById = marquisates.slice().sort((a,b)=>a.id - b.id);
+  const countiesByName = counties.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const countyFields = ['name','seigneur_id','duchy_id','marquisate_id','color'];
   renderTable(document.getElementById('tableMarquisates'), marquisatesById, {
     endpoint:'marquisates',
     fields:['name','seigneur_id','color'],
     selects:{seigneur_id:seigneursSelect},
     labels:{name:'Nom', seigneur_id:'Détenteur du titre', color:'Couleur'},
-    colorFields:['color']
+    colorFields:['color'],
+    extraColumns:[{
+      label:'Comtés de marche',
+      render:item => createRelationCell(item, countiesByName, {
+        childField:'marquisate_id',
+        endpoint:'counties',
+        tableId:'tableCounties',
+        tableFields: countyFields,
+        placeholder:'Aucun comté'
+      })
+    }]
   });
 }
 
 async function loadCounties(){
-  const [counties,seigneurs,duchies,marquisates] = await Promise.all([
+  const [counties,seigneurs,duchies,marquisates,baronies] = await Promise.all([
     getData('counties','/api/counties'),
     getData('seigneurs','/api/seigneurs'),
     getData('duchies','/api/duchies'),
     getData('marquisates','/api/marquisates'),
+    getData('baronies','/api/baronies'),
   ]);
   const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const duchiesSelect = duchies.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const marquisatesSelect = marquisates.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const countiesById = counties.slice().sort((a,b)=>a.id - b.id);
+  const baroniesByName = baronies.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const baronyFieldList = baronyFields;
+  const countyFields = ['name','seigneur_id','duchy_id','marquisate_id','color'];
   renderTable(document.getElementById('tableCounties'), countiesById, {
     endpoint:'counties',
     fields:['name','seigneur_id','duchy_id','marquisate_id','color'],
     selects:{seigneur_id:seigneursSelect, duchy_id:duchiesSelect, marquisate_id:marquisatesSelect},
     labels:{name:'Nom', seigneur_id:'Détenteur du titre', duchy_id:'Duché', marquisate_id:'Marquisat', color:'Couleur'},
-    colorFields:['color']
+    colorFields:['color'],
+    relationWatch:['duchy_id','marquisate_id'],
+    extraColumns:[{
+      label:'Baronnies de jure',
+      render:item => createRelationCell(item, baroniesByName, {
+        childField:'county_id',
+        endpoint:'baronies',
+        tableId:'tableBaronies',
+        tableFields: baronyFieldList,
+        placeholder:'Aucune baronnie'
+      })
+    }]
   });
 }
 
 async function loadViscounties(){
-  const [viscounties,seigneurs] = await Promise.all([
+  const [viscounties,seigneurs,baronies] = await Promise.all([
     getData('viscounties','/api/viscounties'),
     getData('seigneurs','/api/seigneurs'),
+    getData('baronies','/api/baronies'),
   ]);
   const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const viscountiesById = viscounties.slice().sort((a,b)=>a.id - b.id);
+  const baroniesByName = baronies.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const baronyFieldList = baronyFields;
   renderTable(document.getElementById('tableViscounties'), viscountiesById, {
     endpoint:'viscounties',
     fields:['name','seigneur_id','color'],
     selects:{seigneur_id:seigneursSelect},
     labels:{name:'Nom', seigneur_id:'Détenteur du titre', color:'Couleur'},
-    colorFields:['color']
+    colorFields:['color'],
+    extraColumns:[{
+      label:'Baronnies',
+      render:item => createRelationCell(item, baroniesByName, {
+        childField:'viscounty_id',
+        endpoint:'baronies',
+        tableId:'tableBaronies',
+        tableFields: baronyFieldList,
+        placeholder:'Aucune baronnie'
+      })
+    }]
   });
 }
 
@@ -1719,14 +2226,15 @@ async function loadSeigneuries(){
 }
 
 async function loadBaronies(){
-  const [baronies,seigneurs,religions,cultures,counties,viscounties,canonicalLands] = await Promise.all([
+  const [baronies,seigneurs,religions,cultures,counties,viscounties,canonicalLands,sanctuaries] = await Promise.all([
     getData('baronies','/api/baronies'),
     getData('seigneurs','/api/seigneurs'),
     getData('religions','/api/religions'),
     getData('cultures','/api/cultures'),
     getData('counties','/api/counties'),
     getData('viscounties','/api/viscounties'),
-    fetchJSON('/api/canonical_lands')
+    fetchJSON('/api/canonical_lands'),
+    fetchJSON('/api/sanctuaries')
   ]);
   dataCache.canonical_lands = canonicalLands;
   const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
@@ -1743,6 +2251,11 @@ async function loadBaronies(){
     canonicalLandMap[baronyKey].push(cl.canonical_barony_id);
     if (!canonicalDependents[canonicalKeyId]) canonicalDependents[canonicalKeyId] = [];
     canonicalDependents[canonicalKeyId].push(cl.barony_id);
+  });
+  sanctuaryMap = {};
+  sanctuaries.forEach(s => {
+    if (!sanctuaryMap[s.barony_id]) sanctuaryMap[s.barony_id] = [];
+    sanctuaryMap[s.barony_id].push({ id:s.id, religion_id:s.religion_id, active:!!s.active });
   });
   const baroniesById = baronies.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableBaronies'), baroniesById, {
@@ -1770,9 +2283,14 @@ async function loadBaronies(){
       cathedral_religion_id:'Aucune'
     },
     colorFields:['color'],
+    relationWatch:['county_id','viscounty_id'],
     extraColumns:[
       {
-        label:'Terres canoniques',
+        label:'Sanctuaires',
+        render:item => createSanctuaryCell(item, religionsSelect)
+      },
+      {
+        label:'Terres canoniques (Évêché)',
         render:item => createCanonicalCell(item, baroniesById)
       }
     ]
@@ -1812,7 +2330,8 @@ async function loadBaronyProps(){
     endpoint:'barony_properties',
     fields:baronyPropFields,
     selects:{barony_id:baroniesSelect, ...boolSelects},
-    labels:baronyPropLabels
+    labels:baronyPropLabels,
+    booleanFields:baronyPropBoolFields,
   });
 }
 
