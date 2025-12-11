@@ -111,6 +111,22 @@
         return;
       }
       const groupColors = {};
+      const colorSources = {
+        viscounty: data.viscountyMap,
+        viscounty_defacto: data.viscountyMap,
+        county: data.countyMap,
+        county_defacto: data.countyMap,
+        marquisate: data.marquisateMap,
+        marquisate_defacto: data.marquisateMap,
+        duchy: data.duchyMap,
+        duchy_defacto: data.duchyMap,
+        archduchy: data.archduchyMap,
+        archduchy_defacto: data.archduchyMap,
+        kingdom: data.kingdomMap,
+        kingdom_defacto: data.kingdomMap,
+        empire: data.empireMap,
+        empire_defacto: data.empireMap
+      };
       colorMap = {};
       Object.entries(data.baronyMeta).forEach(([id, info]) => {
         let groupId = null;
@@ -123,7 +139,7 @@
           }
           canonicalPatterns[id] = rIds.map(cid => {
             if (!groupColors[cid]) {
-              const col = generateColor(String(cid)).slice(0, 3);
+              const col = hexToRgb(data.baronyMeta[cid]?.color) || generateColor(String(cid)).slice(0, 3);
               groupColors[cid] = { color: col, name: data.baronyMeta[cid]?.name || 'N/A' };
             }
             return groupColors[cid].color;
@@ -330,7 +346,7 @@
           } else if (randomize) {
             const hue = Math.floor(Math.random() * 360);
             col = hslToRgb(hue, 65, 65);
-          } else {
+          } else { 
             if (
               type === 'religion' ||
               type === 'priory' ||
@@ -340,6 +356,11 @@
               col = hexToRgb(data.religionMap[groupId]?.color);
             } else if (type === 'culture') {
               col = hexToRgb(data.cultureMapInfo[groupId]?.color);
+            } else {
+              const sourceMap = colorSources[type];
+              if (sourceMap && sourceMap[groupId] && sourceMap[groupId].color) {
+                col = hexToRgb(sourceMap[groupId].color);
+              }
             }
             if (!col) {
               col = generateColor(String(groupId || 0)).slice(0, 3);
