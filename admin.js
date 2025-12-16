@@ -107,6 +107,8 @@ let canonicalLandMap = {};
 let canonicalDependents = {};
 let sanctuaryMap = {};
 const relationUpdaters = {};
+const compareByField = (field) => (a, b) => (a?.[field] || '').localeCompare(b?.[field] || '');
+const sortByName = (items) => items.slice().sort(compareByField('name'));
 const maxOptions = [
   ...Array.from({length:10}, (_,i)=>({ id:String(i+1), name:String(i+1) })),
   ...baronyPropIntFields.map(f=>({ id:f, name:baronyPropLabels[f] || f })),
@@ -1945,9 +1947,9 @@ async function loadSeigneurs(){
     getData('religions','/api/religions'),
     getData('users','/api/users'),
   ]);
-  const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
-  const religionsSelect = religions.slice().sort((a,b)=>a.name.localeCompare(b.name));
-  const usersSelectRaw = users.slice().sort((a,b)=>(a.email||'').localeCompare(b.email||''));
+  const seigneursSelect = sortByName(seigneurs);
+  const religionsSelect = sortByName(religions);
+  const usersSelectRaw = users.slice().sort(compareByField('email'));
   const usersSelect = usersSelectRaw.map(u=>({ id:u.id, name:u.email }));
   const assignedUserIds = new Set(seigneurs.filter(s=>s.user_id).map(s=>s.user_id));
   const userSelectFn = (item) => usersSelect.filter(u=>!assignedUserIds.has(u.id) || (item && u.id===item.user_id));
@@ -1980,9 +1982,9 @@ async function loadEmpires(){
     getData('seigneurs','/api/seigneurs'),
     getData('kingdoms','/api/kingdoms'),
   ]);
-  const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const seigneursSelect = sortByName(seigneurs);
   const empiresById = empires.slice().sort((a,b)=>a.id - b.id);
-  const kingdomsByName = kingdoms.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const kingdomsByName = sortByName(kingdoms);
   const kingdomFields = ['name','seigneur_id','empire_id','color'];
   renderTable(document.getElementById('tableEmpires'), empiresById, {
     endpoint:'empires',
@@ -2010,10 +2012,10 @@ async function loadKingdoms(){
     getData('empires','/api/empires'),
     getData('duchies','/api/duchies'),
   ]);
-  const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
-  const empiresSelect = empires.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const seigneursSelect = sortByName(seigneurs);
+  const empiresSelect = sortByName(empires);
   const kingdomsById = kingdoms.slice().sort((a,b)=>a.id - b.id);
-  const duchiesByName = duchies.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const duchiesByName = sortByName(duchies);
   const duchyFields = ['name','seigneur_id','kingdom_id','archduchy_id','color'];
   renderTable(document.getElementById('tableKingdoms'), kingdomsById, {
     endpoint:'kingdoms',
@@ -2041,9 +2043,9 @@ async function loadArchduchies(){
     getData('seigneurs','/api/seigneurs'),
     getData('duchies','/api/duchies'),
   ]);
-  const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const seigneursSelect = sortByName(seigneurs);
   const archduchiesById = archduchies.slice().sort((a,b)=>a.id - b.id);
-  const duchiesByName = duchies.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const duchiesByName = sortByName(duchies);
   const duchyFields = ['name','seigneur_id','kingdom_id','archduchy_id','color'];
   renderTable(document.getElementById('tableArchduchies'), archduchiesById, {
     endpoint:'archduchies',
@@ -2072,11 +2074,11 @@ async function loadDuchies(){
     getData('archduchies','/api/archduchies'),
     getData('counties','/api/counties'),
   ]);
-  const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
-  const kingdomsSelect = kingdoms.slice().sort((a,b)=>a.name.localeCompare(b.name));
-  const archduchiesSelect = archduchies.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const seigneursSelect = sortByName(seigneurs);
+  const kingdomsSelect = sortByName(kingdoms);
+  const archduchiesSelect = sortByName(archduchies);
   const duchiesById = duchies.slice().sort((a,b)=>a.id - b.id);
-  const countiesByName = counties.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const countiesByName = sortByName(counties);
   const countyFields = ['name','seigneur_id','duchy_id','marquisate_id','color'];
   renderTable(document.getElementById('tableDuchies'), duchiesById, {
     endpoint:'duchies',
@@ -2104,9 +2106,9 @@ async function loadMarquisates(){
     getData('seigneurs','/api/seigneurs'),
     getData('counties','/api/counties'),
   ]);
-  const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const seigneursSelect = sortByName(seigneurs);
   const marquisatesById = marquisates.slice().sort((a,b)=>a.id - b.id);
-  const countiesByName = counties.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const countiesByName = sortByName(counties);
   const countyFields = ['name','seigneur_id','duchy_id','marquisate_id','color'];
   renderTable(document.getElementById('tableMarquisates'), marquisatesById, {
     endpoint:'marquisates',
@@ -2135,11 +2137,11 @@ async function loadCounties(){
     getData('marquisates','/api/marquisates'),
     getData('baronies','/api/baronies'),
   ]);
-  const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
-  const duchiesSelect = duchies.slice().sort((a,b)=>a.name.localeCompare(b.name));
-  const marquisatesSelect = marquisates.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const seigneursSelect = sortByName(seigneurs);
+  const duchiesSelect = sortByName(duchies);
+  const marquisatesSelect = sortByName(marquisates);
   const countiesById = counties.slice().sort((a,b)=>a.id - b.id);
-  const baroniesByName = baronies.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const baroniesByName = sortByName(baronies);
   const baronyFieldList = baronyFields;
   const countyFields = ['name','seigneur_id','duchy_id','marquisate_id','color'];
   renderTable(document.getElementById('tableCounties'), countiesById, {
@@ -2168,9 +2170,9 @@ async function loadViscounties(){
     getData('seigneurs','/api/seigneurs'),
     getData('baronies','/api/baronies'),
   ]);
-  const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const seigneursSelect = sortByName(seigneurs);
   const viscountiesById = viscounties.slice().sort((a,b)=>a.id - b.id);
-  const baroniesByName = baronies.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const baroniesByName = sortByName(baronies);
   const baronyFieldList = baronyFields;
   renderTable(document.getElementById('tableViscounties'), viscountiesById, {
     endpoint:'viscounties',
@@ -2196,7 +2198,7 @@ async function loadMaritimeZones(){
     getData('maritime_zones','/api/maritime_zones'),
     getData('seigneurs','/api/seigneurs'),
   ]);
-  const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const seigneursSelect = sortByName(seigneurs);
   const zonesById = zones.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableMaritime'), zonesById, {
     endpoint:'maritime_zones',
@@ -2213,8 +2215,8 @@ async function loadSeigneuries(){
     getData('baronies','/api/baronies'),
     getData('seigneurs','/api/seigneurs'),
   ]);
-  const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
-  const baroniesSelect = baronies.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const seigneursSelect = sortByName(seigneurs);
+  const baroniesSelect = sortByName(baronies);
   const seigneuriesById = seigneuries.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableSeigneuries'), seigneuriesById, {
     endpoint:'seigneuries',
@@ -2237,11 +2239,11 @@ async function loadBaronies(){
     fetchJSON('/api/sanctuaries')
   ]);
   dataCache.canonical_lands = canonicalLands;
-  const seigneursSelect = seigneurs.slice().sort((a,b)=>a.name.localeCompare(b.name));
-  const religionsSelect = religions.slice().sort((a,b)=>a.name.localeCompare(b.name));
-  const culturesSelect = cultures.slice().sort((a,b)=>a.name.localeCompare(b.name));
-  const countiesSelect = counties.slice().sort((a,b)=>a.name.localeCompare(b.name));
-  const viscountiesSelect = viscounties.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const seigneursSelect = sortByName(seigneurs);
+  const religionsSelect = sortByName(religions);
+  const culturesSelect = sortByName(cultures);
+  const countiesSelect = sortByName(counties);
+  const viscountiesSelect = sortByName(viscounties);
   canonicalLandMap = {};
   canonicalDependents = {};
   canonicalLands.forEach(cl => {
@@ -2299,7 +2301,7 @@ async function loadBaronies(){
 
 async function ensureTags(){
   const tags = await getData('tags','/api/tags');
-  tagsSelect = tags.slice().sort((a,b)=>a.label.localeCompare(b.label)).map(t=>({ id:t.id, name:t.label }));
+  tagsSelect = tags.slice().sort(compareByField('label')).map(t=>({ id:t.id, name:t.label }));
   return tags;
 }
 
@@ -2322,7 +2324,7 @@ async function loadBaronyProps(){
     getData('barony_properties','/api/barony_properties'),
     getData('baronies','/api/baronies'),
   ]);
-  const baroniesSelect = baronies.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const baroniesSelect = sortByName(baronies);
   const baronyPropsById = baronyProps.slice().sort((a,b)=>a.id - b.id);
   const boolSelects = {};
   baronyPropBoolFields.forEach(f=>{ boolSelects[f] = yesNoSelect; });
