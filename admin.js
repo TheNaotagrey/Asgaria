@@ -557,7 +557,13 @@ function createRelationCell(item, children, opts){
     return showId ? `${child.id} - ${name}` : name;
   };
 
-  const getCurrentChildren = () => children.filter(c => String(c[childField]) === String(item.id));
+  const compareByLabel = (a, b) => (a[labelField] || '').localeCompare(b[labelField] || '');
+
+  const getCurrentChildren = () =>
+    children
+      .filter(c => String(c[childField]) === String(item.id))
+      .slice()
+      .sort(compareByLabel);
 
   const updateSummary = () => {
     const names = getCurrentChildren().map(getDisplayName);
@@ -610,7 +616,7 @@ function createRelationCell(item, children, opts){
     blank.value = '';
     blank.textContent = placeholder;
     select.appendChild(blank);
-    children.slice().sort((a, b) => (a[labelField] || '').localeCompare(b[labelField] || '')).forEach(ch => {
+    children.slice().sort(compareByLabel).forEach(ch => {
       const op = document.createElement('option');
       op.value = ch.id;
       op.textContent = getDisplayName(ch);
