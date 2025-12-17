@@ -326,12 +326,17 @@ main {
 }
 .info-row {
   margin: 2px 0;
-}
-.info-row.seigneur-line {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
   flex-wrap: wrap;
+}
+.info-row.seigneur-line {
+  align-items: center;
+}
+.info-label {
+  font-weight: 600;
+  min-width: 90px;
 }
 .info-panel ul {
   margin: 2px 0 0 16px;
