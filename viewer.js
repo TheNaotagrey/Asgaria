@@ -126,6 +126,25 @@
     return btn;
   }
 
+  function showBaronyDetails(baronyId) {
+    if (!baronyId) return;
+    if (core && typeof core.selectBarony === 'function') {
+      core.selectBarony(baronyId);
+    } else {
+      handleSelect(baronyId);
+    }
+  }
+
+  function createBaronyButton(baronyId) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'barony-link';
+    const label = baronyMeta[baronyId]?.name || baronyLookup[baronyId]?.name || `Baronnie #${baronyId}`;
+    btn.textContent = `${label} (#${baronyId})`;
+    btn.addEventListener('click', () => showBaronyDetails(baronyId));
+    return btn;
+  }
+
   function setSeigneurList(section, list, ids) {
     if (!section || !list) return;
     list.innerHTML = '';
@@ -151,8 +170,8 @@
     if (seigneurInfoTitle) seigneurInfoTitle.textContent = seigneur.name;
     if (seigneurInfoIdentity) setLine(seigneurInfoIdentity, '');
     const religionName = seigneur.religion_id ? (religionMap[seigneur.religion_id]?.name || '') : '';
-    setLabeledLine(seigneurInfoReligion, 'Religion du seigneur :', religionName);
-    setSeigneurLine(seigneurOverlordLine, seigneur.overlord_id, 'Suzerain');
+    setLabeledLine(seigneurInfoReligion, 'Religion:', religionName);
+    setSeigneurLine(seigneurOverlordLine, seigneur.overlord_id, 'Suzerain:');
 
     const titles = [];
     const empireId = seigneurToEmpire[seigneurId];
@@ -171,9 +190,8 @@
     if (viscountyId && viscountyMap[viscountyId]) titles.push(`Vicomte de ${viscountyMap[viscountyId].name}`);
     const ownedBaronies = Object.values(baronyLookup)
       .filter(b => b.seigneur_id === seigneurId)
-      .map(b => `Baron de ${b.name}`);
-    titles.push(...ownedBaronies);
-    setList(seigneurTitlesSection, seigneurTitlesList, titles);
+      .map(b => ({ id: b.id, name: b.name }));
+    setTitleList(seigneurTitlesSection, seigneurTitlesList, titles, ownedBaronies);
 
     const vassals = Object.values(seigneurMap)
       .filter(s => s.overlord_id === seigneurId)
@@ -193,6 +211,45 @@
       items.forEach(text => {
         const li = document.createElement('li');
         li.textContent = text;
+        list.appendChild(li);
+      });
+    } else {
+      section.style.display = 'none';
+    }
+  }
+
+  function setTitleList(section, list, titles = [], baronies = []) {
+    if (!section || !list) return;
+    list.innerHTML = '';
+    const hasItems = (titles && titles.length > 0) || (baronies && baronies.length > 0);
+    if (!hasItems) {
+      section.style.display = 'none';
+      return;
+    }
+    section.style.display = 'block';
+    titles.forEach(text => {
+      const li = document.createElement('li');
+      li.textContent = text;
+      list.appendChild(li);
+    });
+    baronies.forEach(barony => {
+      if (!barony || !barony.id) return;
+      const li = document.createElement('li');
+      li.appendChild(document.createTextNode('Baron de '));
+      li.appendChild(createBaronyButton(barony.id));
+      list.appendChild(li);
+    });
+  }
+
+  function setBaronyList(section, list, items) {
+    if (!section || !list) return;
+    list.innerHTML = '';
+    if (items && items.length > 0) {
+      section.style.display = 'block';
+      items.forEach(item => {
+        if (!item || !item.id) return;
+        const li = document.createElement('li');
+        li.appendChild(createBaronyButton(item.id));
         list.appendChild(li);
       });
     } else {
@@ -221,55 +278,62 @@
     const kingdom = duchy ? kingdomMap[duchy.kingdom_id] : null;
     const empire = kingdom ? empireMap[kingdom.empire_id] : null;
 
-    const rows = [
-      {
+    const rows = {
+      viscounty: {
         level: 'Vicomté',
         dejure: viscounty?.name || '',
         defacto: findDefactoEntity(info.seigneur_id, seigneurToViscounty, viscountyMap)?.name || ''
       },
-      {
+      county: {
         level: 'Comté',
         dejure: county?.name || '',
         defacto: findDefactoEntity(info.seigneur_id, seigneurToCounty, countyMap)?.name || ''
       },
-      {
+      marquisate: {
         level: 'Marquisat',
         dejure: marquisate?.name || '',
         defacto: findDefactoEntity(info.seigneur_id, seigneurToMarquisate, marquisateMap)?.name || ''
       },
-      {
+      duchy: {
         level: 'Duché',
         dejure: duchy?.name || '',
         defacto: findDefactoEntity(info.seigneur_id, seigneurToDuchy, duchyMap)?.name || ''
       },
-      {
+      archduchy: {
         level: 'Archiduché',
         dejure: archduchy?.name || '',
         defacto: findDefactoEntity(info.seigneur_id, seigneurToArchduchy, archduchyMap)?.name || ''
       },
-      {
+      kingdom: {
         level: 'Royaume',
         dejure: kingdom?.name || '',
         defacto: findDefactoEntity(info.seigneur_id, seigneurToKingdom, kingdomMap)?.name || ''
       },
-      {
+      empire: {
         level: 'Empire',
         dejure: empire?.name || '',
         defacto: findDefactoEntity(info.seigneur_id, seigneurToEmpire, empireMap)?.name || ''
       }
-    ];
+    };
 
-    const hasData = rows.some(r => r.dejure || r.defacto);
+    const order = ['kingdom', 'empire', 'archduchy', 'duchy', 'marquisate', 'county', 'viscounty'];
+    const filteredRows = order
+      .map(key => rows[key])
+      .filter(row => row && (row.dejure || row.defacto));
+
+    const hasData = filteredRows.length > 0;
     if (!hasData) {
       section.style.display = 'none';
       return;
     }
 
     section.style.display = 'block';
-    rows.forEach(row => {
+    filteredRows.forEach(row => {
       const tr = document.createElement('tr');
       const levelCell = document.createElement('td');
-      levelCell.textContent = row.level;
+      const strong = document.createElement('strong');
+      strong.textContent = row.level;
+      levelCell.appendChild(strong);
       const dejureCell = document.createElement('td');
       dejureCell.textContent = row.dejure;
       const defactoCell = document.createElement('td');
@@ -499,7 +563,11 @@
       'Religion de la population :',
       info.religion_pop_id ? `${religionMap[info.religion_pop_id]?.name || ''}` : ''
     );
-    setLine(infoCultureLine, info.culture_id ? `Culture: ${cultureMapInfo[info.culture_id]?.name || ''}` : '');
+    setLabeledLine(
+      infoCultureLine,
+      'Culture:',
+      info.culture_id ? `${cultureMapInfo[info.culture_id]?.name || ''}` : ''
+    );
     setFeudalTable(feudalSection, infoFeudalBody, info);
     const sancts = sanctuaryMap[id] || [];
     const buildings = [];
@@ -513,12 +581,12 @@
     const owner = info.seigneur_id ? seigneurMap[info.seigneur_id] : null;
     if (owner?.bishop) buildings.push('Évêque');
     setList(religiousSection, infoReligiousList, buildings);
-    const ownedCanonicals = (canonicalDependents[id] || []).map(cid => `${cid} - ${baronyMeta[cid]?.name || ''}`);
-    setList(canonicalOwnedSection, canonicalOwnedList, ownedCanonicals);
+    const ownedCanonicals = (canonicalDependents[id] || []).map(cid => ({ id: cid }));
+    setBaronyList(canonicalOwnedSection, canonicalOwnedList, ownedCanonicals);
     const parentCanonicals = (canonicalParents[id] || [])
       .filter(pid => pid !== id)
-      .map(pid => `${pid} - ${baronyMeta[pid]?.name || ''}`);
-    setList(canonicalParentSection, canonicalParentList, parentCanonicals);
+      .map(pid => ({ id: pid }));
+    setBaronyList(canonicalParentSection, canonicalParentList, parentCanonicals);
     if (filterManager && filterSelect && filterSelect.value === 'distance') {
       filterManager.applyFilter('distance');
     }
