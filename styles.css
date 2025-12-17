@@ -324,6 +324,12 @@ main {
 .info-row {
   margin: 2px 0;
 }
+.info-row.seigneur-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
 .info-panel ul {
   margin: 2px 0 0 16px;
   padding: 0;
@@ -371,6 +377,22 @@ main {
 }
 .seigneur-link:hover {
   background-color: #dfe9ff;
+}
+.info-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.info-table th,
+.info-table td {
+  text-align: left;
+  padding: 4px 6px;
+}
+.info-table thead {
+  background-color: #eef3ff;
+}
+.info-table tbody tr:nth-child(odd) {
+  background-color: #f9fbff;
 }
 
 /* Table d'administration */

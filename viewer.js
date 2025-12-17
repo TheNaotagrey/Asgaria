@@ -47,7 +47,7 @@
   const infoReligionLine = document.getElementById('infoReligionLine');
   const infoCultureLine = document.getElementById('infoCultureLine');
   const feudalSection = document.getElementById('feudalSection');
-  const infoFeudalList = document.getElementById('infoFeudalList');
+  const infoFeudalBody = document.getElementById('infoFeudalBody');
   const religiousSection = document.getElementById('religiousBuildingsSection');
   const infoReligiousList = document.getElementById('infoReligiousList');
   const canonicalOwnedSection = document.getElementById('canonicalOwnedSection');
@@ -104,12 +104,12 @@
     if (!elem) return;
     elem.innerHTML = '';
     if (seigneurId && seigneurMap[seigneurId]) {
-      elem.style.display = 'block';
+      elem.style.display = 'flex';
       if (label) {
         const strong = document.createElement('strong');
         strong.textContent = label;
         elem.appendChild(strong);
-        elem.appendChild(document.createElement('br'));
+        elem.appendChild(document.createTextNode(' '));
       }
       elem.appendChild(createSeigneurButton(seigneurId));
     } else {
@@ -151,7 +151,7 @@
     if (seigneurInfoTitle) seigneurInfoTitle.textContent = seigneur.name;
     if (seigneurInfoIdentity) setLine(seigneurInfoIdentity, '');
     const religionName = seigneur.religion_id ? (religionMap[seigneur.religion_id]?.name || '') : '';
-    setLabeledLine(seigneurInfoReligion, 'Religion :', religionName);
+    setLabeledLine(seigneurInfoReligion, 'Religion du seigneur :', religionName);
     setSeigneurLine(seigneurOverlordLine, seigneur.overlord_id, 'Suzerain');
 
     const titles = [];
@@ -198,6 +198,87 @@
     } else {
       section.style.display = 'none';
     }
+  }
+
+  function findDefactoEntity(seigneurId, mapping, entityMap) {
+    let sid = seigneurId;
+    while (sid) {
+      const entityId = mapping[sid];
+      if (entityId) return entityMap[entityId];
+      sid = seigneurMap[sid]?.overlord_id;
+    }
+    return null;
+  }
+
+  function setFeudalTable(section, tbody, info) {
+    if (!section || !tbody || !info) return;
+    tbody.innerHTML = '';
+    const viscounty = viscountyMap[info.viscounty_id];
+    const county = countyMap[info.county_id];
+    const marquisate = county ? marquisateMap[county.marquisate_id] : null;
+    const duchy = county ? duchyMap[county.duchy_id] : null;
+    const archduchy = duchy ? archduchyMap[duchy.archduchy_id] : null;
+    const kingdom = duchy ? kingdomMap[duchy.kingdom_id] : null;
+    const empire = kingdom ? empireMap[kingdom.empire_id] : null;
+
+    const rows = [
+      {
+        level: 'Vicomté',
+        dejure: viscounty?.name || '',
+        defacto: findDefactoEntity(info.seigneur_id, seigneurToViscounty, viscountyMap)?.name || ''
+      },
+      {
+        level: 'Comté',
+        dejure: county?.name || '',
+        defacto: findDefactoEntity(info.seigneur_id, seigneurToCounty, countyMap)?.name || ''
+      },
+      {
+        level: 'Marquisat',
+        dejure: marquisate?.name || '',
+        defacto: findDefactoEntity(info.seigneur_id, seigneurToMarquisate, marquisateMap)?.name || ''
+      },
+      {
+        level: 'Duché',
+        dejure: duchy?.name || '',
+        defacto: findDefactoEntity(info.seigneur_id, seigneurToDuchy, duchyMap)?.name || ''
+      },
+      {
+        level: 'Archiduché',
+        dejure: archduchy?.name || '',
+        defacto: findDefactoEntity(info.seigneur_id, seigneurToArchduchy, archduchyMap)?.name || ''
+      },
+      {
+        level: 'Royaume',
+        dejure: kingdom?.name || '',
+        defacto: findDefactoEntity(info.seigneur_id, seigneurToKingdom, kingdomMap)?.name || ''
+      },
+      {
+        level: 'Empire',
+        dejure: empire?.name || '',
+        defacto: findDefactoEntity(info.seigneur_id, seigneurToEmpire, empireMap)?.name || ''
+      }
+    ];
+
+    const hasData = rows.some(r => r.dejure || r.defacto);
+    if (!hasData) {
+      section.style.display = 'none';
+      return;
+    }
+
+    section.style.display = 'block';
+    rows.forEach(row => {
+      const tr = document.createElement('tr');
+      const levelCell = document.createElement('td');
+      levelCell.textContent = row.level;
+      const dejureCell = document.createElement('td');
+      dejureCell.textContent = row.dejure;
+      const defactoCell = document.createElement('td');
+      defactoCell.textContent = row.defacto;
+      tr.appendChild(levelCell);
+      tr.appendChild(dejureCell);
+      tr.appendChild(defactoCell);
+      tbody.appendChild(tr);
+    });
   }
 
   const landFilters = [
@@ -413,24 +494,13 @@
       baronyTitle.textContent = `Baronnie: ${info.name || ''} (#${info.id || ''})`;
     }
     setSeigneurLine(infoOwnerLine, info.seigneur_id, 'Propriétaire:');
-    setLine(infoReligionLine, info.religion_pop_id ? `Religion: ${religionMap[info.religion_pop_id]?.name || ''}` : '');
+    setLabeledLine(
+      infoReligionLine,
+      'Religion de la population :',
+      info.religion_pop_id ? `${religionMap[info.religion_pop_id]?.name || ''}` : ''
+    );
     setLine(infoCultureLine, info.culture_id ? `Culture: ${cultureMapInfo[info.culture_id]?.name || ''}` : '');
-    const viscounty = viscountyMap[info.viscounty_id];
-    const county = countyMap[info.county_id];
-    const marquisate = county ? marquisateMap[county.marquisate_id] : null;
-    const duchy = county ? duchyMap[county.duchy_id] : null;
-    const archduchy = duchy ? archduchyMap[duchy.archduchy_id] : null;
-    const kingdom = duchy ? kingdomMap[duchy.kingdom_id] : null;
-    const empire = kingdom ? empireMap[kingdom.empire_id] : null;
-    const hierarchy = [];
-    if (viscounty) hierarchy.push(`Vicomté: ${viscounty.name}`);
-    if (county) hierarchy.push(`Comté: ${county.name}`);
-    if (marquisate) hierarchy.push(`Marquisat: ${marquisate.name}`);
-    if (duchy) hierarchy.push(`Duché: ${duchy.name}`);
-    if (archduchy) hierarchy.push(`Archiduché: ${archduchy.name}`);
-    if (kingdom) hierarchy.push(`Royaume: ${kingdom.name}`);
-    if (empire) hierarchy.push(`Empire: ${empire.name}`);
-    setList(feudalSection, infoFeudalList, hierarchy);
+    setFeudalTable(feudalSection, infoFeudalBody, info);
     const sancts = sanctuaryMap[id] || [];
     const buildings = [];
     sancts.forEach(s => {
