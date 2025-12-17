@@ -29,12 +29,21 @@
     </div>
     <aside id="infoPanel" class="info-panel" style="display:none;">
       <h2 id="baronyTitle"></h2>
-      <div class="info-row" id="infoOwnerLine"></div>
+      <div class="info-row seigneur-line" id="infoOwnerLine"></div>
       <div class="info-row" id="infoReligionLine"></div>
       <div class="info-row" id="infoCultureLine"></div>
       <section class="info-group" id="feudalSection">
         <h3>Hiérarchie féodale</h3>
-        <ul id="infoFeudalList"></ul>
+        <table class="info-table" id="infoFeudalTable">
+          <thead>
+            <tr>
+              <th>Niveau</th>
+              <th>De Jure</th>
+              <th>De Facto</th>
+            </tr>
+          </thead>
+          <tbody id="infoFeudalBody"></tbody>
+        </table>
       </section>
       <section class="info-group" id="religiousBuildingsSection">
         <h3>Bâtiments religieux</h3>
@@ -61,7 +70,7 @@
       </div>
       <div class="info-row" id="seigneurInfoIdentity"></div>
       <div class="info-row" id="seigneurInfoReligion"></div>
-      <div class="info-row" id="seigneurOverlordLine"></div>
+      <div class="info-row seigneur-line" id="seigneurOverlordLine"></div>
       <section class="info-group" id="seigneurTitlesSection">
         <h3>Titres</h3>
         <ul id="seigneurTitlesList"></ul>
