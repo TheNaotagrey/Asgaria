@@ -88,9 +88,10 @@
     elem.innerHTML = '';
     if (value) {
       elem.style.display = 'block';
-      const strong = document.createElement('strong');
-      strong.textContent = label;
-      elem.appendChild(strong);
+      const labelSpan = document.createElement('span');
+      labelSpan.className = 'info-label';
+      labelSpan.textContent = label;
+      elem.appendChild(labelSpan);
       elem.appendChild(document.createTextNode(' '));
       const span = document.createElement('span');
       span.textContent = value;
@@ -106,9 +107,10 @@
     if (seigneurId && seigneurMap[seigneurId]) {
       elem.style.display = 'flex';
       if (label) {
-        const strong = document.createElement('strong');
-        strong.textContent = label;
-        elem.appendChild(strong);
+        const labelSpan = document.createElement('span');
+        labelSpan.className = 'info-label';
+        labelSpan.textContent = label;
+        elem.appendChild(labelSpan);
         elem.appendChild(document.createTextNode(' '));
       }
       elem.appendChild(createSeigneurButton(seigneurId));
