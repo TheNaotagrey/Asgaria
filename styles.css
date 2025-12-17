@@ -315,7 +315,10 @@ main {
   gap: 8px;
 }
 .info-group {
-  margin-bottom: 8px;
+  margin-bottom: 15px;
+}
+.info-group:last-child {
+  margin-bottom: 0;
 }
 .info-group h3 {
   margin: 4px 0;
@@ -365,7 +368,8 @@ main {
 .info-panel button:hover {
   background-color: #3d6db2;
 }
-.seigneur-link {
+.seigneur-link,
+.barony-link {
   margin: 0;
   background-color: #eef3ff;
   color: #1d56a4;
@@ -374,8 +378,12 @@ main {
   border-radius: 4px;
   font-size: 0.9rem;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
 }
-.seigneur-link:hover {
+.seigneur-link:hover,
+.barony-link:hover {
   background-color: #dfe9ff;
 }
 .info-table {
@@ -387,12 +395,7 @@ main {
 .info-table td {
   text-align: left;
   padding: 4px 6px;
-}
-.info-table thead {
-  background-color: #eef3ff;
-}
-.info-table tbody tr:nth-child(odd) {
-  background-color: #f9fbff;
+  border: 1px solid #ccc;
 }
 
 /* Table d'administration */
