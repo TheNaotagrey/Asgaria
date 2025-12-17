@@ -1999,7 +1999,7 @@ async function loadEmpires(){
     labels:{name:'Nom', seigneur_id:'Détenteur du titre', color:'Couleur'},
     colorFields:['color'],
     extraColumns:[{
-      label:'Royaumes',
+      label:'Royaumes de jure',
       render:item => createRelationCell(item, kingdomsByName, {
         childField:'empire_id',
         endpoint:'kingdoms',
@@ -2060,7 +2060,7 @@ async function loadArchduchies(){
     labels:{name:'Nom', seigneur_id:'Détenteur du titre', color:'Couleur'},
     colorFields:['color'],
     extraColumns:[{
-      label:'Duchés rattachés',
+      label:'Duchés de jure',
       render:item => createRelationCell(item, duchiesByName, {
         childField:'archduchy_id',
         endpoint:'duchies',
@@ -2123,7 +2123,7 @@ async function loadMarquisates(){
     labels:{name:'Nom', seigneur_id:'Détenteur du titre', color:'Couleur'},
     colorFields:['color'],
     extraColumns:[{
-      label:'Comtés de marche',
+      label:'Comtés de jure',
       render:item => createRelationCell(item, countiesByName, {
         childField:'marquisate_id',
         endpoint:'counties',
@@ -2187,7 +2187,7 @@ async function loadViscounties(){
     labels:{name:'Nom', seigneur_id:'Détenteur du titre', color:'Couleur'},
     colorFields:['color'],
     extraColumns:[{
-      label:'Baronnies',
+      label:'Baronnies de jure',
       render:item => createRelationCell(item, baroniesByName, {
         childField:'viscounty_id',
         endpoint:'baronies',
