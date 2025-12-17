@@ -357,7 +357,8 @@ main {
   box-sizing: border-box;
 }
 .info-panel button {
-  margin-top: 8px;
+  margin-top: 4px;
+  margin-bottom: 4px;
   background-color: #1d56a4;
   color: white;
   border: none;
