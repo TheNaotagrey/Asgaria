@@ -55,7 +55,7 @@ const baronyPropLabels = {
   effects:'Effets'
 };
 
-const baronyFields = ['name','seigneur_id','religion_pop_id','culture_id','county_id','viscounty_id','priory_religion_id','church_religion_id','cathedral_religion_id','color'];
+const baronyFields = ['name','seigneur_id','religion_pop_id','culture_id','county_id','viscounty_id','priory_religion_id','church_religion_id','cathedral_religion_id','vacant','color'];
 const baronyLabels = {
   name:'Nom',
   seigneur_id:'Seigneur',
@@ -66,6 +66,7 @@ const baronyLabels = {
   priory_religion_id:'Prieuré',
   church_religion_id:'Église',
   cathedral_religion_id:'Cathédrale',
+  vacant:'Vacante',
   color:'Couleur'
 };
 
@@ -2269,6 +2270,7 @@ async function loadBaronies(){
   renderTable(document.getElementById('tableBaronies'), baroniesById, {
     endpoint:'baronies',
     fields:baronyFields,
+    booleanFields:['vacant'],
     selects:{
       seigneur_id:seigneursSelect,
       religion_pop_id:religionsSelect,

@@ -134,6 +134,7 @@ CREATE TABLE IF NOT EXISTS baronies (
   priory_religion_id INTEGER,
   church_religion_id INTEGER,
   cathedral_religion_id INTEGER,
+  vacant INTEGER DEFAULT 0,
   color TEXT,
   FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id) ON DELETE SET NULL,
   FOREIGN KEY(religion_pop_id) REFERENCES religions(id),
@@ -483,6 +484,10 @@ db.exec(initSql, () => {
     }
     if (!rows.some(r => r.name === 'color')) {
       db.run('ALTER TABLE baronies ADD COLUMN color TEXT');
+    }
+    if (!rows.some(r => r.name === 'vacant')) {
+      db.run('ALTER TABLE baronies ADD COLUMN vacant INTEGER DEFAULT 0');
+      db.run('UPDATE baronies SET vacant=0 WHERE vacant IS NULL');
     }
   });
   db.all("PRAGMA table_info(seigneurs)", (err, rows) => {
@@ -1406,7 +1411,7 @@ app.post('/api/transactions', requireAdmin, (req,res)=>{
 
 const baronyFields = [
   'name','seigneur_id','religion_pop_id','county_id','viscounty_id','culture_id',
-  'priory_religion_id','church_religion_id','cathedral_religion_id','color'
+  'priory_religion_id','church_religion_id','cathedral_religion_id','vacant','color'
 ];
 
 app.get('/api/baronies', (req, res) => {
