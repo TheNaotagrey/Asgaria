@@ -70,6 +70,7 @@
     { value: 'empire', label: 'Empire de jure' },
     { value: 'empire_defacto', label: 'Empire de facto' },
     { value: 'distance', label: 'Distance' },
+    { value: 'vacant', label: 'Vacance' },
     { value: 'occupation', label: 'Occupation' }
   ];
   const seaFilters = [
