@@ -152,7 +152,7 @@ function showSaveIndicator(target) {
 }
 
 function formatDetailValue(val){
-  if (val === null || val === undefined) return 'Aucun';
+  if (val === null || val === undefined) return 'null';
   if (typeof val === 'object') {
     if (typeof val.points === 'number') return `${val.points} points`;
     if (val.compressed && !val.points) return 'Données compressées';
@@ -168,12 +168,29 @@ function buildLogTooltip(entry){
   const details = entry.details || {};
   const changes = details.changes || {};
   const lines = [];
-  if (details.label) lines.push(details.label);
-  Object.entries(changes).forEach(([field, change]) => {
-    lines.push(`${field}: ${formatDetailValue(change.before)} → ${formatDetailValue(change.after)}`);
-  });
-  if (!lines.length) lines.push('Aucun détail enregistré');
+  const tableName = entry.table_name || details.table;
+  const recordId = details.key ?? entry.record_id;
+  if (tableName) lines.push(`Table: '${tableName}'`);
+  if (recordId !== undefined && recordId !== null) lines.push(`ID: '${recordId}'`);
+  const entries = Object.entries(changes);
+  if (entries.length) {
+    lines.push('Champs:');
+    entries.forEach(([field, change]) => {
+      lines.push(`\t'${field}': ${formatDetailValue(change.before)} -> ${formatDetailValue(change.after)}`);
+    });
+  } else {
+    lines.push('Champs: aucun changement enregistré');
+  }
   return lines.join('\n');
+}
+
+function parseLogDate(ts){
+  if(!ts) return null;
+  const normalized = /[zZ]|[+-]\d{2}:?\d{2}$/.test(ts)
+    ? ts
+    : `${ts.includes('T') ? ts : ts.replace(' ', 'T')}Z`;
+  const d = new Date(normalized);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 function renderLogsPagination(){
@@ -231,7 +248,8 @@ function renderLogsTable(){
     if (user.email) userTd.title = user.email;
     const timeTd = document.createElement('td');
     timeTd.className = 'log-time';
-    timeTd.textContent = entry.created_at ? new Date(entry.created_at).toLocaleString('fr-FR') : '';
+    const parsedDate = parseLogDate(entry.created_at);
+    timeTd.textContent = parsedDate ? parsedDate.toLocaleString() : '';
     tr.appendChild(descTd);
     tr.appendChild(userTd);
     tr.appendChild(timeTd);
@@ -2550,7 +2568,8 @@ document.addEventListener('DOMContentLoaded', ()=>{
       btn.classList.add('active');
       const panel = document.getElementById('tab-'+btn.dataset.tab);
       panel.classList.add('active');
-      if(!tabLoaded[btn.dataset.tab] && tabLoaders[btn.dataset.tab]){
+      const shouldReload = btn.dataset.tab === 'logs';
+      if((!tabLoaded[btn.dataset.tab] || shouldReload) && tabLoaders[btn.dataset.tab]){
         tabLoaded[btn.dataset.tab] = true;
         showLoading(panel, true);
         tabLoaders[btn.dataset.tab]().finally(()=>showLoading(panel,false));
