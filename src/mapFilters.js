@@ -10,6 +10,10 @@
     let canonicalPatterns = {};
     let colorMap = {};
 
+    function isVacantBarony(info) {
+      return !!(info && (info.vacant === 1 || info.vacant === '1' || info.vacant === true));
+    }
+
     function generateColor(str) {
       const hue = Math.floor(Math.random() * 360);
       const [r, g, b] = hslToRgb(hue, 65, 65);
@@ -131,6 +135,7 @@
       Object.entries(data.baronyMeta).forEach(([id, info]) => {
         let groupId = null;
         let groupName = '';
+        const isVacant = isVacantBarony(info);
         if (type === 'canonical') {
           const rIds = data.canonicalLandMap[id] || [];
           if (rIds.length === 0) {
@@ -151,6 +156,10 @@
           groupId = info.religion_pop_id;
           groupName = data.religionMap[groupId]?.name || '';
         } else if (type === 'seigneur_religion') {
+          if (isVacant) {
+            colorMap[id] = [...terrainColor, 100];
+            return;
+          }
           const owner = info.seigneur_id ? data.seigneurMap?.[info.seigneur_id] : null;
           groupId = owner?.religion_id;
           groupName = data.religionMap[groupId]?.name || '';
@@ -317,6 +326,10 @@
             groupName = data.religionMap[groupId]?.name || '';
           }
         } else if (type === 'occupation') {
+          if (isVacant) {
+            colorMap[id] = [...terrainColor, 100];
+            return;
+          }
           const owner = info.seigneur_id && data.seigneurMap ? data.seigneurMap[info.seigneur_id] : null;
           if (!owner) {
             groupId = 'unoccupied';

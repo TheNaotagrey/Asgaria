@@ -19,7 +19,7 @@ Ce dépôt propose un serveur Express/Node.js avec une base SQLite et plusieurs 
 - **src/mapCore.js** : fonctions communes de rendu/zoom utilisées par `viewer.js` et `script.js`.
 - **src/mapFilters.js** : gestion des filtres et de la coloration de la carte, partagée par `viewer.js` et `script.js`.
 - **src/crudRouter.js** : générateur de routes CRUD génériques utilisé par `server.js` pour réduire la duplication.
-- La base de données inclut désormais une table `sanctuaries` (avec un statut actif/inactif), une table `canonical_lands` (relation entre deux baronnies) et les colonnes `priory_religion_id`, `church_religion_id`, `cathedral_religion_id` dans la table `baronies`, ainsi que `player` et `bishop` dans la table `seigneurs`.
+- La base de données inclut désormais une table `sanctuaries` (avec un statut actif/inactif), une table `canonical_lands` (relation entre deux baronnies) et les colonnes `priory_religion_id`, `church_religion_id`, `cathedral_religion_id` et `vacant` (baronnie vacante) dans la table `baronies`, ainsi que `player` et `bishop` dans la table `seigneurs`.
 - **admin.js** : interface d'administration des empires, royaumes, duchés, etc.
 - **gestion.js** : gestion des seigneuries, ressources et sorts côté joueur.
 - **profile.js** : modification du profil utilisateur.
