@@ -13,6 +13,7 @@ Ce dépôt propose un serveur Express/Node.js avec une base SQLite et plusieurs 
 - **transactions.js** : applique les débits/crédits de ressources dans la base de données.
 - **services/buildingService.js** : utilitaires pour consommer les ressources lors des constructions.
 - **services/notificationService.js** : utilitaire pour envoyer des notifications aux utilisateurs.
+- **services/changeLogService.js** : formate et enregistre les journaux des modifications administratives dans la table `admin_change_logs`, utilisés par `server.js`.
 - **auth.js** : script inclus sur les pages client pour la connexion, la déconnexion et la navigation conditionnelle.
 - **viewer.js** : affiche la carte en lecture seule.
 - **script.js** : éditeur de carte permettant de modifier les baronnies et d'enregistrer les pixels.
@@ -28,9 +29,11 @@ Ce dépôt propose un serveur Express/Node.js avec une base SQLite et plusieurs 
 - Les pages HTML (`index.html`, `mapEditor.html`, `admin.html`, `gestion.html`, `profile.html`) chargent ces scripts selon leur rôle.
 - Les scripts client communiquent avec l'API du serveur via `fetch`.
 - La base de données contient également une table `trade_transactions` (origine, destination, ressources, type, état, raison, décision, retour) pour enregistrer les échanges entre seigneuries. L'origine et la destination y sont stockées via les identifiants de seigneurie, les noms des seigneurs ou baronnies étant résolus dynamiquement. Les effets `land_transaction_max_per_month` et `naval_transaction_max_per_month` permettent d'augmenter les limites mensuelles de transactions.
+- La table `admin_change_logs` trace les modifications effectuées via l'administration/`mapEditor` (table, entrée, utilisateur, description, données structurées et timestamp) et est consultable depuis l'onglet "Logs" d'`admin.html`.
 
 ## Instructions
 - Garder ce fichier à jour : toute modification importante de l'architecture, des dépendances ou des relations entre scripts doit être répercutée ici.
 - Ajouter ou supprimer des scripts majeurs nécessite d'actualiser la section "Scripts et relations principales".
 - Les développements se font en JavaScript (CommonJS côté serveur, scripts front-end sans bundler) avec Node.js ≥14.
 - Après toute modification du code, exécuter les vérifications disponibles (`npm test`, même si aucun test n'est défini) et corriger les erreurs le cas échéant.
+- Toute interface utilisateur destinée aux utilisateurs finaux doit être intégralement en français (100% des textes affichés).

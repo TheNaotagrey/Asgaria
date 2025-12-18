@@ -115,6 +115,55 @@ const maxOptions = [
   ...baronyPropIntFields.map(f=>({ id:f, name:baronyPropLabels[f] || f })),
   { id:'tag', name:'Par tag' }
 ];
+const LOG_PAGE_SIZES = [10, 25, 50, 100];
+const LOG_QUERY_KEYS = ['table', 'action', 'userType', 'recordId', 'userId', 'startDate', 'endDate'];
+const LOG_ACTION_TRANSLATIONS = {
+  add: 'Ajout',
+  approve: 'Approbation',
+  archive: 'Archivage',
+  assign: 'Attribution',
+  create: 'Création',
+  deactivate: 'Désactivation',
+  delete: 'Suppression',
+  disable: 'Désactivation',
+  edit: 'Modification',
+  enable: 'Activation',
+  export: 'Exportation',
+  import: 'Importation',
+  insert: 'Création',
+  invalidate: 'Invalidation',
+  publish: 'Publication',
+  reject: 'Rejet',
+  remove: 'Suppression',
+  reset: 'Réinitialisation',
+  restore: 'Restauration',
+  revoke: 'Révocation',
+  toggle: 'Basculement',
+  unassign: "Retrait d'attribution",
+  unpublish: 'Dépublication',
+  update: 'Mise à jour',
+  validate: 'Validation'
+};
+const DEFAULT_LOG_FILTERS = {
+  table: '',
+  action: '',
+  userType: '',
+  recordId: '',
+  userId: '',
+  startDate: '',
+  endDate: '',
+  exactDate: ''
+};
+const logState = {
+  page: 1,
+  perPage: 25,
+  total: 0,
+  entries: [],
+  filters: { ...DEFAULT_LOG_FILTERS },
+  options: { tables: [], actions: [], adminUsers: [] }
+};
+let logFiltersInitialized = false;
+let logAdminOptionsLoaded = false;
 
 const spellFields = ['label','type','costs','effects','description'];
 const spellLabels = {
@@ -147,6 +196,434 @@ function showSaveIndicator(target) {
   setTimeout(() => {
     el.style.display = 'none';
   }, 2000);
+}
+
+function formatDetailValue(val){
+  if (val === null || val === undefined) return 'null';
+  if (typeof val === 'object') {
+    if (typeof val.points === 'number') return `${val.points} points`;
+    if (val.compressed && !val.points) return 'Données compressées';
+    const entries = Object.entries(val);
+    const preview = entries.slice(0, 3).map(([k, v]) => `${k}: ${v}`);
+    if (entries.length > 3) preview.push('…');
+    return `{ ${preview.join(', ')} }`;
+  }
+  return String(val);
+}
+
+function buildLogTooltip(entry){
+  const details = entry.details || {};
+  const changes = details.changes || {};
+  const lines = [];
+  const tableName = entry.table || entry.table_name || details.table;
+  const recordId = details.key ?? entry.record_id ?? entry.recordId;
+  const actionName = entry.action || details.action;
+  if (tableName) lines.push(`Table : '${tableName}'`);
+  if (actionName) lines.push(`Action : '${getActionLabelFr(actionName)}'`);
+  if (recordId !== undefined && recordId !== null) lines.push(`ID cible : '${recordId}'`);
+  const entries = Object.entries(changes);
+  if (entries.length) {
+    lines.push('Champs :');
+    entries.forEach(([field, change]) => {
+      lines.push(`\t'${field}': ${formatDetailValue(change.before)} -> ${formatDetailValue(change.after)}`);
+    });
+  } else {
+    lines.push('Champs : aucun changement enregistré');
+  }
+  return lines.join('\n');
+}
+
+function parseLogDate(ts){
+  if(!ts) return null;
+  const normalized = /[zZ]|[+-]\d{2}:?\d{2}$/.test(ts)
+    ? ts
+    : `${ts.includes('T') ? ts : ts.replace(' ', 'T')}Z`;
+  const d = new Date(normalized);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function formatLocalDateInput(value, { dateOnly = false } = {}) {
+  if (!value) return '';
+  const d = parseLogDate(value);
+  if (!d) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  const datePart = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  if (dateOnly) return datePart;
+  return `${datePart}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function toIsoOrEmpty(value, endOfDay = false) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  if (endOfDay) {
+    d.setHours(23, 59, 59, 999);
+  }
+  return d.toISOString();
+}
+
+function getActionLabelFr(action) {
+  if (!action) return '';
+  const normalized = action.toLowerCase().trim();
+  if (LOG_ACTION_TRANSLATIONS[normalized]) return LOG_ACTION_TRANSLATIONS[normalized];
+  const cleaned = normalized.replace(/[_-]+/g, ' ');
+  return cleaned ? cleaned.charAt(0).toUpperCase() + cleaned.slice(1) : action;
+}
+
+function formatUserDisplayName(user) {
+  if (!user) return '';
+  const parts = [user.first_name, user.last_name].filter(Boolean);
+  if (parts.length) return parts.join(' ').trim();
+  return user.email || '';
+}
+
+async function ensureLogAdminOptions() {
+  if (logAdminOptionsLoaded) return;
+  const users = await getData('users', '/api/users');
+  const admins = users
+    .filter((u) => u.is_admin)
+    .map((u) => ({ id: u.id, name: formatUserDisplayName(u) || u.email || `Admin #${u.id}` }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  logState.options.adminUsers = admins;
+  logAdminOptionsLoaded = true;
+  populateLogFilterOptions();
+}
+
+function populateLogFilterOptions() {
+  const tableSelect = document.getElementById('logsTableFilter');
+  if (tableSelect) {
+    const seenTables = new Set();
+    tableSelect.innerHTML = '';
+    const defaultOpt = document.createElement('option');
+    defaultOpt.value = '';
+    defaultOpt.textContent = 'Toutes les tables';
+    tableSelect.appendChild(defaultOpt);
+    (logState.options.tables || []).forEach((name) => {
+      if (!name || seenTables.has(name)) return;
+      seenTables.add(name);
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      tableSelect.appendChild(opt);
+    });
+    tableSelect.value = seenTables.has(logState.filters.table) ? logState.filters.table : '';
+  }
+  const userSelect = document.getElementById('logsUserFilter');
+  if (userSelect) {
+    userSelect.innerHTML = '';
+    const defaultOpt = document.createElement('option');
+    defaultOpt.value = '';
+    defaultOpt.textContent = 'Tous';
+    userSelect.appendChild(defaultOpt);
+    const nonAdminOpt = document.createElement('option');
+    nonAdminOpt.value = 'non-admin';
+    nonAdminOpt.textContent = 'Non-admin';
+    userSelect.appendChild(nonAdminOpt);
+    (logState.options.adminUsers || []).forEach((user) => {
+      const opt = document.createElement('option');
+      opt.value = String(user.id);
+      opt.textContent = user.name;
+      userSelect.appendChild(opt);
+    });
+    let selected = '';
+    if (logState.filters.userType === 'non-admin') {
+      selected = 'non-admin';
+    } else if (logState.filters.userId && (logState.options.adminUsers || []).some((u) => String(u.id) === String(logState.filters.userId))) {
+      selected = String(logState.filters.userId);
+    }
+    userSelect.value = selected;
+  }
+}
+
+function populateLogActionOptions() {
+  const actionSelect = document.getElementById('logsActionFilterAdvanced');
+  if (!actionSelect) return;
+  const seenActions = new Set();
+  actionSelect.innerHTML = '';
+  const defaultOpt = document.createElement('option');
+  defaultOpt.value = '';
+  defaultOpt.textContent = 'Toutes les actions';
+  actionSelect.appendChild(defaultOpt);
+  (logState.options.actions || []).forEach((name) => {
+    const normalized = name ? name.trim() : '';
+    if (!normalized || seenActions.has(normalized)) return;
+    seenActions.add(normalized);
+    const opt = document.createElement('option');
+    opt.value = normalized;
+    opt.textContent = getActionLabelFr(normalized);
+    actionSelect.appendChild(opt);
+  });
+  if (logState.filters.action && !seenActions.has(logState.filters.action)) {
+    const opt = document.createElement('option');
+    opt.value = logState.filters.action;
+    opt.textContent = getActionLabelFr(logState.filters.action);
+    actionSelect.appendChild(opt);
+  }
+  actionSelect.value = logState.filters.action || '';
+}
+
+function renderLogFilterSummary() {
+  const summary = document.getElementById('logFilterSummary');
+  if (!summary) return;
+  const parts = [];
+  if (logState.filters.table) parts.push(`Table : ${logState.filters.table}`);
+  if (logState.filters.action) parts.push(`Action : ${getActionLabelFr(logState.filters.action)}`);
+  const userLabel = (() => {
+    if (logState.filters.userType === 'non-admin') return 'Non-admin';
+    if (logState.filters.userId) {
+      const match = (logState.options.adminUsers || []).find((u) => String(u.id) === String(logState.filters.userId));
+      return match ? match.name : `Utilisateur #${logState.filters.userId}`;
+    }
+    return '';
+  })();
+  if (userLabel) parts.push(`Utilisateur : ${userLabel}`);
+  if (logState.filters.recordId) parts.push(`ID cible : ${logState.filters.recordId}`);
+  if (logState.filters.startDate && logState.filters.endDate && logState.filters.exactDate) {
+    const exact = formatLocalDateInput(logState.filters.startDate, { dateOnly: true });
+    if (exact) parts.push(`Date : ${exact}`);
+  } else {
+    if (logState.filters.startDate) {
+      const val = formatLocalDateInput(logState.filters.startDate);
+      if (val) parts.push(`Après : ${val}`);
+    }
+    if (logState.filters.endDate) {
+      const val = formatLocalDateInput(logState.filters.endDate);
+      if (val) parts.push(`Avant : ${val}`);
+    }
+  }
+
+  summary.textContent = parts.length ? `Filtres actifs — ${parts.join(' · ')}` : '';
+  summary.style.display = parts.length ? '' : 'none';
+}
+
+function syncAdvancedFilterInputs() {
+  const afterInput = document.getElementById('logsAfter');
+  if (afterInput) afterInput.value = formatLocalDateInput(logState.filters.startDate);
+  const beforeInput = document.getElementById('logsBefore');
+  if (beforeInput) beforeInput.value = formatLocalDateInput(logState.filters.endDate);
+  const exactInput = document.getElementById('logsExactDate');
+  if (exactInput) exactInput.value = logState.filters.exactDate || '';
+  const actionSelect = document.getElementById('logsActionFilterAdvanced');
+  if (actionSelect) actionSelect.value = logState.filters.action || '';
+  const recordInput = document.getElementById('logsRecordId');
+  if (recordInput) recordInput.value = logState.filters.recordId || '';
+}
+
+function openLogAdvancedDialog() {
+  const dialog = document.getElementById('logAdvancedDialog');
+  if (!dialog) return;
+  syncAdvancedFilterInputs();
+  if (dialog.showModal) dialog.showModal();
+  else dialog.setAttribute('open', 'open');
+}
+
+function closeLogAdvancedDialog() {
+  const dialog = document.getElementById('logAdvancedDialog');
+  if (!dialog) return;
+  if (dialog.close) dialog.close();
+  else dialog.removeAttribute('open');
+}
+
+function applyAdvancedLogFilters(e) {
+  e.preventDefault();
+  const form = e.target;
+  const afterVal = form.querySelector('#logsAfter')?.value || '';
+  const beforeVal = form.querySelector('#logsBefore')?.value || '';
+  const exactVal = form.querySelector('#logsExactDate')?.value || '';
+  const actionVal = form.querySelector('#logsActionFilterAdvanced')?.value || '';
+  const recordId = (form.querySelector('#logsRecordId')?.value || '').trim();
+  logState.filters.recordId = recordId;
+  logState.filters.action = actionVal;
+
+  if (exactVal) {
+    logState.filters.exactDate = exactVal;
+    logState.filters.startDate = toIsoOrEmpty(`${exactVal}T00:00:00`);
+    logState.filters.endDate = toIsoOrEmpty(`${exactVal}T23:59:59`);
+  } else {
+    logState.filters.exactDate = '';
+    logState.filters.startDate = toIsoOrEmpty(afterVal);
+    logState.filters.endDate = toIsoOrEmpty(beforeVal);
+  }
+
+  closeLogAdvancedDialog();
+  loadLogs(1);
+  renderLogFilterSummary();
+}
+
+function resetLogFilters() {
+  logState.filters = { ...DEFAULT_LOG_FILTERS };
+  populateLogFilterOptions();
+  populateLogActionOptions();
+  syncAdvancedFilterInputs();
+  renderLogFilterSummary();
+  loadLogs(1);
+}
+
+function initLogFilters() {
+  if (logFiltersInitialized) return;
+  const tableSelect = document.getElementById('logsTableFilter');
+  if (tableSelect) {
+    tableSelect.addEventListener('change', () => {
+      logState.filters.table = tableSelect.value;
+      loadLogs(1);
+    });
+  }
+  const userSelect = document.getElementById('logsUserFilter');
+  if (userSelect) {
+    userSelect.addEventListener('change', () => {
+      const val = userSelect.value;
+      if (val === 'non-admin') {
+        logState.filters.userType = 'non-admin';
+        logState.filters.userId = '';
+      } else if (val) {
+        logState.filters.userId = val;
+        logState.filters.userType = '';
+      } else {
+        logState.filters.userId = '';
+        logState.filters.userType = '';
+      }
+      loadLogs(1);
+    });
+  }
+  const advancedBtn = document.getElementById('logsAdvancedBtn');
+  if (advancedBtn) advancedBtn.addEventListener('click', openLogAdvancedDialog);
+  const resetBtn = document.getElementById('logsResetFilters');
+  if (resetBtn) resetBtn.addEventListener('click', resetLogFilters);
+  const advancedForm = document.getElementById('logAdvancedForm');
+  if (advancedForm) advancedForm.addEventListener('submit', applyAdvancedLogFilters);
+  const closeBtn = document.getElementById('closeLogAdvanced');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      closeLogAdvancedDialog();
+    });
+  }
+  populateLogFilterOptions();
+  populateLogActionOptions();
+  syncAdvancedFilterInputs();
+  renderLogFilterSummary();
+  logFiltersInitialized = true;
+}
+
+function buildLogQueryParams(page, perPage) {
+  const params = new URLSearchParams();
+  params.set('page', page);
+  params.set('perPage', perPage);
+  LOG_QUERY_KEYS.forEach((key) => {
+    const val = logState.filters[key];
+    if (val !== undefined && val !== null && String(val).trim() !== '') {
+      params.set(key, val);
+    }
+  });
+  return params.toString();
+}
+
+function renderLogsPagination(){
+  const pagination = document.getElementById('logsPagination');
+  if (!pagination) return;
+  pagination.innerHTML = '';
+  const totalPages = Math.max(1, Math.ceil((logState.total || 0) / logState.perPage));
+  const info = document.createElement('span');
+  info.textContent = `Page ${logState.page} / ${totalPages} — ${logState.total || 0} entrées`;
+  const prev = document.createElement('button');
+  prev.textContent = 'Précédent';
+  prev.disabled = logState.page <= 1;
+  prev.addEventListener('click', () => loadLogs(logState.page - 1));
+  const next = document.createElement('button');
+  next.textContent = 'Suivant';
+  next.disabled = logState.page >= totalPages;
+  next.addEventListener('click', () => loadLogs(logState.page + 1));
+  pagination.appendChild(prev);
+  pagination.appendChild(info);
+  pagination.appendChild(next);
+}
+
+function renderLogsTable(){
+  const container = document.getElementById('tableLogs');
+  if (!container) return;
+  container.innerHTML = '';
+  const table = document.createElement('table');
+  table.className = 'admin-table log-table';
+  const thead = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  const headers = [
+    { label: 'Description', className: 'log-desc' },
+    { label: 'Utilisateur', className: 'log-user' },
+    { label: 'Horodatage', className: 'log-time' }
+  ];
+  headers.forEach(h => {
+    const th = document.createElement('th');
+    th.textContent = h.label;
+    if (h.className) th.className = h.className;
+    headRow.appendChild(th);
+  });
+  thead.appendChild(headRow);
+  const tbody = document.createElement('tbody');
+  logState.entries.forEach(entry => {
+    const tr = document.createElement('tr');
+    const descTd = document.createElement('td');
+    descTd.className = 'log-desc';
+    descTd.textContent = entry.description || '';
+    descTd.title = buildLogTooltip(entry);
+    const userTd = document.createElement('td');
+    userTd.className = 'log-user';
+    const user = entry.user || {};
+    const userName = [user.first_name, user.last_name].filter(Boolean).join(' ').trim() || user.email || 'Inconnu';
+    userTd.textContent = userName;
+    if (user.email) userTd.title = user.email;
+    const timeTd = document.createElement('td');
+    timeTd.className = 'log-time';
+    const parsedDate = parseLogDate(entry.created_at);
+    timeTd.textContent = parsedDate ? parsedDate.toLocaleString('fr-FR') : '';
+    tr.appendChild(descTd);
+    tr.appendChild(userTd);
+    tr.appendChild(timeTd);
+    tbody.appendChild(tr);
+  });
+  table.appendChild(thead);
+  table.appendChild(tbody);
+  container.appendChild(table);
+  renderLogsPagination();
+}
+
+function setupLogPageSize(){
+  const select = document.getElementById('logsPerPage');
+  if (!select || select.dataset.ready) return;
+  LOG_PAGE_SIZES.forEach(size => {
+    const opt = document.createElement('option');
+    opt.value = size;
+    opt.textContent = size;
+    select.appendChild(opt);
+  });
+  select.value = logState.perPage;
+  select.dataset.ready = '1';
+  select.addEventListener('change', () => {
+    logState.perPage = parseInt(select.value, 10) || logState.perPage;
+    loadLogs(1);
+  });
+}
+
+async function loadLogs(page = 1){
+  await ensureLogAdminOptions();
+  setupLogPageSize();
+  initLogFilters();
+  const perPage = parseInt(document.getElementById('logsPerPage')?.value, 10) || logState.perPage;
+  const query = buildLogQueryParams(page, perPage);
+  const resp = await fetchJSON(`/api/admin_change_logs?${query}`);
+  logState.entries = resp.entries || [];
+  logState.total = resp.total || 0;
+  logState.page = resp.page || page;
+  logState.perPage = resp.perPage || perPage;
+  if (resp.options) {
+    const dedupe = (list) => Array.from(new Set((list || []).filter(Boolean))).sort();
+    if (resp.options.tables) logState.options.tables = dedupe(resp.options.tables);
+    if (resp.options.actions) logState.options.actions = dedupe(resp.options.actions);
+    populateLogFilterOptions();
+    populateLogActionOptions();
+  }
+  renderLogsTable();
+  renderLogFilterSummary();
+  syncAdvancedFilterInputs();
 }
 
 function isBooleanOptionList(optList){
@@ -2415,6 +2892,7 @@ const tabLoaders = {
   spells: loadSpells,
   tags: loadTags,
   baronyprops: loadBaronyProps,
+  logs: () => loadLogs(1),
 };
 
 document.addEventListener('DOMContentLoaded', ()=>{
@@ -2427,7 +2905,8 @@ document.addEventListener('DOMContentLoaded', ()=>{
       btn.classList.add('active');
       const panel = document.getElementById('tab-'+btn.dataset.tab);
       panel.classList.add('active');
-      if(!tabLoaded[btn.dataset.tab] && tabLoaders[btn.dataset.tab]){
+      const shouldReload = btn.dataset.tab === 'logs';
+      if((!tabLoaded[btn.dataset.tab] || shouldReload) && tabLoaders[btn.dataset.tab]){
         tabLoaded[btn.dataset.tab] = true;
         showLoading(panel, true);
         tabLoaders[btn.dataset.tab]().finally(()=>showLoading(panel,false));

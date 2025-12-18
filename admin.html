@@ -32,6 +32,7 @@
         <button class="tab-btn" data-tab="tags">Tags</button>
         <button class="tab-btn" data-tab="baronyprops">Propriétés baronnies</button>
         <button class="tab-btn" data-tab="users">Utilisateurs</button>
+        <button class="tab-btn" data-tab="logs">Logs</button>
       </div>
       <div class="tab-panels">
         <div id="tab-seigneurs" class="tab-panel active">
@@ -108,6 +109,61 @@
         <div id="tab-users" class="tab-panel">
           <div class="tab-loading" style="display:none">Chargement...</div>
           <div id="tableUsers"></div>
+        </div>
+        <div id="tab-logs" class="tab-panel">
+            <div class="tab-loading" style="display:none">Chargement...</div>
+          <div class="log-controls">
+            <div class="log-filters">
+              <div class="log-filter">
+                <label for="logsTableFilter">Table</label>
+                <select id="logsTableFilter"></select>
+              </div>
+              <div class="log-filter">
+                <label for="logsUserFilter">Utilisateur</label>
+                <select id="logsUserFilter">
+                  <option value="">Tous</option>
+                  <option value="non-admin">Non-admin</option>
+                </select>
+              </div>
+              <div class="log-filter">
+                <label>&nbsp;</label>
+                <div class="log-filter-buttons">
+                  <button type="button" id="logsAdvancedBtn">Filtre avancé</button>
+                  <button type="button" id="logsResetFilters">Réinitialiser</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div id="logFilterSummary" class="log-filter-summary"></div>
+          <dialog id="logAdvancedDialog" class="confirm-dialog">
+            <form id="logAdvancedForm" method="dialog">
+              <h3>Filtre avancé</h3>
+              <div class="advanced-filter-grid">
+                <label for="logsActionFilterAdvanced">Action</label>
+                <select id="logsActionFilterAdvanced" name="logsAction"></select>
+                <label for="logsAfter">Après le</label>
+                <input type="datetime-local" id="logsAfter" name="logsAfter" />
+                <label for="logsBefore">Avant le</label>
+                <input type="datetime-local" id="logsBefore" name="logsBefore" />
+                <label for="logsExactDate">Date précise</label>
+                <input type="date" id="logsExactDate" name="logsExactDate" />
+                <label for="logsRecordId">ID ciblé</label>
+                <input type="text" id="logsRecordId" name="logsRecordId" placeholder="ID d'enregistrement" />
+              </div>
+              <div class="dialog-buttons">
+                <button type="button" id="closeLogAdvanced">Annuler</button>
+                <button type="submit">Appliquer</button>
+              </div>
+            </form>
+          </dialog>
+          <div id="tableLogs"></div>
+          <div class="log-footer">
+            <div id="logsPagination" class="log-pagination"></div>
+            <div class="log-page-size">
+              <label for="logsPerPage">Entrées par page :</label>
+              <select id="logsPerPage"></select>
+            </div>
+          </div>
         </div>
       </div>
     </div>
