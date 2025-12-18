@@ -347,6 +347,9 @@
             groupId = 'npc_seigneur';
             groupName = 'PNJ Seigneur';
           }
+        } else if (type === 'vacant') {
+          groupId = isVacant ? 'vacant' : 'occupied';
+          groupName = isVacant ? 'Vacante' : 'Occupée';
         }
         if (groupId == null) {
           colorMap[id] = [...terrainColor, 100];
@@ -360,6 +363,8 @@
             else if (groupId === 'npc_seigneur') col = npcSeigneurColor;
             else if (groupId === 'npc_bishop') col = npcBishopColor;
             else col = terrainColor;
+          } else if (type === 'vacant') {
+            col = groupId === 'vacant' ? terrainColor : [82, 190, 128];
           } else if (randomize) {
             const hue = Math.floor(Math.random() * 360);
             col = hslToRgb(hue, 65, 65);
