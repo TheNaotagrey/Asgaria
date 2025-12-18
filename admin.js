@@ -115,6 +115,8 @@ const maxOptions = [
   ...baronyPropIntFields.map(f=>({ id:f, name:baronyPropLabels[f] || f })),
   { id:'tag', name:'Par tag' }
 ];
+const LOG_PAGE_SIZES = [10, 25, 50, 100];
+const logState = { page: 1, perPage: 25, total: 0, entries: [] };
 
 const spellFields = ['label','type','costs','effects','description'];
 const spellLabels = {
@@ -147,6 +149,126 @@ function showSaveIndicator(target) {
   setTimeout(() => {
     el.style.display = 'none';
   }, 2000);
+}
+
+function formatDetailValue(val){
+  if (val === null || val === undefined) return 'Aucun';
+  if (typeof val === 'object') {
+    if (typeof val.points === 'number') return `${val.points} points`;
+    if (val.compressed && !val.points) return 'Données compressées';
+    const entries = Object.entries(val);
+    const preview = entries.slice(0, 3).map(([k, v]) => `${k}: ${v}`);
+    if (entries.length > 3) preview.push('…');
+    return `{ ${preview.join(', ')} }`;
+  }
+  return String(val);
+}
+
+function buildLogTooltip(entry){
+  const details = entry.details || {};
+  const changes = details.changes || {};
+  const lines = [];
+  if (details.label) lines.push(details.label);
+  Object.entries(changes).forEach(([field, change]) => {
+    lines.push(`${field}: ${formatDetailValue(change.before)} → ${formatDetailValue(change.after)}`);
+  });
+  if (!lines.length) lines.push('Aucun détail enregistré');
+  return lines.join('\n');
+}
+
+function renderLogsPagination(){
+  const pagination = document.getElementById('logsPagination');
+  if (!pagination) return;
+  pagination.innerHTML = '';
+  const totalPages = Math.max(1, Math.ceil((logState.total || 0) / logState.perPage));
+  const info = document.createElement('span');
+  info.textContent = `Page ${logState.page} / ${totalPages} — ${logState.total || 0} entrées`;
+  const prev = document.createElement('button');
+  prev.textContent = 'Précédent';
+  prev.disabled = logState.page <= 1;
+  prev.addEventListener('click', () => loadLogs(logState.page - 1));
+  const next = document.createElement('button');
+  next.textContent = 'Suivant';
+  next.disabled = logState.page >= totalPages;
+  next.addEventListener('click', () => loadLogs(logState.page + 1));
+  pagination.appendChild(prev);
+  pagination.appendChild(info);
+  pagination.appendChild(next);
+}
+
+function renderLogsTable(){
+  const container = document.getElementById('tableLogs');
+  if (!container) return;
+  container.innerHTML = '';
+  const table = document.createElement('table');
+  table.className = 'admin-table log-table';
+  const thead = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  const headers = [
+    { label: 'Description', className: 'log-desc' },
+    { label: 'Utilisateur', className: 'log-user' },
+    { label: 'Timestamp', className: 'log-time' }
+  ];
+  headers.forEach(h => {
+    const th = document.createElement('th');
+    th.textContent = h.label;
+    if (h.className) th.className = h.className;
+    headRow.appendChild(th);
+  });
+  thead.appendChild(headRow);
+  const tbody = document.createElement('tbody');
+  logState.entries.forEach(entry => {
+    const tr = document.createElement('tr');
+    const descTd = document.createElement('td');
+    descTd.className = 'log-desc';
+    descTd.textContent = entry.description || '';
+    descTd.title = buildLogTooltip(entry);
+    const userTd = document.createElement('td');
+    userTd.className = 'log-user';
+    const user = entry.user || {};
+    const userName = [user.first_name, user.last_name].filter(Boolean).join(' ').trim() || user.email || 'Inconnu';
+    userTd.textContent = userName;
+    if (user.email) userTd.title = user.email;
+    const timeTd = document.createElement('td');
+    timeTd.className = 'log-time';
+    timeTd.textContent = entry.created_at ? new Date(entry.created_at).toLocaleString('fr-FR') : '';
+    tr.appendChild(descTd);
+    tr.appendChild(userTd);
+    tr.appendChild(timeTd);
+    tbody.appendChild(tr);
+  });
+  table.appendChild(thead);
+  table.appendChild(tbody);
+  container.appendChild(table);
+  renderLogsPagination();
+}
+
+function setupLogPageSize(){
+  const select = document.getElementById('logsPerPage');
+  if (!select || select.dataset.ready) return;
+  LOG_PAGE_SIZES.forEach(size => {
+    const opt = document.createElement('option');
+    opt.value = size;
+    opt.textContent = size;
+    select.appendChild(opt);
+  });
+  select.value = logState.perPage;
+  select.dataset.ready = '1';
+  select.addEventListener('change', () => {
+    logState.perPage = parseInt(select.value, 10) || logState.perPage;
+    loadLogs(1);
+  });
+}
+
+async function loadLogs(page = 1){
+  setupLogPageSize();
+  const perPage = parseInt(document.getElementById('logsPerPage')?.value, 10) || logState.perPage;
+  const resp = await fetchJSON(`/api/admin_change_logs?page=${page}&perPage=${perPage}`);
+  logState.entries = resp.entries || [];
+  logState.total = resp.total || 0;
+  logState.page = resp.page || page;
+  logState.perPage = resp.perPage || perPage;
+  renderLogsTable();
 }
 
 function isBooleanOptionList(optList){
@@ -2415,6 +2537,7 @@ const tabLoaders = {
   spells: loadSpells,
   tags: loadTags,
   baronyprops: loadBaronyProps,
+  logs: () => loadLogs(1),
 };
 
 document.addEventListener('DOMContentLoaded', ()=>{

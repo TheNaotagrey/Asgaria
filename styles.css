@@ -430,6 +430,39 @@ main {
 .admin-table button:hover {
   background-color: #3d6db2;
 }
+.log-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+}
+.log-pagination {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.log-pagination button {
+  padding: 4px 8px;
+  background-color: #1d56a4;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.log-pagination button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.log-table .log-desc {
+  width: 60%;
+}
+.log-table .log-user {
+  width: 20%;
+}
+.log-table .log-time {
+  width: 20%;
+}
 
 .multi-col {
   padding-left: 10px;
