@@ -12,6 +12,7 @@ const logger = require('./logger');
 const handleError = require('./handleError');
 const { consumeResources } = require('./services/buildingService');
 const { sendNotification } = require('./services/notificationService');
+const { logAdminChange, prepareChangeLog, diffRecords } = require('./services/changeLogService');
 const { crudRoutes, list, create, update } = require('./src/crudRouter');
 const { StorageEffect, ResourceProductionEffect, BuildingProductionEffect, InfraProductionEffect, IDHEffect, VariableWorkersEffect, TagEffect, UnlockPageEffect, SpellSuccessEffect, SpellBasicDiscountEffect, SpellAdvancedDiscountEffect, SpellRangeEffect, SpellMaxPerMonthEffect, LandTransactionMaxPerMonthEffect, NavalTransactionMaxPerMonthEffect } = require('./effects');
 const { breadthFirst } = require('./src/bfs');
@@ -350,6 +351,19 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY(user_id) REFERENCES users(id)
 );
+CREATE TABLE IF NOT EXISTS admin_change_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  table_name TEXT NOT NULL,
+  record_id TEXT,
+  action TEXT NOT NULL,
+  description TEXT NOT NULL,
+  details TEXT,
+  user_id INTEGER,
+  user_email TEXT,
+  user_first_name TEXT,
+  user_last_name TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
 `;
 
 function enforceDefaultAdmins(callback) {
@@ -684,6 +698,10 @@ function applyAdminOverride(user) {
   return user;
 }
 
+function recordChange(req, change) {
+  return logAdminChange(db, { user: req.session.user, ...change });
+}
+
 function getSeigneurie(req, select, cb) {
   const user = req.session.user;
   const overrideRaw = isAdminActive(user) ? (req.query.seigneurie_id || (req.body && req.body.seigneurie_id)) : null;
@@ -916,7 +934,20 @@ app.post('/api/seigneuries', requireAdmin, (req, res) => {
   db.run('INSERT INTO seigneuries (baronnie_id,seigneur_id,population,inventaire_id,buildings,infrastructures) VALUES (?,?,?,?,?,?)',
     [...seigValues, invId, '{}', '{}'], function(err2){
       if (err2) return handleError(res, err2);
-      res.json({ id: this.lastID, inventaire_id: invId });
+      const seigneurieId = this.lastID;
+      db.get('SELECT * FROM seigneuries WHERE id=?', [seigneurieId], (err3, seigRow) => {
+        db.get('SELECT * FROM inventaire WHERE id=?', [invId], (err4, invRow) => {
+          if (err3 || err4) {
+            recordChange(req, { table: 'seigneuries', action: 'create', before: null, after: { id: seigneurieId, ...Object.fromEntries(seigFields.map((f, i) => [f, seigValues[i]])), inventaire_id: invId } });
+            recordChange(req, { table: 'inventaire', action: 'create', before: null, after: { id: invId, ...Object.fromEntries(inventaireFields.map((f, i) => [f, invValues[i]])) } });
+            return res.json({ id: seigneurieId, inventaire_id: invId });
+          }
+          Promise.all([
+            recordChange(req, { table: 'seigneuries', action: 'create', before: null, after: seigRow }),
+            recordChange(req, { table: 'inventaire', action: 'create', before: null, after: invRow })
+          ]).finally(() => res.json({ id: seigneurieId, inventaire_id: invId }));
+        });
+      });
     });
   });
 });
@@ -926,16 +957,53 @@ app.put('/api/seigneuries/:id', requireAdmin, (req, res) => {
   const seigFields = ['baronnie_id','seigneur_id','population'];
   const seigSet = seigFields.map(f => `${f}=?`).join(',');
   const seigValues = seigFields.map(f => sanitize(req.body[f]));
-  seigValues.push(id);
-  db.run(`UPDATE seigneuries SET ${seigSet} WHERE id=?`, seigValues, function(err){
+  db.get('SELECT * FROM seigneuries WHERE id=?', [id], (err, seigRow) => {
     if (err) return handleError(res, err);
-    const invId = req.body.inventaire_id;
-    const invSet = inventaireFields.map(f => `${f}=?`).join(',');
-    const invValues = inventaireFields.map(f => sanitize(req.body[f]) || 0);
-    invValues.push(invId);
-    db.run(`UPDATE inventaire SET ${invSet} WHERE id=?`, invValues, function(err2){
+    if (!seigRow) return res.status(404).json({ error: 'Introuvable' });
+    db.get('SELECT * FROM inventaire WHERE id=?', [seigRow.inventaire_id], (err2, invRow) => {
       if (err2) return handleError(res, err2);
-      res.json({ changes: this.changes });
+      const seigAfter = { ...seigRow };
+      seigFields.forEach((f, idx) => { seigAfter[f] = seigValues[idx]; });
+      const seigChanges = diffRecords(seigRow, seigAfter, seigFields);
+      const invValues = inventaireFields.map(f => sanitize(req.body[f]) || 0);
+      const invAfter = invRow ? { ...invRow } : null;
+      inventaireFields.forEach((f, idx) => {
+        if (invAfter) invAfter[f] = invValues[idx];
+      });
+      const invChanges = invRow ? diffRecords(invRow, invAfter, inventaireFields) : {};
+      const hasSeigChanges = Object.keys(seigChanges).length > 0;
+      const hasInvChanges = Object.keys(invChanges).length > 0;
+      if (!hasSeigChanges && !hasInvChanges) {
+        return res.json({ changes: 0 });
+      }
+      const invSet = inventaireFields.map(f => `${f}=?`).join(',');
+      const runUpdates = (cb) => {
+        const tasks = [];
+        if (hasSeigChanges) {
+          tasks.push((next) => db.run(`UPDATE seigneuries SET ${seigSet} WHERE id=?`, [...seigValues, id], next));
+        }
+        if (hasInvChanges && invAfter) {
+          tasks.push((next) => db.run(`UPDATE inventaire SET ${invSet} WHERE id=?`, [...invValues, invAfter.id], next));
+        }
+        let idx = 0;
+        const advance = (errUpdate) => {
+          if (errUpdate) return cb(errUpdate);
+          const task = tasks[idx++];
+          if (!task) return cb();
+          task(advance);
+        };
+        advance();
+      };
+      runUpdates((errUpdate) => {
+        if (errUpdate) return handleError(res, errUpdate);
+        Promise.all([
+          hasSeigChanges ? recordChange(req, { table: 'seigneuries', action: 'update', before: seigRow, after: seigAfter, changes: seigChanges }) : Promise.resolve(),
+          hasInvChanges ? recordChange(req, { table: 'inventaire', action: 'update', before: invRow, after: invAfter, changes: invChanges }) : Promise.resolve()
+        ]).finally(() => {
+          const totalChanges = (hasSeigChanges ? 1 : 0) + (hasInvChanges ? 1 : 0);
+          res.json({ changes: totalChanges });
+        });
+      });
     });
   });
 });
@@ -1350,55 +1418,108 @@ app.post('/api/tax_rate', (req, res) => {
 
 app.post('/api/admin/seigneurie_update', requireAdmin, (req,res) => {
   const { id, population, esclaves, religion_id, culture_id, inventaire, buildings, infrastructures } = req.body;
-  db.get('SELECT inventaire_id, baronnie_id, buildings as bjson, infrastructures as ijson FROM seigneuries WHERE id=?', [id], (err, row) => {
+  db.get('SELECT * FROM seigneuries WHERE id=?', [id], (err, seigRow) => {
     if(err) return handleError(res, err);
-    if(!row) return res.status(404).json({ error: 'Introuvable' });
-    const tasks = [];
-    if(population !== undefined){
-      tasks.push(cb => db.run('UPDATE seigneuries SET population=? WHERE id=?',[population,id], cb));
-    }
-    if(buildings){
-      const current = safeParse(row.bjson, {});
-      for(const [bid, val] of Object.entries(buildings)){
-        const info = current[bid] || { built: 0, active: 0 };
-        info.built = val;
-        current[bid] = info;
-      }
-      tasks.push(cb => db.run('UPDATE seigneuries SET buildings=? WHERE id=?',[JSON.stringify(current), id], cb));
-    }
-    if(infrastructures){
-      const curr = safeParse(row.ijson, {});
-      for(const [iid, val] of Object.entries(infrastructures)){
-        const entry = curr[iid] || {};
-        entry.built = val;
-        curr[iid] = entry;
-      }
-      tasks.push(cb => db.run('UPDATE seigneuries SET infrastructures=? WHERE id=?',[JSON.stringify(curr), id], cb));
-    }
-    const invUpdates = { ...(inventaire || {}) };
-    if(esclaves !== undefined) invUpdates.esclaves = esclaves;
-    if(Object.keys(invUpdates).length){
-      const set = Object.keys(invUpdates).map(k=>`${k}=?`).join(',');
-      const vals = Object.values(invUpdates);
-      vals.push(row.inventaire_id);
-      tasks.push(cb => db.run(`UPDATE inventaire SET ${set} WHERE id=?`, vals, cb));
-    }
-    if(religion_id !== undefined || culture_id !== undefined){
-      const set = [];
-      const vals = [];
-      if(religion_id !== undefined){ set.push('religion_pop_id=?'); vals.push(religion_id); }
-      if(culture_id !== undefined){ set.push('culture_id=?'); vals.push(culture_id); }
-      vals.push(row.baronnie_id);
-      tasks.push(cb => db.run(`UPDATE baronies SET ${set.join(',')} WHERE id=?`, vals, cb));
-    }
-    let i = 0;
-    const next = (err2) => {
+    if(!seigRow) return res.status(404).json({ error: 'Introuvable' });
+    db.get('SELECT * FROM inventaire WHERE id=?', [seigRow.inventaire_id], (err2, invRow) => {
       if(err2) return handleError(res, err2);
-      const task = tasks[i++];
-      if(!task) return res.json({ ok: true });
-      task(next);
-    };
-    next();
+      const needsBarony = (religion_id !== undefined || culture_id !== undefined) && seigRow.baronnie_id;
+      const proceed = (baronyRow) => {
+        const seigBefore = { ...seigRow };
+        const seigAfter = { ...seigRow };
+        if(population !== undefined){
+          seigAfter.population = sanitize(population);
+        }
+        if(buildings){
+          const current = safeParse(seigRow.buildings, {});
+          for(const [bid, val] of Object.entries(buildings)){
+            const info = current[bid] || { built: 0, active: 0 };
+            info.built = val;
+            current[bid] = info;
+          }
+          seigAfter.buildings = JSON.stringify(current);
+        }
+        if(infrastructures){
+          const curr = safeParse(seigRow.infrastructures, {});
+          for(const [iid, val] of Object.entries(infrastructures)){
+            const entry = curr[iid] || {};
+            entry.built = val;
+            curr[iid] = entry;
+          }
+          seigAfter.infrastructures = JSON.stringify(curr);
+        }
+        const invBefore = invRow ? { ...invRow } : null;
+        const invAfter = invRow ? { ...invRow } : null;
+        const invUpdates = { ...(inventaire || {}) };
+        if(esclaves !== undefined) invUpdates.esclaves = esclaves;
+        if(invAfter && Object.keys(invUpdates).length){
+          Object.entries(invUpdates).forEach(([k, v]) => { invAfter[k] = sanitize(v); });
+        }
+        const baronyBefore = baronyRow ? { ...baronyRow } : null;
+        const baronyAfter = baronyRow ? { ...baronyRow } : null;
+        if(baronyAfter && religion_id !== undefined){
+          baronyAfter.religion_pop_id = sanitize(religion_id);
+        }
+        if(baronyAfter && culture_id !== undefined){
+          baronyAfter.culture_id = sanitize(culture_id);
+        }
+
+        const seigChanges = diffRecords(seigBefore, seigAfter, ['population','buildings','infrastructures']);
+        const invChanges = invBefore && invAfter ? diffRecords(invBefore, invAfter, Object.keys(invAfter)) : {};
+        const baronyChanges = baronyBefore && baronyAfter ? diffRecords(baronyBefore, baronyAfter, ['religion_pop_id','culture_id']) : {};
+
+        if(!Object.keys(seigChanges).length && !Object.keys(invChanges).length && !Object.keys(baronyChanges).length){
+          return res.json({ ok: true, changes: 0 });
+        }
+
+        const tasks = [];
+        if(Object.keys(seigChanges).length){
+          tasks.push((cb) => db.run(
+            'UPDATE seigneuries SET population=?, buildings=?, infrastructures=? WHERE id=?',
+            [seigAfter.population, seigAfter.buildings, seigAfter.infrastructures, id],
+            cb
+          ));
+        }
+        if(Object.keys(invChanges).length && invAfter){
+          const set = Object.keys(invUpdates).map(k=>`${k}=?`).join(',');
+          const vals = Object.keys(invUpdates).map(k => invAfter[k]);
+          vals.push(invAfter.id);
+          tasks.push(cb => db.run(`UPDATE inventaire SET ${set} WHERE id=?`, vals, cb));
+        }
+        if(Object.keys(baronyChanges).length && baronyAfter){
+          const set = [];
+          const vals = [];
+          if(religion_id !== undefined){ set.push('religion_pop_id=?'); vals.push(baronyAfter.religion_pop_id); }
+          if(culture_id !== undefined){ set.push('culture_id=?'); vals.push(baronyAfter.culture_id); }
+          vals.push(baronyAfter.id);
+          tasks.push(cb => db.run(`UPDATE baronies SET ${set.join(',')} WHERE id=?`, vals, cb));
+        }
+
+        let idx = 0;
+        const next = (errUpdate) => {
+          if(errUpdate) return handleError(res, errUpdate);
+          const task = tasks[idx++];
+          if(!task){
+            Promise.all([
+              Object.keys(seigChanges).length ? recordChange(req, { table: 'seigneuries', action: 'update', before: seigBefore, after: seigAfter, changes: seigChanges }) : Promise.resolve(),
+              Object.keys(invChanges).length ? recordChange(req, { table: 'inventaire', action: 'update', before: invBefore, after: invAfter, changes: invChanges }) : Promise.resolve(),
+              Object.keys(baronyChanges).length ? recordChange(req, { table: 'baronies', action: 'update', before: baronyBefore, after: baronyAfter, changes: baronyChanges }) : Promise.resolve()
+            ]).finally(() => res.json({ ok: true }));
+            return;
+          }
+          task(next);
+        };
+        next();
+      };
+      if(needsBarony){
+        db.get('SELECT * FROM baronies WHERE id=?', [seigRow.baronnie_id], (err3, barRow) => {
+          if(err3) return handleError(res, err3);
+          proceed(barRow);
+        });
+      } else {
+        proceed(null);
+      }
+    });
   });
 });
 
@@ -1603,6 +1724,42 @@ function safeParse(json, fallback){
     return fallback;
   }
 }
+
+app.get('/api/admin_change_logs', requireAdmin, (req, res) => {
+  const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+  const perPageRaw = parseInt(req.query.perPage, 10);
+  const perPage = Math.min(Math.max(perPageRaw || 25, 5), 200);
+  const offset = (page - 1) * perPage;
+  db.get('SELECT COUNT(*) as count FROM admin_change_logs', (err, countRow) => {
+    if (err) return handleError(res, err);
+    db.all(
+      `SELECT id, table_name, record_id, action, description, details, user_id, user_email, user_first_name, user_last_name, created_at
+       FROM admin_change_logs
+       ORDER BY datetime(created_at) DESC, id DESC
+       LIMIT ? OFFSET ?`,
+      [perPage, offset],
+      (err2, rows) => {
+        if (err2) return handleError(res, err2);
+        const entries = (rows || []).map(r => ({
+          id: r.id,
+          table_name: r.table_name,
+          record_id: r.record_id,
+          action: r.action,
+          description: r.description,
+          user: {
+            id: r.user_id,
+            email: r.user_email,
+            first_name: r.user_first_name,
+            last_name: r.user_last_name
+          },
+          created_at: r.created_at,
+          details: safeParse(r.details, null)
+        }));
+        res.json({ entries, total: countRow ? countRow.count : 0, page, perPage });
+      }
+    );
+  });
+});
 
 function computeCapacities(db, infrastructures, cb){
   db.all('SELECT id, effects, type, label FROM infrastructure_properties', [], (err, rows) => {
@@ -2408,9 +2565,15 @@ app.get('/api/canonical_lands', list('canonical_lands'));
 app.post('/api/canonical_lands', create('canonical_lands',['barony_id','canonical_barony_id']));
 app.delete('/api/canonical_lands', (req, res) => {
   const { barony_id, canonical_barony_id } = req.query;
-  db.run('DELETE FROM canonical_lands WHERE barony_id=? AND canonical_barony_id=?', [barony_id, canonical_barony_id], function(err){
+  db.get('SELECT * FROM canonical_lands WHERE barony_id=? AND canonical_barony_id=?', [barony_id, canonical_barony_id], (err, row) => {
     if(err) return handleError(res, err);
-    res.json({deleted: this.changes});
+    db.run('DELETE FROM canonical_lands WHERE barony_id=? AND canonical_barony_id=?', [barony_id, canonical_barony_id], function(err2){
+      if(err2) return handleError(res, err2);
+      if (this.changes > 0 && row) {
+        recordChange(req, { table: 'canonical_lands', action: 'delete', before: row, after: null, key: `${barony_id}-${canonical_barony_id}` });
+      }
+      res.json({deleted: this.changes});
+    });
   });
 });
 
@@ -2431,6 +2594,9 @@ app.post('/api/barony_connections', requireAdmin, (req,res)=>{
   const [id1,id2] = barony_id_1 < barony_id_2 ? [barony_id_1, barony_id_2] : [barony_id_2, barony_id_1];
   db.run('INSERT OR IGNORE INTO barony_connections (barony_id_1, barony_id_2) VALUES (?,?)',[id1,id2],function(err){
     if(err) return handleError(res, err);
+    if (this.changes > 0) {
+      recordChange(req, { table: 'barony_connections', action: 'create', before: null, after: { barony_id_1: id1, barony_id_2: id2 }, key: `${id1}-${id2}` });
+    }
     res.json({added: this.changes});
   });
 });
@@ -2444,6 +2610,9 @@ app.delete('/api/barony_connections', requireAdmin, (req,res)=>{
   const [id1,id2] = barony_id_1 < barony_id_2 ? [barony_id_1, barony_id_2] : [barony_id_2, barony_id_1];
   db.run('DELETE FROM barony_connections WHERE barony_id_1=? AND barony_id_2=?',[id1,id2],function(err){
     if(err) return handleError(res, err);
+    if (this.changes > 0) {
+      recordChange(req, { table: 'barony_connections', action: 'delete', before: { barony_id_1: id1, barony_id_2: id2 }, after: null, key: `${id1}-${id2}` });
+    }
     res.json({deleted: this.changes});
   });
 });
@@ -2730,6 +2899,9 @@ app.post('/api/trade_routes', requireAdmin, (req,res)=>{
   const [id1,id2] = barony_id_1 < barony_id_2 ? [barony_id_1, barony_id_2] : [barony_id_2, barony_id_1];
   db.run('INSERT OR IGNORE INTO trade_routes (barony_id_1, barony_id_2) VALUES (?,?)',[id1,id2],function(err){
     if(err) return handleError(res, err);
+    if (this.changes > 0) {
+      recordChange(req, { table: 'trade_routes', action: 'create', before: null, after: { barony_id_1: id1, barony_id_2: id2 }, key: `${id1}-${id2}` });
+    }
     res.json({added: this.changes});
   });
 });
@@ -2743,6 +2915,9 @@ app.delete('/api/trade_routes', requireAdmin, (req,res)=>{
   const [id1,id2] = barony_id_1 < barony_id_2 ? [barony_id_1, barony_id_2] : [barony_id_2, barony_id_1];
   db.run('DELETE FROM trade_routes WHERE barony_id_1=? AND barony_id_2=?',[id1,id2],function(err){
     if(err) return handleError(res, err);
+    if (this.changes > 0) {
+      recordChange(req, { table: 'trade_routes', action: 'delete', before: { barony_id_1: id1, barony_id_2: id2 }, after: null, key: `${id1}-${id2}` });
+    }
     res.json({deleted: this.changes});
   });
 });
@@ -2812,6 +2987,9 @@ app.post('/api/maritime_zone_connections', requireAdmin, (req,res)=>{
   const [id1,id2] = zone_id_1 < zone_id_2 ? [zone_id_1, zone_id_2] : [zone_id_2, zone_id_1];
   db.run('INSERT OR IGNORE INTO maritime_zone_connections (zone_id_1, zone_id_2) VALUES (?,?)',[id1,id2],function(err){
     if(err) return handleError(res, err);
+    if (this.changes > 0) {
+      recordChange(req, { table: 'maritime_zone_connections', action: 'create', before: null, after: { zone_id_1: id1, zone_id_2: id2 }, key: `${id1}-${id2}` });
+    }
     res.json({added: this.changes});
   });
 });
@@ -2825,6 +3003,9 @@ app.delete('/api/maritime_zone_connections', requireAdmin, (req,res)=>{
   const [id1,id2] = zone_id_1 < zone_id_2 ? [zone_id_1, zone_id_2] : [zone_id_2, zone_id_1];
   db.run('DELETE FROM maritime_zone_connections WHERE zone_id_1=? AND zone_id_2=?',[id1,id2],function(err){
     if(err) return handleError(res, err);
+    if (this.changes > 0) {
+      recordChange(req, { table: 'maritime_zone_connections', action: 'delete', before: { zone_id_1: id1, zone_id_2: id2 }, after: null, key: `${id1}-${id2}` });
+    }
     res.json({deleted: this.changes});
   });
 });
@@ -2838,6 +3019,9 @@ app.delete('/api/maritime_zone_baronies', requireAdmin, (req,res)=>{
   const { zone_id, barony_id } = req.query;
   db.run('DELETE FROM maritime_zone_baronies WHERE zone_id=? AND barony_id=?',[zone_id,barony_id],function(err){
     if(err) return handleError(res, err);
+    if (this.changes > 0) {
+      recordChange(req, { table: 'maritime_zone_baronies', action: 'delete', before: { zone_id, barony_id }, after: null, key: `${zone_id}-${barony_id}` });
+    }
     res.json({deleted: this.changes});
   });
 });
@@ -2913,17 +3097,54 @@ app.get('/api/barony_pixels', (req, res) => {
 
 app.put('/api/barony_pixels', (req, res) => {
   const data = req.body || {};
-  db.serialize(() => {
-    const stmt = db.prepare('INSERT OR REPLACE INTO barony_pixels(barony_id,data) VALUES (?,?)');
-    for (const [id, coords] of Object.entries(data)) {
-      const buf = zlib.gzipSync(JSON.stringify(coords));
-      stmt.run(id, buf);
-    }
-    stmt.finalize(err => {
-      if (err) return handleError(res, err);
-      res.json({ok: true});
+  const entries = Object.entries(data);
+  const changes = [];
+  const fetchBefore = (baronyId) => new Promise((resolve, reject) => {
+    db.get('SELECT data FROM barony_pixels WHERE barony_id=?', [baronyId], (err, row) => {
+      if (err) return reject(err);
+      resolve(row);
     });
   });
+  const processEntries = async () => {
+    for (const [id, coords] of entries) {
+      const baronyId = parseInt(id, 10);
+      const row = await fetchBefore(baronyId);
+      let before = null;
+      if (row && row.data) {
+        try {
+          const buf = await gunzip(row.data);
+          before = JSON.parse(buf.toString());
+        } catch (e) {
+          logger.warn(`Failed to decompress barony ${baronyId}`, e);
+        }
+      }
+      const beforeLen = Array.isArray(before) ? before.length : 0;
+      const afterLen = Array.isArray(coords) ? coords.length : 0;
+      if (JSON.stringify(before || []) === JSON.stringify(coords || [])) continue;
+      const beforeCompressed = before ? zlib.gzipSync(JSON.stringify(before)).toString('base64') : null;
+      const afterCompressed = zlib.gzipSync(JSON.stringify(coords || [])).toString('base64');
+      changes.push({
+        id: baronyId,
+        before: { barony_id: baronyId, compressed: beforeCompressed, points: beforeLen },
+        after: { barony_id: baronyId, compressed: afterCompressed, points: afterLen },
+        change: { data: { before: `${beforeLen} points`, after: `${afterLen} points` } }
+      });
+    }
+  };
+  processEntries().then(() => {
+    db.serialize(() => {
+      const stmt = db.prepare('INSERT OR REPLACE INTO barony_pixels(barony_id,data) VALUES (?,?)');
+      for (const [id, coords] of entries) {
+        const buf = zlib.gzipSync(JSON.stringify(coords));
+        stmt.run(id, buf);
+      }
+      stmt.finalize(err => {
+        if (err) return handleError(res, err);
+        Promise.all(changes.map(c => recordChange(req, { table: 'barony_pixels', action: 'update', before: c.before, after: c.after, changes: c.change, key: c.id })))
+          .finally(() => res.json({ok: true}));
+      });
+    });
+  }).catch(err => handleError(res, err));
 });
 
 app.get('/api/maritime_zone_pixels', (req, res) => {
@@ -2954,17 +3175,54 @@ app.get('/api/maritime_zone_pixels', (req, res) => {
 
 app.put('/api/maritime_zone_pixels', (req, res) => {
   const data = req.body || {};
-  db.serialize(() => {
-    const stmt = db.prepare('INSERT OR REPLACE INTO maritime_zone_pixels(zone_id,data) VALUES (?,?)');
-    for (const [id, coords] of Object.entries(data)) {
-      const buf = zlib.gzipSync(JSON.stringify(coords));
-      stmt.run(id, buf);
-    }
-    stmt.finalize(err => {
-      if (err) return handleError(res, err);
-      res.json({ok: true});
+  const entries = Object.entries(data);
+  const changes = [];
+  const fetchBefore = (zoneId) => new Promise((resolve, reject) => {
+    db.get('SELECT data FROM maritime_zone_pixels WHERE zone_id=?', [zoneId], (err, row) => {
+      if (err) return reject(err);
+      resolve(row);
     });
   });
+  const processEntries = async () => {
+    for (const [id, coords] of entries) {
+      const zoneId = parseInt(id, 10);
+      const row = await fetchBefore(zoneId);
+      let before = null;
+      if (row && row.data) {
+        try {
+          const buf = await gunzip(row.data);
+          before = JSON.parse(buf.toString());
+        } catch (e) {
+          logger.warn(`Failed to decompress maritime zone ${zoneId}`, e);
+        }
+      }
+      const beforeLen = Array.isArray(before) ? before.length : 0;
+      const afterLen = Array.isArray(coords) ? coords.length : 0;
+      if (JSON.stringify(before || []) === JSON.stringify(coords || [])) continue;
+      const beforeCompressed = before ? zlib.gzipSync(JSON.stringify(before)).toString('base64') : null;
+      const afterCompressed = zlib.gzipSync(JSON.stringify(coords || [])).toString('base64');
+      changes.push({
+        id: zoneId,
+        before: { zone_id: zoneId, compressed: beforeCompressed, points: beforeLen },
+        after: { zone_id: zoneId, compressed: afterCompressed, points: afterLen },
+        change: { data: { before: `${beforeLen} points`, after: `${afterLen} points` } }
+      });
+    }
+  };
+  processEntries().then(() => {
+    db.serialize(() => {
+      const stmt = db.prepare('INSERT OR REPLACE INTO maritime_zone_pixels(zone_id,data) VALUES (?,?)');
+      for (const [id, coords] of entries) {
+        const buf = zlib.gzipSync(JSON.stringify(coords));
+        stmt.run(id, buf);
+      }
+      stmt.finalize(err => {
+        if (err) return handleError(res, err);
+        Promise.all(changes.map(c => recordChange(req, { table: 'maritime_zone_pixels', action: 'update', before: c.before, after: c.after, changes: c.change, key: c.id })))
+          .finally(() => res.json({ok: true}));
+      });
+    });
+  }).catch(err => handleError(res, err));
 });
 
 const PORT = process.env.PORT || 3000;
