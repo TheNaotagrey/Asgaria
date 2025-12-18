@@ -116,7 +116,26 @@ const maxOptions = [
   { id:'tag', name:'Par tag' }
 ];
 const LOG_PAGE_SIZES = [10, 25, 50, 100];
-const logState = { page: 1, perPage: 25, total: 0, entries: [] };
+const LOG_QUERY_KEYS = ['table', 'action', 'userType', 'recordId', 'userId', 'startDate', 'endDate'];
+const DEFAULT_LOG_FILTERS = {
+  table: '',
+  action: '',
+  userType: '',
+  recordId: '',
+  userId: '',
+  startDate: '',
+  endDate: '',
+  exactDate: ''
+};
+const logState = {
+  page: 1,
+  perPage: 25,
+  total: 0,
+  entries: [],
+  filters: { ...DEFAULT_LOG_FILTERS },
+  options: { tables: [], actions: [] }
+};
+let logFiltersInitialized = false;
 
 const spellFields = ['label','type','costs','effects','description'];
 const spellLabels = {
@@ -168,8 +187,8 @@ function buildLogTooltip(entry){
   const details = entry.details || {};
   const changes = details.changes || {};
   const lines = [];
-  const tableName = entry.table_name || details.table;
-  const recordId = details.key ?? entry.record_id;
+  const tableName = entry.table || entry.table_name || details.table;
+  const recordId = details.key ?? entry.record_id ?? entry.recordId;
   if (tableName) lines.push(`Table: '${tableName}'`);
   if (recordId !== undefined && recordId !== null) lines.push(`ID: '${recordId}'`);
   const entries = Object.entries(changes);
@@ -191,6 +210,216 @@ function parseLogDate(ts){
     : `${ts.includes('T') ? ts : ts.replace(' ', 'T')}Z`;
   const d = new Date(normalized);
   return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function formatLocalDateInput(value, { dateOnly = false } = {}) {
+  if (!value) return '';
+  const d = parseLogDate(value);
+  if (!d) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  const datePart = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  if (dateOnly) return datePart;
+  return `${datePart}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function toIsoOrEmpty(value, endOfDay = false) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  if (endOfDay) {
+    d.setHours(23, 59, 59, 999);
+  }
+  return d.toISOString();
+}
+
+function populateLogFilterOptions() {
+  const tableSelect = document.getElementById('logsTableFilter');
+  if (tableSelect) {
+    const seenTables = new Set();
+    tableSelect.innerHTML = '';
+    const defaultOpt = document.createElement('option');
+    defaultOpt.value = '';
+    defaultOpt.textContent = 'Toutes les tables';
+    tableSelect.appendChild(defaultOpt);
+    (logState.options.tables || []).forEach((name) => {
+      if (!name || seenTables.has(name)) return;
+      seenTables.add(name);
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      tableSelect.appendChild(opt);
+    });
+    tableSelect.value = seenTables.has(logState.filters.table) ? logState.filters.table : '';
+  }
+
+  const actionSelect = document.getElementById('logsActionFilter');
+  if (actionSelect) {
+    const seenActions = new Set();
+    actionSelect.innerHTML = '';
+    const defaultOpt = document.createElement('option');
+    defaultOpt.value = '';
+    defaultOpt.textContent = 'Toutes les actions';
+    actionSelect.appendChild(defaultOpt);
+    (logState.options.actions || []).forEach((name) => {
+      if (!name || seenActions.has(name)) return;
+      seenActions.add(name);
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      actionSelect.appendChild(opt);
+    });
+    actionSelect.value = seenActions.has(logState.filters.action) ? logState.filters.action : '';
+  }
+
+  const userSelect = document.getElementById('logsUserFilter');
+  if (userSelect) {
+    userSelect.value = logState.filters.userType || '';
+  }
+}
+
+function renderLogFilterSummary() {
+  const summary = document.getElementById('logFilterSummary');
+  if (!summary) return;
+  const parts = [];
+  if (logState.filters.table) parts.push(`Table : ${logState.filters.table}`);
+  if (logState.filters.action) parts.push(`Action : ${logState.filters.action}`);
+  if (logState.filters.userType === 'admin') parts.push('Utilisateurs : admins');
+  if (logState.filters.userType === 'non-admin') parts.push('Utilisateurs : non-admin');
+  if (logState.filters.recordId) parts.push(`ID cible : ${logState.filters.recordId}`);
+  if (logState.filters.userId) parts.push(`ID utilisateur : ${logState.filters.userId}`);
+  if (logState.filters.startDate && logState.filters.endDate && logState.filters.exactDate) {
+    const exact = formatLocalDateInput(logState.filters.startDate, { dateOnly: true });
+    if (exact) parts.push(`Date : ${exact}`);
+  } else {
+    if (logState.filters.startDate) {
+      const val = formatLocalDateInput(logState.filters.startDate);
+      if (val) parts.push(`Après : ${val}`);
+    }
+    if (logState.filters.endDate) {
+      const val = formatLocalDateInput(logState.filters.endDate);
+      if (val) parts.push(`Avant : ${val}`);
+    }
+  }
+
+  summary.textContent = parts.length ? `Filtres actifs — ${parts.join(' · ')}` : '';
+  summary.style.display = parts.length ? '' : 'none';
+}
+
+function syncAdvancedFilterInputs() {
+  const afterInput = document.getElementById('logsAfter');
+  if (afterInput) afterInput.value = formatLocalDateInput(logState.filters.startDate);
+  const beforeInput = document.getElementById('logsBefore');
+  if (beforeInput) beforeInput.value = formatLocalDateInput(logState.filters.endDate);
+  const exactInput = document.getElementById('logsExactDate');
+  if (exactInput) exactInput.value = logState.filters.exactDate || '';
+  const recordInput = document.getElementById('logsRecordId');
+  if (recordInput) recordInput.value = logState.filters.recordId || '';
+  const userInput = document.getElementById('logsUserId');
+  if (userInput) userInput.value = logState.filters.userId || '';
+}
+
+function openLogAdvancedDialog() {
+  const dialog = document.getElementById('logAdvancedDialog');
+  if (!dialog) return;
+  syncAdvancedFilterInputs();
+  if (dialog.showModal) dialog.showModal();
+  else dialog.setAttribute('open', 'open');
+}
+
+function closeLogAdvancedDialog() {
+  const dialog = document.getElementById('logAdvancedDialog');
+  if (!dialog) return;
+  if (dialog.close) dialog.close();
+  else dialog.removeAttribute('open');
+}
+
+function applyAdvancedLogFilters(e) {
+  e.preventDefault();
+  const form = e.target;
+  const afterVal = form.querySelector('#logsAfter')?.value || '';
+  const beforeVal = form.querySelector('#logsBefore')?.value || '';
+  const exactVal = form.querySelector('#logsExactDate')?.value || '';
+  const recordId = (form.querySelector('#logsRecordId')?.value || '').trim();
+  const userId = (form.querySelector('#logsUserId')?.value || '').trim();
+  logState.filters.recordId = recordId;
+  logState.filters.userId = userId;
+
+  if (exactVal) {
+    logState.filters.exactDate = exactVal;
+    logState.filters.startDate = toIsoOrEmpty(`${exactVal}T00:00:00`);
+    logState.filters.endDate = toIsoOrEmpty(`${exactVal}T23:59:59`);
+  } else {
+    logState.filters.exactDate = '';
+    logState.filters.startDate = toIsoOrEmpty(afterVal);
+    logState.filters.endDate = toIsoOrEmpty(beforeVal);
+  }
+
+  closeLogAdvancedDialog();
+  loadLogs(1);
+  renderLogFilterSummary();
+}
+
+function resetLogFilters() {
+  logState.filters = { ...DEFAULT_LOG_FILTERS };
+  populateLogFilterOptions();
+  syncAdvancedFilterInputs();
+  renderLogFilterSummary();
+  loadLogs(1);
+}
+
+function initLogFilters() {
+  if (logFiltersInitialized) return;
+  const tableSelect = document.getElementById('logsTableFilter');
+  if (tableSelect) {
+    tableSelect.addEventListener('change', () => {
+      logState.filters.table = tableSelect.value;
+      loadLogs(1);
+    });
+  }
+  const actionSelect = document.getElementById('logsActionFilter');
+  if (actionSelect) {
+    actionSelect.addEventListener('change', () => {
+      logState.filters.action = actionSelect.value;
+      loadLogs(1);
+    });
+  }
+  const userSelect = document.getElementById('logsUserFilter');
+  if (userSelect) {
+    userSelect.addEventListener('change', () => {
+      logState.filters.userType = userSelect.value;
+      loadLogs(1);
+    });
+  }
+  const advancedBtn = document.getElementById('logsAdvancedBtn');
+  if (advancedBtn) advancedBtn.addEventListener('click', openLogAdvancedDialog);
+  const resetBtn = document.getElementById('logsResetFilters');
+  if (resetBtn) resetBtn.addEventListener('click', resetLogFilters);
+  const advancedForm = document.getElementById('logAdvancedForm');
+  if (advancedForm) advancedForm.addEventListener('submit', applyAdvancedLogFilters);
+  const closeBtn = document.getElementById('closeLogAdvanced');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      closeLogAdvancedDialog();
+    });
+  }
+  populateLogFilterOptions();
+  syncAdvancedFilterInputs();
+  renderLogFilterSummary();
+  logFiltersInitialized = true;
+}
+
+function buildLogQueryParams(page, perPage) {
+  const params = new URLSearchParams();
+  params.set('page', page);
+  params.set('perPage', perPage);
+  LOG_QUERY_KEYS.forEach((key) => {
+    const val = logState.filters[key];
+    if (val !== undefined && val !== null && String(val).trim() !== '') {
+      params.set(key, val);
+    }
+  });
+  return params.toString();
 }
 
 function renderLogsPagination(){
@@ -223,6 +452,8 @@ function renderLogsTable(){
   const headRow = document.createElement('tr');
   const headers = [
     { label: 'Description', className: 'log-desc' },
+    { label: 'Table', className: 'log-table-name' },
+    { label: 'Action', className: 'log-action' },
     { label: 'Utilisateur', className: 'log-user' },
     { label: 'Timestamp', className: 'log-time' }
   ];
@@ -240,6 +471,16 @@ function renderLogsTable(){
     descTd.className = 'log-desc';
     descTd.textContent = entry.description || '';
     descTd.title = buildLogTooltip(entry);
+    const tableTd = document.createElement('td');
+    tableTd.className = 'log-table-name';
+    const tableName = entry.table || entry.table_name;
+    tableTd.textContent = tableName || '—';
+    if (entry.record_id !== undefined && entry.record_id !== null && entry.record_id !== '') {
+      tableTd.title = `ID: ${entry.record_id}`;
+    }
+    const actionTd = document.createElement('td');
+    actionTd.className = 'log-action';
+    actionTd.textContent = entry.action || '';
     const userTd = document.createElement('td');
     userTd.className = 'log-user';
     const user = entry.user || {};
@@ -251,6 +492,8 @@ function renderLogsTable(){
     const parsedDate = parseLogDate(entry.created_at);
     timeTd.textContent = parsedDate ? parsedDate.toLocaleString() : '';
     tr.appendChild(descTd);
+    tr.appendChild(tableTd);
+    tr.appendChild(actionTd);
     tr.appendChild(userTd);
     tr.appendChild(timeTd);
     tbody.appendChild(tr);
@@ -280,13 +523,22 @@ function setupLogPageSize(){
 
 async function loadLogs(page = 1){
   setupLogPageSize();
+  initLogFilters();
   const perPage = parseInt(document.getElementById('logsPerPage')?.value, 10) || logState.perPage;
-  const resp = await fetchJSON(`/api/admin_change_logs?page=${page}&perPage=${perPage}`);
+  const query = buildLogQueryParams(page, perPage);
+  const resp = await fetchJSON(`/api/admin_change_logs?${query}`);
   logState.entries = resp.entries || [];
   logState.total = resp.total || 0;
   logState.page = resp.page || page;
   logState.perPage = resp.perPage || perPage;
+  if (resp.options) {
+    const dedupe = (list) => Array.from(new Set((list || []).filter(Boolean))).sort();
+    if (resp.options.tables) logState.options.tables = dedupe(resp.options.tables);
+    if (resp.options.actions) logState.options.actions = dedupe(resp.options.actions);
+    populateLogFilterOptions();
+  }
   renderLogsTable();
+  renderLogFilterSummary();
 }
 
 function isBooleanOptionList(optList){
