@@ -437,12 +437,6 @@ main {
   gap: 12px;
   margin: 8px 0;
 }
-.log-controls-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
 .log-filters {
   display: flex;
   flex-wrap: wrap;
@@ -465,11 +459,23 @@ main {
   font-size: 0.95em;
   color: #333;
 }
+.log-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+.log-page-size {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
 .log-pagination {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 8px;
+  margin-top: 0;
 }
 .log-pagination button {
   padding: 4px 8px;
@@ -484,19 +490,13 @@ main {
   cursor: default;
 }
 .log-table .log-desc {
-  width: 38%;
-}
-.log-table .log-table-name {
-  width: 18%;
-}
-.log-table .log-action {
-  width: 12%;
+  width: 60%;
 }
 .log-table .log-user {
-  width: 16%;
+  width: 20%;
 }
 .log-table .log-time {
-  width: 16%;
+  width: 20%;
 }
 
 #logAdvancedDialog form {
