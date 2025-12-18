@@ -1,19 +1,19 @@
 const logger = require('../logger');
 
 const TABLE_META = {
-  baronies: { label: 'baronnie', article: 'la', nameField: 'name' },
-  seigneurs: { label: 'seigneur', article: 'le', nameField: 'name' },
-  seigneuries: { label: 'seigneurie', article: 'la' },
-  religions: { label: 'religion', article: 'la', nameField: 'name' },
-  cultures: { label: 'culture', article: 'la', nameField: 'name' },
-  empires: { label: 'empire', article: "l'", nameField: 'name' },
-  kingdoms: { label: 'royaume', article: 'le', nameField: 'name' },
-  archduchies: { label: 'archiduché', article: "l'", nameField: 'name' },
-  duchies: { label: 'duché', article: 'le', nameField: 'name' },
-  marquisates: { label: 'marquisat', article: 'le', nameField: 'name' },
-  counties: { label: 'comté', article: 'le', nameField: 'name' },
-  viscounties: { label: 'vicomté', article: 'le', nameField: 'name' },
-  maritime_zones: { label: 'zone maritime', article: 'la', nameField: 'name' },
+  baronies: { label: 'Baronnie', article: 'la', nameField: 'name', fieldLabels: { viscounty_id: 'le vicomté', county_id: 'le comté', religion_pop_id: 'la religion (population)', culture_id: 'la culture', priory_religion_id: 'le prieuré', church_religion_id: "l'église", cathedral_religion_id: 'la cathédrale', seigneur_id: 'le seigneur' } },
+  seigneurs: { label: 'Seigneur', article: 'le', nameField: 'name', fieldLabels: { overlord_id: 'le suzerain', religion_id: 'la religion' } },
+  seigneuries: { label: 'Seigneurie', article: 'la' },
+  religions: { label: 'Religion', article: 'la', nameField: 'name' },
+  cultures: { label: 'Culture', article: 'la', nameField: 'name' },
+  empires: { label: 'Empire', article: "l'", nameField: 'name' },
+  kingdoms: { label: 'Royaume', article: 'le', nameField: 'name' },
+  archduchies: { label: 'Archiduché', article: "l'", nameField: 'name' },
+  duchies: { label: 'Duché', article: 'le', nameField: 'name' },
+  marquisates: { label: 'Marquisat', article: 'le', nameField: 'name' },
+  counties: { label: 'Comté', article: 'le', nameField: 'name' },
+  viscounties: { label: 'Vicomté', article: 'le', nameField: 'name' },
+  maritime_zones: { label: 'Zone maritime', article: 'la', nameField: 'name' },
   users: {
     label: 'utilisateur',
     article: "l'",
@@ -21,8 +21,8 @@ const TABLE_META = {
     fieldLabels: { first_name: 'Prénom', last_name: 'Nom', email: 'Email' },
     nameFormatter: (row) => [row?.first_name, row?.last_name].filter(Boolean).join(' ') || row?.email
   },
-  sanctuaries: { label: 'sanctuaire', article: 'le' },
-  canonical_lands: { label: 'terre canonique', article: 'la' },
+  sanctuaries: { label: 'Sanctuaire', article: 'le' },
+  canonical_lands: { label: 'Terre canonique', article: 'la', fieldLabels: { barony_id: 'Baronnie', canonical_barony_id: 'Terre canonique' } },
   barony_connections: { label: 'liaison de baronnies', article: 'la' },
   maritime_zone_connections: { label: 'liaison maritime', article: 'la' },
   maritime_zone_baronies: { label: 'association zone/baronnie', article: "l'" },
@@ -30,12 +30,37 @@ const TABLE_META = {
   maritime_zone_pixels: { label: 'pixels de zone maritime', article: 'les' },
   trade_routes: { label: 'route commerciale', article: 'la' },
   barony_properties: { label: 'propriétés de baronnie', article: 'les' },
-  building_properties: { label: 'bâtiment', article: 'le', nameField: 'label' },
-  infrastructure_properties: { label: 'infrastructure', article: "l'", nameField: 'label' },
-  spells: { label: 'sort', article: 'le', nameField: 'label' },
-  tags: { label: 'tag', article: 'le', nameField: 'label' }
+  building_properties: { label: 'Bâtiment', article: 'le', nameField: 'label' },
+  infrastructure_properties: { label: 'Infrastructure', article: "l'", nameField: 'label' },
+  spells: { label: 'Sort', article: 'le', nameField: 'label' },
+  tags: { label: 'Tag', article: 'le', nameField: 'label' }
+};
+const LOOKUP_META = {
+  baronies: {
+    seigneur_id: { table: 'seigneurs' },
+    religion_pop_id: { table: 'religions' },
+    culture_id: { table: 'cultures' },
+    county_id: { table: 'counties' },
+    viscounty_id: { table: 'viscounties' },
+    priory_religion_id: { table: 'religions' },
+    church_religion_id: { table: 'religions' },
+    cathedral_religion_id: { table: 'religions' }
+  },
+  seigneurs: {
+    religion_id: { table: 'religions' },
+    overlord_id: { table: 'seigneurs' }
+  },
+  canonical_lands: {
+    barony_id: { table: 'baronies' },
+    canonical_barony_id: { table: 'baronies' }
+  },
+  seigneuries: {
+    baronnie_id: { table: 'baronies' },
+    seigneur_id: { table: 'seigneurs' }
+  }
 };
 const ensuredLogTables = new WeakSet();
+const lookupCache = new WeakMap();
 
 function capitalize(str = '') {
   if (!str) return '';
@@ -126,32 +151,136 @@ function labelField(table, field) {
   return field.replace(/_/g, ' ');
 }
 
-function buildDescription({ table, action, recordLabel, changes }) {
+function getLookupCache(db) {
+  if (!lookupCache.has(db)) {
+    lookupCache.set(db, new Map());
+  }
+  return lookupCache.get(db);
+}
+
+function resolveLookupKey(table, id) {
+  return `${table}:${id}`;
+}
+
+function sanitizeId(val) {
+  if (val === null || val === undefined || val === '') return null;
+  return val;
+}
+
+async function resolveLookup(db, meta, value) {
+  const id = sanitizeId(value);
+  if (!db || id === null) return null;
+  const table = meta.table;
+  const cache = getLookupCache(db);
+  const cacheKey = resolveLookupKey(table, id);
+  if (cache.has(cacheKey)) return cache.get(cacheKey);
+  const labelField = TABLE_META[table]?.nameField || 'name';
+  return new Promise((resolve) => {
+    db.get(`SELECT ${labelField} as label, * FROM ${table} WHERE id=?`, [id], (err, row) => {
+      if (err || !row) {
+        cache.set(cacheKey, null);
+        return resolve(null);
+      }
+      const metaForTable = TABLE_META[table] || {};
+      const formatter = metaForTable.nameFormatter;
+      const label = formatter ? formatter(row) : (row[labelField] ?? row.name ?? null);
+      cache.set(cacheKey, label || null);
+      resolve(label || null);
+    });
+  });
+}
+
+async function formatLookupValue(db, table, field, value) {
+  const tableLookups = LOOKUP_META[table] || {};
+  const meta = tableLookups[field];
+  if (!meta) return null;
+  const resolved = await resolveLookup(db, meta, value);
+  if (!resolved) return null;
+  return resolved;
+}
+
+function formatSimpleValue(val) {
+  if (val === null || val === undefined || val === '') return null;
+  return formatValue(val);
+}
+
+async function describeValue(db, table, field, value) {
+  const lookup = await formatLookupValue(db, table, field, value);
+  if (lookup) return lookup;
+  return formatSimpleValue(value) ?? null;
+}
+
+function formatFieldTitle(table, field) {
+  const base = capitalize(labelField(table, field));
+  if (/^(l'|la |le |les )/i.test(base)) return base;
+  return `Le ${base}`;
+}
+
+function formatPossessive(recordLabel) {
+  if (!recordLabel) return '';
+  if (/^Le\s+/i.test(recordLabel)) return `du ${recordLabel.slice(3)}`;
+  if (/^La\s+/i.test(recordLabel)) return `de la ${recordLabel.slice(3)}`;
+  if (/^Les\s+/i.test(recordLabel)) return `des ${recordLabel.slice(4)}`;
+  if (/^L'/i.test(recordLabel)) return `de l'${recordLabel.slice(2)}`;
+  return `de ${recordLabel}`;
+}
+
+async function describeCanonicalLand({ after, before, action, db }) {
+  const sourceId = after?.canonical_barony_id ?? before?.canonical_barony_id;
+  const targetId = after?.barony_id ?? before?.barony_id;
+  const [sourceName, targetName] = await Promise.all([
+    resolveLookup(db, LOOKUP_META.canonical_lands.canonical_barony_id, sourceId),
+    resolveLookup(db, LOOKUP_META.canonical_lands.barony_id, targetId)
+  ]);
+  const sourceLabel = makeRecordLabel('baronies', { id: sourceId, name: sourceName }, null, sourceId);
+  const targetLabel = makeRecordLabel('baronies', { id: targetId, name: targetName }, null, targetId);
+  if (action === 'delete') {
+    return `${sourceLabel} a été retirée comme Terre canonique de ${targetLabel}`;
+  }
+  return `${sourceLabel} a été ajoutée comme Terre canonique de ${targetLabel}`;
+}
+
+async function buildDescription({ table, action, recordLabel, changes, before, after, db }) {
   const changeKeys = Object.keys(changes || {});
+  if (table === 'canonical_lands') {
+    return describeCanonicalLand({ action, after, before, db });
+  }
   if (action === 'create') {
-    return `${recordLabel} a été créé(e).`;
+    return `${recordLabel} a été créé(e)`;
   }
   if (action === 'delete') {
-    return `${recordLabel} a été supprimé(e).`;
+    return `${recordLabel} a été supprimé(e)`;
   }
   if (action === 'replace') {
-    return `${recordLabel} a été remplacé(e).`;
+    return `${recordLabel} a été remplacé(e)`;
   }
   if (changeKeys.length === 1) {
     const field = changeKeys[0];
-    const { before, after } = changes[field];
-    return `${capitalize(labelField(table, field))} de ${recordLabel} mis à jour : '${formatValue(before)}' → '${formatValue(after)}'.`;
+    const { before: prev, after: next } = changes[field];
+    const fieldTitle = formatFieldTitle(table, field);
+    const [beforeVal, afterVal] = await Promise.all([
+      describeValue(db, table, field, prev),
+      describeValue(db, table, field, next)
+    ]);
+    const intro = `${fieldTitle} ${formatPossessive(recordLabel)} a été mis à jour`;
+    if (beforeVal === null) {
+      return `${intro}: '${afterVal ?? 'aucune valeur'}'`;
+    }
+    if (afterVal === null) {
+      return `${intro}: '${beforeVal}' → 'aucune valeur'`;
+    }
+    return `${intro}: '${beforeVal}' → '${afterVal}'`;
   }
-  return `${recordLabel} : ${changeKeys.length} champs ont été modifiés.`;
+  return `${recordLabel} : ${changeKeys.length} champs ont été modifiés`;
 }
 
-function prepareChangeLog({ table, action, before, after, changes, key }) {
+async function prepareChangeLog({ table, action, before, after, changes, key, db }) {
   const computedChanges = changes || diffRecords(before, after);
   if (action === 'update' && Object.keys(computedChanges).length === 0) {
     return null;
   }
   const recordLabel = makeRecordLabel(table, before, after, key);
-  const description = buildDescription({ table, action, recordLabel, changes: computedChanges });
+  const description = await buildDescription({ table, action, recordLabel, changes: computedChanges, before, after, db });
   const details = {
     table,
     action,
@@ -165,9 +294,9 @@ function prepareChangeLog({ table, action, before, after, changes, key }) {
   return { description, details };
 }
 
-function logAdminChange(db, { table, action, before, after, changes, key, user }) {
+async function logAdminChange(db, { table, action, before, after, changes, key, user }) {
   if (!db) return Promise.resolve();
-  const entry = prepareChangeLog({ table, action, before, after, changes, key });
+  const entry = await prepareChangeLog({ table, action, before, after, changes, key, db });
   if (!entry) return Promise.resolve();
   const userId = user?.id || null;
   const userEmail = user?.email || null;
@@ -202,7 +331,8 @@ function logAdminChange(db, { table, action, before, after, changes, key, user }
       );
     });
   };
-  return ensureTable().then(() => new Promise((resolve) => {
+  await ensureTable();
+  return new Promise((resolve) => {
     db.run(
       `INSERT INTO admin_change_logs (table_name, record_id, action, description, details, user_id, user_email, user_first_name, user_last_name)
        VALUES (?,?,?,?,?,?,?,?,?)`,
@@ -214,7 +344,7 @@ function logAdminChange(db, { table, action, before, after, changes, key, user }
         resolve();
       }
     );
-  }));
+  });
 }
 
 module.exports = {
