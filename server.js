@@ -1725,23 +1725,80 @@ function safeParse(json, fallback){
   }
 }
 
+function normalizeDateParam(value, endOfDay = false) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  if (endOfDay) {
+    date.setUTCHours(23, 59, 59, 999);
+  }
+  return date.toISOString();
+}
+
 app.get('/api/admin_change_logs', requireAdmin, (req, res) => {
   const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
   const perPageRaw = parseInt(req.query.perPage, 10);
   const perPage = Math.min(Math.max(perPageRaw || 25, 5), 200);
   const offset = (page - 1) * perPage;
-  db.get('SELECT COUNT(*) as count FROM admin_change_logs', (err, countRow) => {
+  const tableFilter = (req.query.table || '').trim();
+  const actionFilter = (req.query.action || '').trim();
+  const recordId = (req.query.recordId || '').trim();
+  const userId = (req.query.userId || '').trim();
+  const userType = (req.query.userType || '').trim();
+  let startDate = normalizeDateParam(req.query.startDate);
+  let endDate = normalizeDateParam(req.query.endDate);
+  const exactDate = normalizeDateParam(req.query.exactDate);
+  if (!startDate && exactDate) startDate = exactDate;
+  if (!endDate && exactDate) endDate = normalizeDateParam(req.query.exactDate, true);
+
+  const filters = [];
+  const params = [];
+  if (tableFilter) {
+    filters.push('l.table_name = ?');
+    params.push(tableFilter);
+  }
+  if (actionFilter) {
+    filters.push('l.action = ?');
+    params.push(actionFilter);
+  }
+  if (recordId) {
+    filters.push('l.record_id = ?');
+    params.push(recordId);
+  }
+  if (userId) {
+    filters.push('l.user_id = ?');
+    params.push(userId);
+  }
+  if (startDate) {
+    filters.push('datetime(l.created_at) >= datetime(?)');
+    params.push(startDate);
+  }
+  if (endDate) {
+    filters.push('datetime(l.created_at) <= datetime(?)');
+    params.push(endDate);
+  }
+  if (userType === 'admin') {
+    filters.push('COALESCE(u.is_admin, 0) = 1');
+  } else if (userType === 'non-admin') {
+    filters.push('COALESCE(u.is_admin, 0) = 0');
+  }
+
+  const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+  const baseFrom = 'FROM admin_change_logs l LEFT JOIN users u ON u.id = l.user_id';
+  db.get(`SELECT COUNT(*) as count ${baseFrom} ${whereClause}`, params, (err, countRow) => {
     if (err) return handleError(res, err);
     db.all(
-      `SELECT id, table_name, record_id, action, description, details, user_id, user_email, user_first_name, user_last_name, created_at
-       FROM admin_change_logs
-       ORDER BY datetime(created_at) DESC, id DESC
+      `SELECT l.id, l.table_name, l.record_id, l.action, l.description, l.details, l.user_id, l.user_email, l.user_first_name, l.user_last_name, l.created_at, u.is_admin as user_is_admin
+       ${baseFrom}
+       ${whereClause}
+       ORDER BY datetime(l.created_at) DESC, l.id DESC
        LIMIT ? OFFSET ?`,
-      [perPage, offset],
+      [...params, perPage, offset],
       (err2, rows) => {
         if (err2) return handleError(res, err2);
         const entries = (rows || []).map(r => ({
           id: r.id,
+          table: r.table_name,
           table_name: r.table_name,
           record_id: r.record_id,
           action: r.action,
@@ -1750,12 +1807,23 @@ app.get('/api/admin_change_logs', requireAdmin, (req, res) => {
             id: r.user_id,
             email: r.user_email,
             first_name: r.user_first_name,
-            last_name: r.user_last_name
+            last_name: r.user_last_name,
+            is_admin: r.user_is_admin ? 1 : 0
           },
           created_at: r.created_at,
           details: safeParse(r.details, null)
         }));
-        res.json({ entries, total: countRow ? countRow.count : 0, page, perPage });
+        db.all('SELECT DISTINCT table_name FROM admin_change_logs WHERE table_name IS NOT NULL ORDER BY table_name ASC', [], (err3, tableRows) => {
+          if (err3) return handleError(res, err3);
+          db.all('SELECT DISTINCT action FROM admin_change_logs WHERE action IS NOT NULL ORDER BY action ASC', [], (err4, actionRows) => {
+            if (err4) return handleError(res, err4);
+            const options = {
+              tables: (tableRows || []).map((t) => t.table_name).filter(Boolean),
+              actions: (actionRows || []).map((a) => a.action).filter(Boolean)
+            };
+            res.json({ entries, total: countRow ? countRow.count : 0, page, perPage, options });
+          });
+        });
       }
     );
   });

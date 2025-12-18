@@ -432,9 +432,38 @@ main {
 }
 .log-controls {
   display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 8px 0;
+}
+.log-controls-row {
+  display: flex;
   align-items: center;
   gap: 8px;
-  margin: 8px 0;
+  flex-wrap: wrap;
+}
+.log-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  width: 100%;
+}
+.log-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 160px;
+}
+.log-filter-buttons {
+  display: flex;
+  gap: 8px;
+}
+.log-filter-summary {
+  margin-bottom: 8px;
+  font-size: 0.95em;
+  color: #333;
 }
 .log-pagination {
   display: flex;
@@ -455,13 +484,43 @@ main {
   cursor: default;
 }
 .log-table .log-desc {
-  width: 60%;
+  width: 38%;
+}
+.log-table .log-table-name {
+  width: 18%;
+}
+.log-table .log-action {
+  width: 12%;
 }
 .log-table .log-user {
-  width: 20%;
+  width: 16%;
 }
 .log-table .log-time {
-  width: 20%;
+  width: 16%;
+}
+
+#logAdvancedDialog form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 360px;
+}
+
+#logAdvancedDialog h3 {
+  margin: 0;
+}
+
+.advanced-filter-grid {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(200px, 1.5fr);
+  gap: 10px 12px;
+}
+
+.advanced-filter-grid input,
+.log-filter select,
+.log-controls-row select,
+#logAdvancedDialog select {
+  padding: 6px;
 }
 
 .multi-col {
