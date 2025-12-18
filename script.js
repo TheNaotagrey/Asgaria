@@ -70,6 +70,7 @@
     { value: 'empire', label: 'Empire de jure' },
     { value: 'empire_defacto', label: 'Empire de facto' },
     { value: 'distance', label: 'Distance' },
+    { value: 'vacant', label: 'Vacance' },
     { value: 'occupation', label: 'Occupation' }
   ];
   const seaFilters = [
@@ -107,6 +108,7 @@
   const editChurchReligionSelect = document.getElementById('editChurchReligion');
   const editCathedralReligionSelect = document.getElementById('editCathedralReligion');
   const editSeigneurSelect = document.getElementById('editSeigneur');
+  const editVacantCheckbox = document.getElementById('editVacant');
   const editCultureSelect = document.getElementById('editCulture');
   const editViscountySelect = document.getElementById('editViscounty');
   const editCountySelect = document.getElementById('editCounty');
@@ -342,6 +344,11 @@
   if (editCathedralReligionSelect) {
     editCathedralReligionSelect.addEventListener('change', () => {
       saveBaronyFields({ cathedral_religion_id: parseInt(editCathedralReligionSelect.value, 10) || null });
+    });
+  }
+  if (editVacantCheckbox) {
+    editVacantCheckbox.addEventListener('change', () => {
+      saveBaronyFields({ vacant: editVacantCheckbox.checked ? 1 : 0 });
     });
   }
   if (editCultureSelect) {
@@ -647,6 +654,7 @@
     if (editChurchReligionSelect) editChurchReligionSelect.value = baronyMeta[id]?.church_religion_id || '';
     if (editCathedralReligionSelect) editCathedralReligionSelect.value = baronyMeta[id]?.cathedral_religion_id || '';
     if (editSeigneurSelect) editSeigneurSelect.value = baronyMeta[id]?.seigneur_id || '';
+    if (editVacantCheckbox) editVacantCheckbox.checked = !!baronyMeta[id]?.vacant;
     if (editCultureSelect) editCultureSelect.value = baronyMeta[id]?.culture_id || '';
     if (editViscountySelect) editViscountySelect.value = baronyMeta[id]?.viscounty_id || '';
     if (editCountySelect) editCountySelect.value = baronyMeta[id]?.county_id || '';
