@@ -1813,15 +1813,22 @@ app.get('/api/admin_change_logs', requireAdmin, (req, res) => {
           created_at: r.created_at,
           details: safeParse(r.details, null)
         }));
+        const dedupeAndSort = (list = []) => Array.from(new Set(list.filter(Boolean))).sort();
         db.all('SELECT DISTINCT table_name FROM admin_change_logs WHERE table_name IS NOT NULL ORDER BY table_name ASC', [], (err3, tableRows) => {
           if (err3) return handleError(res, err3);
           db.all('SELECT DISTINCT action FROM admin_change_logs WHERE action IS NOT NULL ORDER BY action ASC', [], (err4, actionRows) => {
             if (err4) return handleError(res, err4);
-            const options = {
-              tables: (tableRows || []).map((t) => t.table_name).filter(Boolean),
-              actions: (actionRows || []).map((a) => a.action).filter(Boolean)
-            };
-            res.json({ entries, total: countRow ? countRow.count : 0, page, perPage, options });
+            db.all("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name ASC", [], (err5, schemaTables) => {
+              if (err5) return handleError(res, err5);
+              const options = {
+                tables: dedupeAndSort([
+                  ...(tableRows || []).map((t) => t.table_name),
+                  ...(schemaTables || []).map((row) => row.name)
+                ]),
+                actions: dedupeAndSort((actionRows || []).map((a) => a.action))
+              };
+              res.json({ entries, total: countRow ? countRow.count : 0, page, perPage, options });
+            });
           });
         });
       }
