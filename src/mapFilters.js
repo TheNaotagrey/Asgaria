@@ -278,6 +278,7 @@
           if (sancts.length > 0) {
             canonicalPatterns[id] = [];
             let hasActive = false;
+            const popReligionId = data.baronyMeta?.[id]?.religion_pop_id;
             sancts.forEach(s => {
               if (!groupColors[s.religion_id]) {
                 const col =
@@ -289,8 +290,9 @@
                 };
               }
               const col = groupColors[s.religion_id].color;
-              const repeat = s.active ? 3 : 1;
-              if (s.active) hasActive = true;
+              const isActive = popReligionId && String(popReligionId) === String(s.religion_id);
+              const repeat = isActive ? 3 : 1;
+              if (isActive) hasActive = true;
               for (let i = 0; i < repeat; i++) canonicalPatterns[id].push(col);
             });
             if (!hasActive) {

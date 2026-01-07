@@ -29,6 +29,9 @@ main {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  position: sticky;
+  top: 0;
+  z-index: 1100;
 }
 .app-header h1 {
   margin: 0;
@@ -414,6 +417,12 @@ main {
   border: 1px solid #ccc;
   padding: 4px 6px;
 }
+.admin-table th {
+  position: sticky;
+  top: 0;
+  background-color: #f0f0f0;
+  z-index: 2;
+}
 .admin-table input,
 .admin-table select {
   width: 100%;
@@ -581,6 +590,12 @@ th.multi-col {
 .restriction-row button,
 .effect-row button {
   padding: 0 6px;
+}
+.sanctuary-status {
+  min-width: 70px;
+  font-size: 0.85rem;
+  text-transform: capitalize;
+  color: #555;
 }
 
 /* Onglets de la page d'administration */
