@@ -575,7 +575,8 @@
     const buildings = [];
     sancts.forEach(s => {
       const rname = religionMap[s.religion_id]?.name || '';
-      buildings.push(`Sanctuaire: ${rname}${s.active ? ' (actif)' : ' (inactif)'}`);
+      const isActive = info.religion_pop_id && String(info.religion_pop_id) === String(s.religion_id);
+      buildings.push(`Sanctuaire: ${rname} (${isActive ? 'actif' : 'inactif'})`);
     });
     if (info.priory_religion_id) buildings.push(`Prieuré: ${religionMap[info.priory_religion_id]?.name || ''}`);
     if (info.church_religion_id) buildings.push(`Église: ${religionMap[info.church_religion_id]?.name || ''}`);
@@ -748,7 +749,7 @@
     sanctuaryMap = {};
     sanctuaries.forEach(s => {
       if (!sanctuaryMap[s.barony_id]) sanctuaryMap[s.barony_id] = [];
-      sanctuaryMap[s.barony_id].push({ religion_id: s.religion_id, active: !!s.active });
+      sanctuaryMap[s.barony_id].push({ religion_id: s.religion_id });
     });
     baronyAdjacency = {};
     connections.forEach(c => {

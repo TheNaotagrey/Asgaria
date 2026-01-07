@@ -151,7 +151,6 @@ CREATE TABLE IF NOT EXISTS sanctuaries (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   barony_id INTEGER,
   religion_id INTEGER,
-  active INTEGER DEFAULT 0,
   FOREIGN KEY(barony_id) REFERENCES baronies(id),
   FOREIGN KEY(religion_id) REFERENCES religions(id)
 );
@@ -2653,7 +2652,7 @@ app.delete('/api/canonical_lands', (req, res) => {
 });
 
 // Sanctuaries API
-app.use('/api/sanctuaries', crudRoutes('sanctuaries',['barony_id','religion_id','active']));
+app.use('/api/sanctuaries', crudRoutes('sanctuaries',['barony_id','religion_id']));
 
 // Barony adjacency API
 app.get('/api/barony_connections', (req,res)=>{

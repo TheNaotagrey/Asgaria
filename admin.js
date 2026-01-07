@@ -845,6 +845,13 @@ function createSanctuaryCell(item, religionsList){
   const btn = document.createElement('button');
   btn.type = 'button';
 
+  const isSanctuaryActive = (sanctuary) => {
+    if (!item.religion_pop_id || !sanctuary.religion_id) return false;
+    return String(item.religion_pop_id) === String(sanctuary.religion_id);
+  };
+
+  const statusLabel = (sanctuary) => (isSanctuaryActive(sanctuary) ? 'actif' : 'inactif');
+
   function updateSummary(){
     const sanctuaries = sanctuaryMap[item.id] || [];
     btn.textContent = `Sanctuaires (${sanctuaries.length})`;
@@ -855,7 +862,7 @@ function createSanctuaryCell(item, religionsList){
     const labels = sanctuaries.map(s => {
       const rel = religionsList.find(r => String(r.id) === String(s.religion_id));
       const name = rel ? rel.name : s.religion_id;
-      return `${name}${s.active ? ' (actif)' : ''}`;
+      return `${name} (${statusLabel(s)})`;
     });
     const short = labels.slice(0, 3);
     if(labels.length > 3) short.push('…');
@@ -869,7 +876,7 @@ function createSanctuaryCell(item, religionsList){
     popup.className = 'popup';
     const list = document.createElement('div');
 
-    function addRow(data = { id:null, religion_id:'', active:0 }){
+    function addRow(data = { id:null, religion_id:'' }){
       const row = document.createElement('div');
       row.className = 'cost-row';
 
@@ -885,9 +892,12 @@ function createSanctuaryCell(item, religionsList){
         sel.appendChild(op);
       });
 
-      const chk = document.createElement('input');
-      chk.type = 'checkbox';
-      chk.checked = !!data.active;
+      const status = document.createElement('span');
+      status.className = 'sanctuary-status';
+      const updateStatus = () => {
+        status.textContent = statusLabel({ religion_id: sel.value });
+      };
+      updateStatus();
 
       sel.addEventListener('change', async ()=>{
         const rid = parseInt(sel.value, 10);
@@ -896,32 +906,21 @@ function createSanctuaryCell(item, religionsList){
           await fetchJSON(`/api/sanctuaries/${data.id}`, {
             method:'PUT',
             headers:{ 'Content-Type':'application/json' },
-            body:JSON.stringify({ barony_id:item.id, religion_id: rid, active:data.active ? 1 : 0 })
+            body:JSON.stringify({ barony_id:item.id, religion_id: rid })
           });
           data.religion_id = rid;
         } else {
           const res = await fetchJSON('/api/sanctuaries', {
             method:'POST',
             headers:{ 'Content-Type':'application/json' },
-            body:JSON.stringify({ barony_id:item.id, religion_id: rid, active:data.active ? 1 : 0 })
+            body:JSON.stringify({ barony_id:item.id, religion_id: rid })
           });
           data.id = res.id;
           data.religion_id = rid;
           if(!sanctuaryMap[item.id]) sanctuaryMap[item.id] = [];
           sanctuaryMap[item.id].push(data);
         }
-        updateSummary();
-        showSaveIndicator(container);
-      });
-
-      chk.addEventListener('change', async ()=>{
-        data.active = chk.checked ? 1 : 0;
-        if(!data.id) return;
-        await fetchJSON(`/api/sanctuaries/${data.id}`, {
-          method:'PUT',
-          headers:{ 'Content-Type':'application/json' },
-          body:JSON.stringify({ barony_id:item.id, religion_id:data.religion_id, active:data.active })
-        });
+        updateStatus();
         updateSummary();
         showSaveIndicator(container);
       });
@@ -940,7 +939,7 @@ function createSanctuaryCell(item, religionsList){
       });
 
       row.appendChild(sel);
-      row.appendChild(chk);
+      row.appendChild(status);
       row.appendChild(delBtn);
       list.appendChild(row);
     }
@@ -2437,12 +2436,13 @@ async function loadSeigneurs(){
   const usersSelect = usersSelectRaw.map(u=>({ id:u.id, name:u.email }));
   const assignedUserIds = new Set(seigneurs.filter(s=>s.user_id).map(s=>s.user_id));
   const userSelectFn = (item) => usersSelect.filter(u=>!assignedUserIds.has(u.id) || (item && u.id===item.user_id));
+  const overlordSelectFn = (item) => seigneursSelect.filter(s => !item || String(s.id) !== String(item.id));
   const seigneursById = seigneurs.slice().sort((a,b)=>a.id - b.id);
   const seigneurFields = ['name','user_id','religion_id','overlord_id','player','bishop'];
   renderTable(document.getElementById('tableSeigneurs'), seigneursById, {
     endpoint:'seigneurs',
     fields:seigneurFields,
-    selects:{user_id:userSelectFn, religion_id:religionsSelect, overlord_id:seigneursSelect, player:yesNoSelect, bishop:yesNoSelect},
+    selects:{user_id:userSelectFn, religion_id:religionsSelect, overlord_id:overlordSelectFn, player:yesNoSelect, bishop:yesNoSelect},
     labels:{name:'Nom', user_id:'Utilisateur', religion_id:'Religion', overlord_id:'Suzerain', player:'Joueur', bishop:'Évêque'},
     booleanFields:['player','bishop'],
     relationWatch:['overlord_id'],
@@ -2656,7 +2656,9 @@ async function loadViscounties(){
   ]);
   const seigneursSelect = sortByName(seigneurs);
   const viscountiesById = viscounties.slice().sort((a,b)=>a.id - b.id);
-  const baroniesByName = sortByName(baronies);
+  const baroniesByName = baronies
+    .slice()
+    .sort((a,b)=>String(a.name || '').localeCompare(String(b.name || ''), 'fr', { sensitivity:'base' }));
   const baronyFieldList = baronyFields;
   renderTable(document.getElementById('tableViscounties'), viscountiesById, {
     endpoint:'viscounties',
@@ -2741,7 +2743,7 @@ async function loadBaronies(){
   sanctuaryMap = {};
   sanctuaries.forEach(s => {
     if (!sanctuaryMap[s.barony_id]) sanctuaryMap[s.barony_id] = [];
-    sanctuaryMap[s.barony_id].push({ id:s.id, religion_id:s.religion_id, active:!!s.active });
+    sanctuaryMap[s.barony_id].push({ id:s.id, religion_id:s.religion_id });
   });
   const baroniesById = baronies.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableBaronies'), baroniesById, {
