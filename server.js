@@ -564,8 +564,8 @@ function enforceDefaultAdmins(callback, attempt = 0) {
   });
 }
 
-db.exec(initSql, () => {
-  enforceDefaultAdmins();
+db.serialize(() => {
+  db.exec(initSql);
   db.all("PRAGMA table_info(seigneurs)", (err, rows) => {
     if (!err && rows) {
       if (!rows.some(r => r.name === 'overlord_id')) {
@@ -826,6 +826,7 @@ db.exec(initSql, () => {
       db.run(`UPDATE barony_properties SET ${col}=0 WHERE ${col} IS NULL`);
     });
   });
+  enforceDefaultAdmins();
 });
 
 // accept large pixel blobs
@@ -1656,6 +1657,7 @@ app.get('/api/my_seigneurie', (req, res) => {
       });
     }
   });
+  enforceDefaultAdmins();
 });
 
 app.post('/api/tax_rate', (req, res) => {
