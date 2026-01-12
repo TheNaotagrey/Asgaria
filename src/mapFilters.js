@@ -6,9 +6,13 @@
     const playerBishopColor = [255, 106, 6];
     const npcSeigneurColor = [195, 195, 195];
     const npcBishopColor = [127, 127, 127];
+    const tradeRoutePrimaryColor = [36, 163, 33];
+    const tradeRouteSecondaryColor = [255, 106, 6];
+    const tradeRoutePathColor = [195, 195, 195];
     let currentFilter = '';
     let canonicalPatterns = {};
     let colorMap = {};
+    let tradeRouteSelection = null;
 
     function isVacantBarony(info) {
       return !!(info && (info.vacant === 1 || info.vacant === '1' || info.vacant === true));
@@ -46,6 +50,13 @@
 
     function randomizeColors() {
       applyFilter(currentFilter, true);
+    }
+
+    function setTradeRouteSelection(routeId) {
+      tradeRouteSelection = routeId || null;
+      if (currentFilter === 'trade_routes') {
+        applyFilter('trade_routes');
+      }
     }
 
     function applyFilter(type, randomize = false) {
@@ -109,6 +120,37 @@
           colorMap[id] = [r, g, b, 100];
         });
         if (core.currentSelectedId && colorMap[core.currentSelectedId]) colorMap[core.currentSelectedId][3] = 180;
+        updateLegend(null);
+        core.setCanonicalPatterns({});
+        core.setColorMap(colorMap);
+        return;
+      }
+      if (type === 'trade_routes') {
+        colorMap = {};
+        const selectedId = core.currentSelectedId;
+        if (!selectedId) {
+          updateLegend(null);
+          core.setCanonicalPatterns({});
+          core.setColorMap(colorMap);
+          return;
+        }
+        const routeMap = data.tradeRouteById || {};
+        const route = tradeRouteSelection ? routeMap[tradeRouteSelection] : null;
+        if (route && Array.isArray(route.path) && route.path.length) {
+          route.path.forEach(id => {
+            if (!id) return;
+            colorMap[id] = [...tradeRoutePathColor, 100];
+          });
+          colorMap[route.barony_id_1] = [...tradeRoutePrimaryColor, 180];
+          colorMap[route.barony_id_2] = [...tradeRoutePrimaryColor, 180];
+        } else {
+          colorMap[selectedId] = [...tradeRoutePrimaryColor, 180];
+          const connected = (data.tradeRouteConnections && data.tradeRouteConnections[selectedId]) || [];
+          connected.forEach(id => {
+            if (!id) return;
+            colorMap[id] = [...tradeRouteSecondaryColor, 100];
+          });
+        }
         updateLegend(null);
         core.setCanonicalPatterns({});
         core.setColorMap(colorMap);
@@ -405,7 +447,7 @@
     }
 
     initColorMap();
-    return { applyFilter, randomizeColors, get currentFilter() { return currentFilter; } };
+    return { applyFilter, randomizeColors, setTradeRouteSelection, get currentFilter() { return currentFilter; } };
   }
   global.mapFilters = { init };
 })(typeof window !== 'undefined' ? window : global);

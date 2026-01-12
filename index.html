@@ -32,6 +32,10 @@
       <div class="info-row seigneur-line" id="infoOwnerLine"></div>
       <div class="info-row" id="infoReligionLine"></div>
       <div class="info-row" id="infoCultureLine"></div>
+      <section class="info-group" id="tradeRoutesSection" style="display:none;">
+        <h3>Routes commerciales</h3>
+        <div id="tradeRoutesList"></div>
+      </section>
       <section class="info-group" id="feudalSection">
         <h3>Hiérarchie féodale</h3>
         <table class="info-table" id="infoFeudalTable">
@@ -109,5 +113,14 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/timeago.js/4.0.2/timeago.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/timeago.js/4.0.2/locale/fr.min.js"></script>
   <script src="auth.js"></script>
+  <dialog id="tradeRouteInfoDialog" class="confirm-dialog trade-route-info-dialog">
+    <form id="tradeRouteInfoForm" method="dialog">
+      <h3>Détails de la route commerciale</h3>
+      <div id="tradeRouteInfoContent" class="trade-route-info-content"></div>
+      <div class="dialog-buttons">
+        <button type="submit" class="control-btn">Fermer</button>
+      </div>
+    </form>
+  </dialog>
   </body>
 </html>

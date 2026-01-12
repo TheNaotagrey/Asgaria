@@ -180,10 +180,10 @@ CREATE TABLE IF NOT EXISTS barony_connections (
   FOREIGN KEY(barony_id_2) REFERENCES baronies(id)
 );
 CREATE TABLE IF NOT EXISTS trade_routes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
   barony_id_1 INTEGER NOT NULL,
   barony_id_2 INTEGER NOT NULL,
-  CHECK (barony_id_1 < barony_id_2),
-  PRIMARY KEY(barony_id_1, barony_id_2),
+  path TEXT NOT NULL,
   FOREIGN KEY(barony_id_1) REFERENCES baronies(id),
   FOREIGN KEY(barony_id_2) REFERENCES baronies(id)
 );
@@ -376,6 +376,175 @@ CREATE TABLE IF NOT EXISTS admin_change_logs (
 );
 `;
 
+function parseTradeRoutePath(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.map(val => parseInt(val, 10)).filter(Number.isFinite);
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.map(val => parseInt(val, 10)).filter(Number.isFinite);
+      }
+    } catch (err) {
+      return [];
+    }
+  }
+  return [];
+}
+
+function buildAdjacency(rows, idKey1 = 'barony_id_1', idKey2 = 'barony_id_2') {
+  const adj = {};
+  rows.forEach(row => {
+    const id1 = parseInt(row[idKey1], 10);
+    const id2 = parseInt(row[idKey2], 10);
+    if (!id1 || !id2) return;
+    const dist = parseInt(row.distance, 10) || 1;
+    if (!adj[id1]) adj[id1] = [];
+    if (!adj[id2]) adj[id2] = [];
+    adj[id1].push({ id: id2, distance: dist });
+    adj[id2].push({ id: id1, distance: dist });
+  });
+  return adj;
+}
+
+function computeShortestPath(startId, endId, adjacency) {
+  if (!startId || !endId) return null;
+  if (startId === endId) return { path: [startId], distance: 0 };
+  const dist = {};
+  const prev = {};
+  const queue = [];
+  dist[startId] = 0;
+  queue.push({ id: startId, dist: 0 });
+  while (queue.length) {
+    let bestIndex = 0;
+    for (let i = 1; i < queue.length; i += 1) {
+      if (queue[i].dist < queue[bestIndex].dist) bestIndex = i;
+    }
+    const curEntry = queue.splice(bestIndex, 1)[0];
+    if (!curEntry) continue;
+    const cur = curEntry.id;
+    if (curEntry.dist !== dist[cur]) continue;
+    if (cur === endId) break;
+    (adjacency[cur] || []).forEach(n => {
+      const nextId = parseInt(n.id, 10);
+      if (!nextId) return;
+      const weight = parseInt(n.distance, 10) || 1;
+      const nextDist = dist[cur] + weight;
+      if (dist[nextId] == null || nextDist < dist[nextId]) {
+        dist[nextId] = nextDist;
+        prev[nextId] = cur;
+        queue.push({ id: nextId, dist: nextDist });
+      }
+    });
+  }
+  if (dist[endId] == null) return null;
+  const path = [];
+  let cur = endId;
+  while (cur != null) {
+    path.push(cur);
+    if (cur === startId) break;
+    cur = prev[cur];
+  }
+  if (path[path.length - 1] !== startId) return null;
+  path.reverse();
+  return { path, distance: dist[endId] };
+}
+
+function validateTradeRoutePath(path, startId, endId, adjacency) {
+  if (!Array.isArray(path) || path.length < 2) {
+    return 'Le chemin doit contenir au moins deux baronnies.';
+  }
+  if (path[0] !== startId || path[path.length - 1] !== endId) {
+    return 'Le chemin doit commencer par la baronnie 1 et finir par la baronnie 2.';
+  }
+  const visited = new Set();
+  for (let i = 0; i < path.length; i += 1) {
+    const node = path[i];
+    if (visited.has(node)) {
+      return 'Le chemin ne peut pas repasser par la même baronnie.';
+    }
+    visited.add(node);
+    if (i === path.length - 1) continue;
+    const next = path[i + 1];
+    const neighbors = adjacency[node] || [];
+    const isAdjacent = neighbors.some(n => parseInt(n.id, 10) === next);
+    if (!isAdjacent) {
+      return 'Le chemin contient des baronnies non adjacentes.';
+    }
+  }
+  return '';
+}
+
+function getTradeAdjacency(callback) {
+  db.all('SELECT barony_id_1, barony_id_2, distance FROM barony_connections', [], (err, rows) => {
+    if (err) return callback(err);
+    callback(null, buildAdjacency(rows));
+  });
+}
+
+function migrateTradeRoutesTable() {
+  db.serialize(() => {
+    db.run('ALTER TABLE trade_routes RENAME TO trade_routes_old');
+    db.run(`
+      CREATE TABLE IF NOT EXISTS trade_routes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        barony_id_1 INTEGER NOT NULL,
+        barony_id_2 INTEGER NOT NULL,
+        path TEXT NOT NULL,
+        FOREIGN KEY(barony_id_1) REFERENCES baronies(id),
+        FOREIGN KEY(barony_id_2) REFERENCES baronies(id)
+      )
+    `);
+    db.all('SELECT barony_id_1, barony_id_2 FROM trade_routes_old', [], (err, routes) => {
+      if (err) {
+        logger.error('Migration des routes commerciales échouée', err);
+        return;
+      }
+      getTradeAdjacency((errAdj, adjacency) => {
+        if (errAdj) {
+          logger.error('Impossible de charger les connexions pour les routes commerciales', errAdj);
+        }
+        const stmt = db.prepare('INSERT INTO trade_routes (barony_id_1, barony_id_2, path) VALUES (?,?,?)');
+        routes.forEach(route => {
+          const startId = parseInt(route.barony_id_1, 10);
+          const endId = parseInt(route.barony_id_2, 10);
+          const computed = adjacency ? computeShortestPath(startId, endId, adjacency) : null;
+          const path = (computed && computed.path && computed.path.length)
+            ? computed.path
+            : [startId, endId];
+          stmt.run(startId, endId, JSON.stringify(path));
+        });
+        stmt.finalize(() => {
+          db.run('DROP TABLE trade_routes_old');
+        });
+      });
+    });
+  });
+}
+
+function ensureTradeRoutePaths() {
+  db.all('SELECT id, barony_id_1, barony_id_2, path FROM trade_routes', [], (err, routes) => {
+    if (err || !routes || !routes.length) return;
+    getTradeAdjacency((errAdj, adjacency) => {
+      if (errAdj) {
+        logger.error('Impossible de charger les connexions pour les chemins commerciaux', errAdj);
+        return;
+      }
+      routes.forEach(route => {
+        const existing = parseTradeRoutePath(route.path);
+        if (existing.length) return;
+        const startId = parseInt(route.barony_id_1, 10);
+        const endId = parseInt(route.barony_id_2, 10);
+        const computed = computeShortestPath(startId, endId, adjacency);
+        const path = (computed && computed.path && computed.path.length)
+          ? computed.path
+          : [startId, endId];
+        db.run('UPDATE trade_routes SET path=? WHERE id=?', [JSON.stringify(path), route.id]);
+      });
+    });
+  });
+}
+
 function enforceDefaultAdmins(callback) {
   db.run('UPDATE users SET is_admin=1 WHERE id<=3', (err) => {
     if (err) {
@@ -564,6 +733,19 @@ db.exec(initSql, () => {
     if (!rows.some(r => r.name === 'distance')) {
       db.run('ALTER TABLE barony_connections ADD COLUMN distance INTEGER DEFAULT 1');
     }
+  });
+  db.all("PRAGMA table_info(trade_routes)", (err, rows) => {
+    if (err || !rows) return;
+    const hasId = rows.some(r => r.name === 'id');
+    const hasPath = rows.some(r => r.name === 'path');
+    if (!hasId) {
+      migrateTradeRoutesTable();
+      return;
+    }
+    if (!hasPath) {
+      db.run('ALTER TABLE trade_routes ADD COLUMN path TEXT');
+    }
+    ensureTradeRoutePaths();
   });
   db.all("PRAGMA table_info(maritime_zone_connections)", (err, rows) => {
     if (err || !rows) return;
@@ -3055,39 +3237,109 @@ app.post('/api/trade_transactions/:id/claim', (req, res) => {
 });
 
 // Trade routes API
-app.get('/api/trade_routes', (req,res)=>{
-  list('trade_routes')(req,res);
-});
-app.post('/api/trade_routes', requireAdmin, (req,res)=>{
-  let { barony_id_1, barony_id_2 } = req.body;
-  barony_id_1 = parseInt(barony_id_1);
-  barony_id_2 = parseInt(barony_id_2);
-  if(!barony_id_1 || !barony_id_2 || barony_id_1 === barony_id_2){
-    return res.status(400).json({error:'Invalid barony ids'});
-  }
-  const [id1,id2] = barony_id_1 < barony_id_2 ? [barony_id_1, barony_id_2] : [barony_id_2, barony_id_1];
-  db.run('INSERT OR IGNORE INTO trade_routes (barony_id_1, barony_id_2) VALUES (?,?)',[id1,id2],function(err){
-    if(err) return handleError(res, err);
-    if (this.changes > 0) {
-      recordChange(req, { table: 'trade_routes', action: 'create', before: null, after: { barony_id_1: id1, barony_id_2: id2 }, key: `${id1}-${id2}` });
-    }
-    res.json({added: this.changes});
+app.get('/api/trade_routes', (req, res) => {
+  const baronyId = parseInt(req.query.barony_id, 10);
+  const where = baronyId ? ' WHERE barony_id_1=? OR barony_id_2=?' : '';
+  const params = baronyId ? [baronyId, baronyId] : [];
+  db.all(`SELECT * FROM trade_routes${where}`, params, (err, rows) => {
+    if (err) return handleError(res, err);
+    const routes = (rows || []).map(route => ({
+      ...route,
+      path: parseTradeRoutePath(route.path)
+    }));
+    res.json(routes);
   });
 });
-app.delete('/api/trade_routes', requireAdmin, (req,res)=>{
-  let { barony_id_1, barony_id_2 } = req.body;
-  barony_id_1 = parseInt(barony_id_1);
-  barony_id_2 = parseInt(barony_id_2);
-  if(!barony_id_1 || !barony_id_2){
-    return res.status(400).json({error:'Invalid barony ids'});
+app.post('/api/trade_routes', requireAdmin, (req, res) => {
+  let { barony_id_1, barony_id_2, path } = req.body;
+  barony_id_1 = parseInt(barony_id_1, 10);
+  barony_id_2 = parseInt(barony_id_2, 10);
+  if (!barony_id_1 || !barony_id_2 || barony_id_1 === barony_id_2) {
+    return res.status(400).json({ error: 'Baronnies invalides' });
   }
-  const [id1,id2] = barony_id_1 < barony_id_2 ? [barony_id_1, barony_id_2] : [barony_id_2, barony_id_1];
-  db.run('DELETE FROM trade_routes WHERE barony_id_1=? AND barony_id_2=?',[id1,id2],function(err){
-    if(err) return handleError(res, err);
-    if (this.changes > 0) {
-      recordChange(req, { table: 'trade_routes', action: 'delete', before: { barony_id_1: id1, barony_id_2: id2 }, after: null, key: `${id1}-${id2}` });
+  let normalizedPath = parseTradeRoutePath(path);
+  getTradeAdjacency((err, adjacency) => {
+    if (err) return handleError(res, err);
+    if (!normalizedPath.length) {
+      const computed = computeShortestPath(barony_id_1, barony_id_2, adjacency);
+      if (!computed || !computed.path || computed.path.length < 2) {
+        return res.status(400).json({ error: 'Chemin introuvable' });
+      }
+      normalizedPath = computed.path;
     }
-    res.json({deleted: this.changes});
+    if (normalizedPath[0] === barony_id_2 && normalizedPath[normalizedPath.length - 1] === barony_id_1) {
+      normalizedPath = normalizedPath.slice().reverse();
+    }
+    const error = validateTradeRoutePath(normalizedPath, barony_id_1, barony_id_2, adjacency);
+    if (error) return res.status(400).json({ error });
+    const payload = {
+      barony_id_1,
+      barony_id_2,
+      path: JSON.stringify(normalizedPath)
+    };
+    db.run('INSERT INTO trade_routes (barony_id_1, barony_id_2, path) VALUES (?,?,?)', [payload.barony_id_1, payload.barony_id_2, payload.path], function(err2) {
+      if (err2) return handleError(res, err2);
+      const created = { id: this.lastID, barony_id_1, barony_id_2, path: normalizedPath };
+      recordChange(req, { table: 'trade_routes', action: 'create', before: null, after: created, key: String(this.lastID) });
+      res.json(created);
+    });
+  });
+});
+app.put('/api/trade_routes/:id', requireAdmin, (req, res) => {
+  const routeId = parseInt(req.params.id, 10);
+  if (!routeId) return res.status(400).json({ error: 'ID invalide' });
+  db.get('SELECT * FROM trade_routes WHERE id=?', [routeId], (err, route) => {
+    if (err) return handleError(res, err);
+    if (!route) return res.status(404).json({ error: 'Route introuvable' });
+    let { barony_id_1, barony_id_2, path } = req.body;
+    barony_id_1 = parseInt(barony_id_1 ?? route.barony_id_1, 10);
+    barony_id_2 = parseInt(barony_id_2 ?? route.barony_id_2, 10);
+    if (!barony_id_1 || !barony_id_2 || barony_id_1 === barony_id_2) {
+      return res.status(400).json({ error: 'Baronnies invalides' });
+    }
+    let normalizedPath = parseTradeRoutePath(path);
+    getTradeAdjacency((errAdj, adjacency) => {
+      if (errAdj) return handleError(res, errAdj);
+      if (!normalizedPath.length) {
+        normalizedPath = parseTradeRoutePath(route.path);
+      }
+      if (!normalizedPath.length) {
+        const computed = computeShortestPath(barony_id_1, barony_id_2, adjacency);
+        if (!computed || !computed.path || computed.path.length < 2) {
+          return res.status(400).json({ error: 'Chemin introuvable' });
+        }
+        normalizedPath = computed.path;
+      }
+      if (normalizedPath[0] === barony_id_2 && normalizedPath[normalizedPath.length - 1] === barony_id_1) {
+        normalizedPath = normalizedPath.slice().reverse();
+      }
+      const error = validateTradeRoutePath(normalizedPath, barony_id_1, barony_id_2, adjacency);
+      if (error) return res.status(400).json({ error });
+      const payload = {
+        barony_id_1,
+        barony_id_2,
+        path: JSON.stringify(normalizedPath)
+      };
+      db.run('UPDATE trade_routes SET barony_id_1=?, barony_id_2=?, path=? WHERE id=?', [payload.barony_id_1, payload.barony_id_2, payload.path, routeId], function(err2) {
+        if (err2) return handleError(res, err2);
+        const updated = { id: routeId, barony_id_1, barony_id_2, path: normalizedPath };
+        recordChange(req, { table: 'trade_routes', action: 'update', before: { ...route, path: parseTradeRoutePath(route.path) }, after: updated, key: String(routeId) });
+        res.json(updated);
+      });
+    });
+  });
+});
+app.delete('/api/trade_routes/:id', requireAdmin, (req, res) => {
+  const routeId = parseInt(req.params.id, 10);
+  if (!routeId) return res.status(400).json({ error: 'ID invalide' });
+  db.get('SELECT * FROM trade_routes WHERE id=?', [routeId], (err, route) => {
+    if (err) return handleError(res, err);
+    if (!route) return res.status(404).json({ error: 'Route introuvable' });
+    db.run('DELETE FROM trade_routes WHERE id=?', [routeId], function(err2) {
+      if (err2) return handleError(res, err2);
+      recordChange(req, { table: 'trade_routes', action: 'delete', before: { ...route, path: parseTradeRoutePath(route.path) }, after: null, key: String(routeId) });
+      res.json({ deleted: this.changes });
+    });
   });
 });
 
@@ -3103,31 +3355,24 @@ app.post('/api/trade_routes/build', (req, res) => {
     db.get('SELECT seigneur_id, name FROM baronies WHERE id=?', [targetId], (err2, brow) => {
       if (err2) return handleError(res, err2);
       if (!brow || !brow.seigneur_id) return res.status(400).json({ error: 'Baronnie invalide' });
-      const [id1, id2] = startId < targetId ? [startId, targetId] : [targetId, startId];
-      db.get('SELECT 1 FROM trade_routes WHERE barony_id_1=? AND barony_id_2=?', [id1, id2], (err3, ex) => {
+      getTradeAdjacency((err3, adjacency) => {
         if (err3) return handleError(res, err3);
-        if (ex) return res.status(400).json({ error: 'Route existante' });
-        db.all('SELECT barony_id_1, barony_id_2, distance FROM barony_connections', [], (err4, rows) => {
+        const computed = computeShortestPath(startId, targetId, adjacency);
+        if (!computed || computed.distance == null) return res.status(400).json({ error: 'Inaccessible' });
+        const cost = computed.distance * 3;
+        db.get('SELECT or_ FROM inventaire WHERE id=?', [srow.inventaire_id], (err4, inv) => {
           if (err4) return handleError(res, err4);
-          const adj = {};
-          rows.forEach(r => {
-            const dist = r.distance || 1;
-            (adj[r.barony_id_1] = adj[r.barony_id_1] || []).push({ id: r.barony_id_2, distance: dist });
-            (adj[r.barony_id_2] = adj[r.barony_id_2] || []).push({ id: r.barony_id_1, distance: dist });
-          });
-          const { distanceMap } = breadthFirst(startId, cur => adj[cur] || []);
-          const dist = distanceMap[targetId];
-          if (dist == null) return res.status(400).json({ error: 'Inaccessible' });
-          const cost = dist * 3;
-          db.get('SELECT or_ FROM inventaire WHERE id=?', [srow.inventaire_id], (err5, inv) => {
+          if (!inv || (inv.or_ || 0) < cost) return res.status(400).json({ error: 'Ressources insuffisantes' });
+          consumeResources(db, srow.id, { or_: cost }, err5 => {
             if (err5) return handleError(res, err5);
-            if (!inv || (inv.or_ || 0) < cost) return res.status(400).json({ error: 'Ressources insuffisantes' });
-            consumeResources(db, srow.id, { or_: cost }, err6 => {
+            const payload = {
+              barony_id_1: startId,
+              barony_id_2: targetId,
+              path: JSON.stringify(computed.path)
+            };
+            db.run('INSERT INTO trade_routes (barony_id_1, barony_id_2, path) VALUES (?,?,?)', [payload.barony_id_1, payload.barony_id_2, payload.path], function(err6) {
               if (err6) return handleError(res, err6);
-              db.run('INSERT OR IGNORE INTO trade_routes (barony_id_1, barony_id_2) VALUES (?,?)', [id1, id2], function(err7){
-                if (err7) return handleError(res, err7);
-                res.json({ added: this.changes, cost, distance: dist });
-              });
+              res.json({ id: this.lastID, cost, distance: computed.distance, path: computed.path });
             });
           });
         });
