@@ -2,10 +2,10 @@
   function init(core, data, options = {}) {
     const updateLegend = options.updateLegend || (() => {});
     const terrainColor = mapCore.terrainColor;
-    const playerSeigneurColor = [82, 190, 128];
-    const playerBishopColor = [46, 134, 193];
-    const npcSeigneurColor = [231, 76, 60];
-    const npcBishopColor = [155, 89, 182];
+    const playerSeigneurColor = [36, 163, 33];
+    const playerBishopColor = [255, 106, 6];
+    const npcSeigneurColor = [195, 195, 195];
+    const npcBishopColor = [127, 127, 127];
     let currentFilter = '';
     let canonicalPatterns = {};
     let colorMap = {};
