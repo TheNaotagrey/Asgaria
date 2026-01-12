@@ -733,6 +733,76 @@ th.multi-col {
   margin-top: 10px;
 }
 
+.trade-route-dialog {
+  min-width: 320px;
+}
+
+.trade-route-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.trade-route-fields {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 8px;
+  align-items: center;
+}
+
+.trade-route-path {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: #f8f8f8;
+}
+
+.trade-route-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.trade-route-endpoint {
+  font-weight: bold;
+  text-align: center;
+}
+
+.trade-route-hint {
+  font-size: 0.9rem;
+  color: #b04a00;
+}
+
+.trade-route-info-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.table-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+
+.trade-route-info-header {
+  font-weight: bold;
+  text-align: center;
+}
+
+.trade-route-info-path {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.trade-route-empty {
+  font-style: italic;
+  color: #555;
+}
+
 .column-preferences-dialog {
   min-width: 320px;
 }

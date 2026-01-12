@@ -166,6 +166,17 @@ let logFiltersInitialized = false;
 let logAdminOptionsLoaded = false;
 const columnPreferences = {};
 let columnPreferencesLoaded = false;
+let tradeRoutesState = {
+  baronies: [],
+  baronyMap: {},
+  adjacency: {},
+  routes: []
+};
+const tradeRouteDialogState = {
+  mode: 'create',
+  routeId: null,
+  selections: []
+};
 
 const spellFields = ['label','type','costs','effects','description'];
 const spellLabels = {
@@ -186,6 +197,78 @@ async function getData(key, url){
     dataCache[key] = await fetchJSON(url);
   }
   return dataCache[key];
+}
+
+function parseTradeRoutePath(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.map(val => parseInt(val, 10)).filter(Number.isFinite);
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.map(val => parseInt(val, 10)).filter(Number.isFinite);
+    } catch (err) {
+      return [];
+    }
+  }
+  return [];
+}
+
+function buildAdjacencyMap(connections) {
+  const adj = {};
+  connections.forEach(c => {
+    const id1 = parseInt(c.barony_id_1, 10);
+    const id2 = parseInt(c.barony_id_2, 10);
+    if (!id1 || !id2) return;
+    const dist = parseInt(c.distance, 10) || 1;
+    if (!adj[id1]) adj[id1] = [];
+    if (!adj[id2]) adj[id2] = [];
+    adj[id1].push({ id: id2, distance: dist });
+    adj[id2].push({ id: id1, distance: dist });
+  });
+  return adj;
+}
+
+function computeShortestPath(startId, endId, adjacency) {
+  if (!startId || !endId) return null;
+  if (startId === endId) return { path: [startId], distance: 0 };
+  const dist = {};
+  const prev = {};
+  const queue = [];
+  dist[startId] = 0;
+  queue.push({ id: startId, dist: 0 });
+  while (queue.length) {
+    let bestIndex = 0;
+    for (let i = 1; i < queue.length; i += 1) {
+      if (queue[i].dist < queue[bestIndex].dist) bestIndex = i;
+    }
+    const curEntry = queue.splice(bestIndex, 1)[0];
+    if (!curEntry) continue;
+    const cur = curEntry.id;
+    if (curEntry.dist !== dist[cur]) continue;
+    if (cur === endId) break;
+    (adjacency[cur] || []).forEach(n => {
+      const nextId = parseInt(n.id, 10);
+      if (!nextId) return;
+      const weight = parseInt(n.distance, 10) || 1;
+      const nextDist = dist[cur] + weight;
+      if (dist[nextId] == null || nextDist < dist[nextId]) {
+        dist[nextId] = nextDist;
+        prev[nextId] = cur;
+        queue.push({ id: nextId, dist: nextDist });
+      }
+    });
+  }
+  if (dist[endId] == null) return null;
+  const path = [];
+  let cur = endId;
+  while (cur != null) {
+    path.push(cur);
+    if (cur === startId) break;
+    cur = prev[cur];
+  }
+  if (path[path.length - 1] !== startId) return null;
+  path.reverse();
+  return { path, distance: dist[endId] };
 }
 
 async function loadColumnPreferences() {
@@ -2938,6 +3021,326 @@ async function loadBaronies(){
   });
 }
 
+function formatBaronyLabel(barony) {
+  if (!barony) return 'Baronnie inconnue';
+  const name = barony.name || 'Sans nom';
+  return `${name} (#${barony.id})`;
+}
+
+function populateTradeRouteBaronySelect(select, baronies) {
+  if (!select) return;
+  select.innerHTML = '';
+  const blank = document.createElement('option');
+  blank.value = '';
+  blank.textContent = 'Sélectionner';
+  select.appendChild(blank);
+  baronies.forEach(barony => {
+    const option = document.createElement('option');
+    option.value = barony.id;
+    option.textContent = formatBaronyLabel(barony);
+    select.appendChild(option);
+  });
+}
+
+function getTradeRouteDialogElements() {
+  return {
+    dialog: document.getElementById('tradeRouteDialog'),
+    form: document.getElementById('tradeRouteForm'),
+    title: document.getElementById('tradeRouteDialogTitle'),
+    barony1: document.getElementById('tradeRouteBarony1'),
+    barony2: document.getElementById('tradeRouteBarony2'),
+    startLabel: document.getElementById('tradeRouteStartLabel'),
+    endLabel: document.getElementById('tradeRouteEndLabel'),
+    steps: document.getElementById('tradeRouteSteps'),
+    hint: document.getElementById('tradeRouteHint'),
+    cancel: document.getElementById('tradeRouteCancel'),
+    save: document.getElementById('tradeRouteSave')
+  };
+}
+
+function updateTradeRouteLabels(startId, endId) {
+  const { startLabel, endLabel } = getTradeRouteDialogElements();
+  const startBarony = tradeRoutesState.baronyMap[startId];
+  const endBarony = tradeRoutesState.baronyMap[endId];
+  if (startLabel) {
+    startLabel.textContent = startBarony ? `Baronnie 1 : ${formatBaronyLabel(startBarony)}` : 'Baronnie 1 :';
+  }
+  if (endLabel) {
+    endLabel.textContent = endBarony ? `Baronnie 2 : ${formatBaronyLabel(endBarony)}` : 'Baronnie 2 :';
+  }
+}
+
+function isTradeRoutePathComplete(startId, endId, selections) {
+  if (!startId || !endId) return false;
+  if (!selections || selections.length === 0) return false;
+  if (selections.some(step => !step)) return false;
+  return selections[selections.length - 1] === endId;
+}
+
+function renderTradeRouteSteps() {
+  const { barony1, barony2, steps } = getTradeRouteDialogElements();
+  if (!steps || !barony1 || !barony2) return;
+  steps.innerHTML = '';
+  const startId = parseInt(barony1.value, 10);
+  const endId = parseInt(barony2.value, 10);
+  if (!startId || !endId) return;
+  const selections = tradeRouteDialogState.selections || [];
+  const stepsList = selections.slice();
+  const last = stepsList[stepsList.length - 1];
+  if (last !== endId) {
+    if (stepsList.length === 0 || stepsList[stepsList.length - 1]) {
+      stepsList.push(null);
+    }
+  }
+  const used = new Set([startId]);
+  stepsList.forEach((selected, index) => {
+    const prevId = index === 0 ? startId : stepsList[index - 1];
+    if (!prevId) return;
+    const options = (tradeRoutesState.adjacency[prevId] || [])
+      .map(n => n.id)
+      .filter(id => !used.has(id));
+    const select = document.createElement('select');
+    select.dataset.index = String(index);
+    const blank = document.createElement('option');
+    blank.value = '';
+    blank.textContent = '';
+    select.appendChild(blank);
+    options.forEach(id => {
+      const option = document.createElement('option');
+      option.value = id;
+      option.textContent = formatBaronyLabel(tradeRoutesState.baronyMap[id] || { id, name: `Baronnie ${id}` });
+      select.appendChild(option);
+    });
+    if (selected) select.value = String(selected);
+    select.addEventListener('change', (event) => {
+      const idx = parseInt(event.target.dataset.index, 10);
+      const value = parseInt(event.target.value, 10);
+      const nextSelections = tradeRouteDialogState.selections.slice(0, idx);
+      if (value) {
+        nextSelections[idx] = value;
+      }
+      tradeRouteDialogState.selections = nextSelections;
+      renderTradeRouteSteps();
+      updateTradeRouteHint();
+    });
+    steps.appendChild(select);
+    if (selected) used.add(selected);
+  });
+}
+
+function updateTradeRouteHint(message) {
+  const { barony1, barony2, hint, save } = getTradeRouteDialogElements();
+  if (!hint || !save || !barony1 || !barony2) return;
+  const startId = parseInt(barony1.value, 10);
+  const endId = parseInt(barony2.value, 10);
+  let text = message || '';
+  if (!startId || !endId) {
+    text = 'Sélectionnez deux baronnies pour définir un chemin.';
+    save.disabled = true;
+  } else if (!isTradeRoutePathComplete(startId, endId, tradeRouteDialogState.selections)) {
+    text = text || 'Le chemin doit atteindre la baronnie 2 pour être enregistré.';
+    save.disabled = true;
+  } else {
+    text = '';
+    save.disabled = false;
+  }
+  hint.textContent = text;
+}
+
+function buildTradeRoutePath(startId, selections) {
+  const path = [startId, ...(selections || [])];
+  return path.filter(Boolean);
+}
+
+function autoPopulateTradeRoutePath(startId, endId) {
+  const computed = computeShortestPath(startId, endId, tradeRoutesState.adjacency);
+  if (!computed || !computed.path || computed.path.length < 2) {
+    tradeRouteDialogState.selections = [];
+    updateTradeRouteHint('Aucun chemin disponible entre ces baronnies.');
+    renderTradeRouteSteps();
+    return;
+  }
+  tradeRouteDialogState.selections = computed.path.slice(1);
+  renderTradeRouteSteps();
+  updateTradeRouteHint();
+}
+
+function handleTradeRouteBaronyChange() {
+  const { barony1, barony2 } = getTradeRouteDialogElements();
+  if (!barony1 || !barony2) return;
+  const startId = parseInt(barony1.value, 10);
+  const endId = parseInt(barony2.value, 10);
+  updateTradeRouteLabels(startId, endId);
+  tradeRouteDialogState.selections = [];
+  if (tradeRouteDialogState.mode === 'create' && startId && endId) {
+    autoPopulateTradeRoutePath(startId, endId);
+    return;
+  }
+  renderTradeRouteSteps();
+  updateTradeRouteHint();
+}
+
+function openTradeRouteDialog(route) {
+  const elements = getTradeRouteDialogElements();
+  if (!elements.dialog) return;
+  ensureTradeRouteDialog();
+  tradeRouteDialogState.mode = route ? 'edit' : 'create';
+  tradeRouteDialogState.routeId = route ? route.id : null;
+  tradeRouteDialogState.selections = [];
+  if (elements.title) {
+    elements.title.textContent = route ? 'Modifier la route commerciale' : 'Nouvelle route commerciale';
+  }
+  populateTradeRouteBaronySelect(elements.barony1, tradeRoutesState.baronies);
+  populateTradeRouteBaronySelect(elements.barony2, tradeRoutesState.baronies);
+  if (route) {
+    elements.barony1.value = String(route.barony_id_1);
+    elements.barony2.value = String(route.barony_id_2);
+    const path = parseTradeRoutePath(route.path);
+    if (path.length && path[0] === route.barony_id_1 && path[path.length - 1] === route.barony_id_2) {
+      tradeRouteDialogState.selections = path.slice(1);
+    } else if (path.length && path[0] === route.barony_id_2 && path[path.length - 1] === route.barony_id_1) {
+      tradeRouteDialogState.selections = path.slice(1).reverse();
+    }
+  }
+  updateTradeRouteLabels(
+    parseInt(elements.barony1.value, 10),
+    parseInt(elements.barony2.value, 10)
+  );
+  renderTradeRouteSteps();
+  updateTradeRouteHint();
+  if (elements.dialog.showModal) {
+    elements.dialog.showModal();
+  } else {
+    elements.dialog.setAttribute('open', 'open');
+  }
+}
+
+function ensureTradeRouteDialog() {
+  const elements = getTradeRouteDialogElements();
+  if (!elements.dialog || elements.dialog.dataset.ready) return;
+  if (elements.cancel) {
+    elements.cancel.addEventListener('click', () => elements.dialog.close());
+  }
+  if (elements.barony1) {
+    elements.barony1.addEventListener('change', handleTradeRouteBaronyChange);
+  }
+  if (elements.barony2) {
+    elements.barony2.addEventListener('change', handleTradeRouteBaronyChange);
+  }
+  if (elements.form) {
+    elements.form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const startId = parseInt(elements.barony1.value, 10);
+      const endId = parseInt(elements.barony2.value, 10);
+      if (!startId || !endId) {
+        updateTradeRouteHint('Sélectionnez deux baronnies avant de sauvegarder.');
+        return;
+      }
+      if (!isTradeRoutePathComplete(startId, endId, tradeRouteDialogState.selections)) {
+        updateTradeRouteHint('Le chemin doit être complet pour être enregistré.');
+        return;
+      }
+      const path = buildTradeRoutePath(startId, tradeRouteDialogState.selections);
+      const payload = { barony_id_1: startId, barony_id_2: endId, path };
+      const isEdit = tradeRouteDialogState.mode === 'edit' && tradeRouteDialogState.routeId;
+      const endpoint = isEdit ? `/api/trade_routes/${tradeRouteDialogState.routeId}` : '/api/trade_routes';
+      const method = isEdit ? 'PUT' : 'POST';
+      const resp = await fetchJSON(endpoint, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (resp && resp.error) {
+        alert(`Erreur : ${resp.error}`);
+        return;
+      }
+      elements.dialog.close();
+      await loadTradeRoutes();
+    });
+  }
+  elements.dialog.dataset.ready = 'true';
+}
+
+function renderTradeRoutesPanel() {
+  const panel = document.getElementById('tradeRoutesPanel');
+  if (!panel) return;
+  panel.innerHTML = '';
+  const header = document.createElement('div');
+  header.className = 'table-actions';
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.className = 'control-btn';
+  addBtn.textContent = 'Nouvelle route commerciale';
+  addBtn.addEventListener('click', () => openTradeRouteDialog());
+  header.appendChild(addBtn);
+  panel.appendChild(header);
+  if (!tradeRoutesState.routes.length) {
+    const empty = document.createElement('div');
+    empty.className = 'trade-route-empty';
+    empty.textContent = 'Aucune route commerciale enregistrée.';
+    panel.appendChild(empty);
+    return;
+  }
+  const table = document.createElement('table');
+  table.className = 'admin-table';
+  table.innerHTML = '<tr><th>ID</th><th>Baronnie 1</th><th>Baronnie 2</th><th>Chemin (nœuds)</th><th>Actions</th></tr>';
+  tradeRoutesState.routes
+    .slice()
+    .sort((a, b) => a.id - b.id)
+    .forEach(route => {
+      const row = document.createElement('tr');
+      const path = parseTradeRoutePath(route.path);
+      const barony1 = tradeRoutesState.baronyMap[route.barony_id_1] || { id: route.barony_id_1, name: `Baronnie ${route.barony_id_1}` };
+      const barony2 = tradeRoutesState.baronyMap[route.barony_id_2] || { id: route.barony_id_2, name: `Baronnie ${route.barony_id_2}` };
+      row.innerHTML = `
+        <td>${route.id}</td>
+        <td>${formatBaronyLabel(barony1)}</td>
+        <td>${formatBaronyLabel(barony2)}</td>
+        <td>${path.length || 0}</td>
+        <td></td>
+      `;
+      const actionsCell = row.querySelector('td:last-child');
+      const editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.className = 'control-btn';
+      editBtn.textContent = 'Chemin';
+      editBtn.addEventListener('click', () => openTradeRouteDialog(route));
+      const deleteBtn = document.createElement('button');
+      deleteBtn.type = 'button';
+      deleteBtn.className = 'danger';
+      deleteBtn.textContent = 'Supprimer';
+      deleteBtn.addEventListener('click', async () => {
+        if (!confirm('Supprimer cette route commerciale ?')) return;
+        const resp = await fetchJSON(`/api/trade_routes/${route.id}`, { method: 'DELETE' });
+        if (resp && resp.error) {
+          alert(`Erreur : ${resp.error}`);
+          return;
+        }
+        await loadTradeRoutes();
+      });
+      actionsCell.appendChild(editBtn);
+      actionsCell.appendChild(deleteBtn);
+      table.appendChild(row);
+    });
+  panel.appendChild(table);
+}
+
+async function loadTradeRoutes() {
+  const [routes, baronies, connections] = await Promise.all([
+    fetchJSON('/api/trade_routes'),
+    getData('baronies', '/api/baronies'),
+    getData('barony_connections', '/api/barony_connections')
+  ]);
+  const sortedBaronies = sortByName(baronies);
+  tradeRoutesState = {
+    baronies: sortedBaronies,
+    baronyMap: Object.fromEntries(sortedBaronies.map(b => [b.id, b])),
+    adjacency: buildAdjacencyMap(connections),
+    routes: routes || []
+  };
+  renderTradeRoutesPanel();
+}
+
 async function ensureTags(){
   const tags = await getData('tags','/api/tags');
   tagsSelect = tags.slice().sort(compareByField('label')).map(t=>({ id:t.id, name:t.label }));
@@ -3042,6 +3445,7 @@ const tabLoaders = {
   maritime: loadMaritimeZones,
   seigneuries: loadSeigneuries,
   baronies: loadBaronies,
+  'trade-routes': loadTradeRoutes,
   batiments: loadBatiments,
   spells: loadSpells,
   tags: loadTags,

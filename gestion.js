@@ -2132,12 +2132,10 @@ async function startTradeRouteCreation() {
   if (!currentTradeBaronyId) return;
   await ensureTradeData();
   const dists = computeDistances(currentTradeBaronyId);
-  const existing = new Set(currentTradeRoutes.map(r => r.id));
   eligibleTargets = {};
   tradeBaronies.forEach(b => {
     if (!b.seigneur_id) return;
     if (b.id === currentTradeBaronyId) return;
-    if (existing.has(b.id)) return;
     if (dists[b.id] == null) return;
     eligibleTargets[b.id] = { ...b, distance: dists[b.id] };
   });
