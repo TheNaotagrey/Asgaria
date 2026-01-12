@@ -707,6 +707,30 @@ th.multi-col {
   margin-top: 10px;
 }
 
+.column-preferences-dialog {
+  min-width: 320px;
+}
+
+.column-preferences-content {
+  display: grid;
+  gap: 8px;
+  max-height: 50vh;
+  overflow: auto;
+  margin-top: 10px;
+}
+
+.column-preferences-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.column-toggle-btn {
+  padding: 2px 8px;
+  font-weight: bold;
+  line-height: 1;
+}
+
 /* Indicateurs de production */
 .prod-positive {
   color: #2e8b57;
