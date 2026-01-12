@@ -2020,17 +2020,19 @@ async function initTradeMap() {
       ]);
       tradeAdjacency = {};
       connections.forEach(c => {
+        const dist = parseInt(c.distance, 10) || 1;
         if (!tradeAdjacency[c.barony_id_1]) tradeAdjacency[c.barony_id_1] = [];
         if (!tradeAdjacency[c.barony_id_2]) tradeAdjacency[c.barony_id_2] = [];
-        tradeAdjacency[c.barony_id_1].push(c.barony_id_2);
-        tradeAdjacency[c.barony_id_2].push(c.barony_id_1);
+        tradeAdjacency[c.barony_id_1].push({ id: c.barony_id_2, distance: dist });
+        tradeAdjacency[c.barony_id_2].push({ id: c.barony_id_1, distance: dist });
       });
       seaZoneAdjacency = {};
       zoneConns.forEach(c => {
+        const dist = parseInt(c.distance, 10) || 1;
         if (!seaZoneAdjacency[c.zone_id_1]) seaZoneAdjacency[c.zone_id_1] = [];
         if (!seaZoneAdjacency[c.zone_id_2]) seaZoneAdjacency[c.zone_id_2] = [];
-        seaZoneAdjacency[c.zone_id_1].push(c.zone_id_2);
-        seaZoneAdjacency[c.zone_id_2].push(c.zone_id_1);
+        seaZoneAdjacency[c.zone_id_1].push({ id: c.zone_id_2, distance: dist });
+        seaZoneAdjacency[c.zone_id_2].push({ id: c.zone_id_1, distance: dist });
       });
       zoneBaronies = {};
       baronyZones = {};
@@ -2065,7 +2067,7 @@ async function updateTradeMap(baronyId, routes) {
     colorMap[id] = [...bg];
   });
   if (baronyId) {
-    const landSet = new Set(tradeAdjacency[baronyId] || []);
+    const landSet = new Set((tradeAdjacency[baronyId] || []).map(n => n.id));
     (routes || []).forEach(r => landSet.add(r.id));
     const seaSet = computeSeaReachable(baronyId);
     landSet.forEach(id => {
@@ -2112,7 +2114,7 @@ function computeSeaReachable(start) {
 
 function getAvailableMethods(targetId) {
   const methods = [];
-  const landPossible = (tradeAdjacency[currentTradeBaronyId] || []).includes(targetId) ||
+  const landPossible = (tradeAdjacency[currentTradeBaronyId] || []).some(n => n.id === targetId) ||
     currentTradeRoutes.some(r => r.id === targetId);
   const seaPossible = computeSeaReachable(currentTradeBaronyId).has(targetId);
   if (landPossible && (!gameState.landTxMax || gameState.landTransactions < gameState.landTxMax)) methods.push('land');
@@ -2545,4 +2547,3 @@ function buildTooltipValue(val, details, suffix = '') {
     .map(d => `<tr><td>${formatDetailLabel(d.label)}</td><td>${spanAmount(d.amount, suffix)}</td></tr>`).join('');
   return `<div class="tooltip">${val}<table class="tooltip-table">${rows}</table></div>`;
 }
-

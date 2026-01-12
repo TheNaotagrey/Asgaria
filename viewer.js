@@ -666,10 +666,11 @@
       empires.forEach(e => { empireMap[e.id] = e; if (e.seigneur_id) seigneurToEmpire[e.seigneur_id] = e.id; });
       baronyAdjacency = {};
       connections.forEach(c => {
+        const dist = parseInt(c.distance, 10) || 1;
         if (!baronyAdjacency[c.zone_id_1]) baronyAdjacency[c.zone_id_1] = [];
         if (!baronyAdjacency[c.zone_id_2]) baronyAdjacency[c.zone_id_2] = [];
-        baronyAdjacency[c.zone_id_1].push(c.zone_id_2);
-        baronyAdjacency[c.zone_id_2].push(c.zone_id_1);
+        baronyAdjacency[c.zone_id_1].push({ id: c.zone_id_2, distance: dist });
+        baronyAdjacency[c.zone_id_2].push({ id: c.zone_id_1, distance: dist });
       });
       const baronyIds = [...new Set(zoneBaronies.map(zb => zb.barony_id))];
       baronyPixels = {};
@@ -773,10 +774,11 @@
     });
     baronyAdjacency = {};
     connections.forEach(c => {
+      const dist = parseInt(c.distance, 10) || 1;
       if (!baronyAdjacency[c.barony_id_1]) baronyAdjacency[c.barony_id_1] = [];
       if (!baronyAdjacency[c.barony_id_2]) baronyAdjacency[c.barony_id_2] = [];
-      baronyAdjacency[c.barony_id_1].push(c.barony_id_2);
-      baronyAdjacency[c.barony_id_2].push(c.barony_id_1);
+      baronyAdjacency[c.barony_id_1].push({ id: c.barony_id_2, distance: dist });
+      baronyAdjacency[c.barony_id_2].push({ id: c.barony_id_1, distance: dist });
     });
     const baronyIds = baronies.map(b => b.id);
     baronyPixels = pixelData;

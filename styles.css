@@ -378,6 +378,32 @@ main {
 .info-panel button:hover {
   background-color: #3d6db2;
 }
+.connection-list {
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.connection-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 6px;
+  align-items: center;
+  font-size: 0.9rem;
+  background: #f6f8ff;
+  border: 1px solid #d6def7;
+  padding: 4px;
+  border-radius: 4px;
+}
+.connection-row input {
+  width: 70px;
+  margin: 0;
+}
+.connection-actions {
+  margin-top: 6px;
+  display: grid;
+  gap: 4px;
+}
 .seigneur-link,
 .barony-link {
   margin: 0;
