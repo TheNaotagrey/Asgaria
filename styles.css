@@ -14,6 +14,7 @@ main {
   flex: 1;
   display: flex;
   position: relative;
+  min-height: 0;
 }
 
 .gestion-main {
@@ -29,6 +30,9 @@ main {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  position: sticky;
+  top: 0;
+  z-index: 1100;
 }
 .app-header h1 {
   margin: 0;
@@ -414,6 +418,12 @@ main {
   border: 1px solid #ccc;
   padding: 4px 6px;
 }
+.admin-table th {
+  position: sticky;
+  top: 0;
+  background-color: #f0f0f0;
+  z-index: 2;
+}
 .admin-table input,
 .admin-table select {
   width: 100%;
@@ -582,6 +592,12 @@ th.multi-col {
 .effect-row button {
   padding: 0 6px;
 }
+.sanctuary-status {
+  min-width: 70px;
+  font-size: 0.85rem;
+  text-transform: capitalize;
+  color: #555;
+}
 
 /* Onglets de la page d'administration */
 .tab-buttons {
@@ -611,6 +627,17 @@ th.multi-col {
 }
 .tab-panel.active {
   display: block;
+}
+.tab-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.tab-panels {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
 }
 .admin-table th.sortable {
   cursor: pointer;
@@ -678,6 +705,30 @@ th.multi-col {
   justify-content: flex-end;
   gap: 10px;
   margin-top: 10px;
+}
+
+.column-preferences-dialog {
+  min-width: 320px;
+}
+
+.column-preferences-content {
+  display: grid;
+  gap: 8px;
+  max-height: 50vh;
+  overflow: auto;
+  margin-top: 10px;
+}
+
+.column-preferences-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.column-toggle-btn {
+  padding: 2px 8px;
+  font-weight: bold;
+  line-height: 1;
 }
 
 /* Indicateurs de production */

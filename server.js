@@ -43,6 +43,15 @@ CREATE TABLE IF NOT EXISTS users (
   last_name TEXT,
   is_admin INTEGER DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS user_table_preferences (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  table_name TEXT NOT NULL,
+  hidden_columns TEXT DEFAULT '[]',
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, table_name),
+  FOREIGN KEY(user_id) REFERENCES users(id)
+);
 CREATE TABLE IF NOT EXISTS religions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT UNIQUE,
@@ -151,7 +160,6 @@ CREATE TABLE IF NOT EXISTS sanctuaries (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   barony_id INTEGER,
   religion_id INTEGER,
-  active INTEGER DEFAULT 0,
   FOREIGN KEY(barony_id) REFERENCES baronies(id),
   FOREIGN KEY(religion_id) REFERENCES religions(id)
 );
@@ -860,6 +868,52 @@ app.put('/api/users/:id', requireAdmin, (req, res) => {
     enforceDefaultAdmins();
     res.json({ changes: this.changes, id });
   });
+});
+
+app.get('/api/admin/table_preferences', requireAdmin, (req, res) => {
+  const userId = req.session.user.id;
+  db.all(
+    'SELECT table_name, hidden_columns FROM user_table_preferences WHERE user_id=?',
+    [userId],
+    (err, rows) => {
+      if (err) return handleError(res, err);
+      const preferences = {};
+      rows.forEach(row => {
+        let parsed = [];
+        try {
+          const raw = JSON.parse(row.hidden_columns || '[]');
+          parsed = Array.isArray(raw) ? raw.filter(col => typeof col === 'string') : [];
+        } catch (error) {
+          parsed = [];
+        }
+        preferences[row.table_name] = parsed;
+      });
+      res.json({ preferences });
+    }
+  );
+});
+
+app.put('/api/admin/table_preferences/:table', requireAdmin, (req, res) => {
+  const tableName = String(req.params.table || '').trim();
+  if (!tableName) {
+    return res.status(400).json({ error: 'Nom de table manquant.' });
+  }
+  if (!Array.isArray(req.body.hidden_columns)) {
+    return res.status(400).json({ error: 'Liste de colonnes invalide.' });
+  }
+  const hiddenColumns = req.body.hidden_columns.filter(col => typeof col === 'string');
+  const userId = req.session.user.id;
+  db.run(
+    `INSERT INTO user_table_preferences (user_id, table_name, hidden_columns)
+     VALUES (?, ?, ?)
+     ON CONFLICT(user_id, table_name)
+     DO UPDATE SET hidden_columns=excluded.hidden_columns, updated_at=CURRENT_TIMESTAMP`,
+    [userId, tableName, JSON.stringify(hiddenColumns)],
+    (err) => {
+      if (err) return handleError(res, err);
+      res.json({ ok: true, hidden_columns: hiddenColumns });
+    }
+  );
 });
 
 app.post('/api/profile', (req, res) => {
@@ -2653,7 +2707,7 @@ app.delete('/api/canonical_lands', (req, res) => {
 });
 
 // Sanctuaries API
-app.use('/api/sanctuaries', crudRoutes('sanctuaries',['barony_id','religion_id','active']));
+app.use('/api/sanctuaries', crudRoutes('sanctuaries',['barony_id','religion_id']));
 
 // Barony adjacency API
 app.get('/api/barony_connections', (req,res)=>{

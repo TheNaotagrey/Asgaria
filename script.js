@@ -47,7 +47,7 @@
   const legendDiv = document.getElementById('legend');
   const landFilters = [
     { value: '', label: 'Aucun' },
-    { value: 'religion', label: 'Religion' },
+    { value: 'religion', label: 'Religion de la Population' },
     { value: 'seigneur_religion', label: 'Religion du seigneur' },
     { value: 'sanctuary', label: 'Sanctuaire' },
     { value: 'priory', label: 'Prieuré' },
@@ -380,7 +380,7 @@
       popup.className = 'popup';
       const list = document.createElement('div');
 
-      function addRow(data = { id: null, religion_id: '', active: 0 }) {
+      function addRow(data = { id: null, religion_id: '' }) {
         const row = document.createElement('div');
         row.className = 'cost-row';
         const sel = document.createElement('select');
@@ -394,9 +394,6 @@
           sel.appendChild(opt);
         });
         sel.value = data.religion_id || '';
-        const chk = document.createElement('input');
-        chk.type = 'checkbox';
-        chk.checked = !!data.active;
 
         sel.addEventListener('change', () => {
           const rid = parseInt(sel.value, 10);
@@ -405,7 +402,7 @@
             fetch(`${API_BASE}/api/sanctuaries/${data.id}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ barony_id: currentSelectedId, religion_id: rid, active: data.active ? 1 : 0 })
+              body: JSON.stringify({ barony_id: currentSelectedId, religion_id: rid })
             }).then(() => {
               data.religion_id = rid;
               if (filterManager && filterSelect && filterSelect.value === 'sanctuary') filterManager.applyFilter('sanctuary');
@@ -414,7 +411,7 @@
             fetch(`${API_BASE}/api/sanctuaries`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ barony_id: currentSelectedId, religion_id: rid, active: data.active ? 1 : 0 })
+              body: JSON.stringify({ barony_id: currentSelectedId, religion_id: rid })
             }).then(r => r.json()).then(res => {
               data.id = res.id;
               data.religion_id = rid;
@@ -423,18 +420,6 @@
               if (filterManager && filterSelect && filterSelect.value === 'sanctuary') filterManager.applyFilter('sanctuary');
             });
           }
-        });
-
-        chk.addEventListener('change', () => {
-          data.active = chk.checked ? 1 : 0;
-          if (!data.id) return;
-          fetch(`${API_BASE}/api/sanctuaries/${data.id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ barony_id: currentSelectedId, religion_id: data.religion_id, active: data.active })
-          }).then(() => {
-            if (filterManager && filterSelect && filterSelect.value === 'sanctuary') filterManager.applyFilter('sanctuary');
-          });
         });
 
         const delBtn = document.createElement('button');
@@ -449,7 +434,6 @@
         });
 
         row.appendChild(sel);
-        row.appendChild(chk);
         row.appendChild(delBtn);
         list.appendChild(row);
       }
@@ -730,7 +714,7 @@
       sanctuaryMap = {};
       sanctuaries.forEach(s => {
         if (!sanctuaryMap[s.barony_id]) sanctuaryMap[s.barony_id] = [];
-        sanctuaryMap[s.barony_id].push({ id: s.id, religion_id: s.religion_id, active: !!s.active });
+        sanctuaryMap[s.barony_id].push({ id: s.id, religion_id: s.religion_id });
       });
       baronyAdjacency = {};
       connections.forEach(c => {

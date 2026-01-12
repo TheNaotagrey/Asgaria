@@ -2,10 +2,10 @@
   function init(core, data, options = {}) {
     const updateLegend = options.updateLegend || (() => {});
     const terrainColor = mapCore.terrainColor;
-    const playerSeigneurColor = [82, 190, 128];
-    const playerBishopColor = [46, 134, 193];
-    const npcSeigneurColor = [231, 76, 60];
-    const npcBishopColor = [155, 89, 182];
+    const playerSeigneurColor = [36, 163, 33];
+    const playerBishopColor = [255, 106, 6];
+    const npcSeigneurColor = [195, 195, 195];
+    const npcBishopColor = [127, 127, 127];
     let currentFilter = '';
     let canonicalPatterns = {};
     let colorMap = {};
@@ -278,6 +278,7 @@
           if (sancts.length > 0) {
             canonicalPatterns[id] = [];
             let hasActive = false;
+            const popReligionId = data.baronyMeta?.[id]?.religion_pop_id;
             sancts.forEach(s => {
               if (!groupColors[s.religion_id]) {
                 const col =
@@ -289,8 +290,9 @@
                 };
               }
               const col = groupColors[s.religion_id].color;
-              const repeat = s.active ? 3 : 1;
-              if (s.active) hasActive = true;
+              const isActive = popReligionId && String(popReligionId) === String(s.religion_id);
+              const repeat = isActive ? 3 : 1;
+              if (isActive) hasActive = true;
               for (let i = 0; i < repeat; i++) canonicalPatterns[id].push(col);
             });
             if (!hasActive) {

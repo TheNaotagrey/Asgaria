@@ -101,7 +101,7 @@
     }
   }
 
-  function setSeigneurLine(elem, seigneurId, label) {
+  function setSeigneurLine(elem, seigneurId, label, suffixText) {
     if (!elem) return;
     elem.innerHTML = '';
     if (seigneurId && seigneurMap[seigneurId]) {
@@ -114,9 +114,24 @@
         elem.appendChild(document.createTextNode(' '));
       }
       elem.appendChild(createSeigneurButton(seigneurId));
-    } else {
-      elem.style.display = 'none';
+      if (suffixText) {
+        elem.appendChild(document.createTextNode(` ${suffixText}`));
+      }
+      return;
     }
+    if (suffixText) {
+      elem.style.display = 'flex';
+      if (label) {
+        const labelSpan = document.createElement('span');
+        labelSpan.className = 'info-label';
+        labelSpan.textContent = label;
+        elem.appendChild(labelSpan);
+        elem.appendChild(document.createTextNode(' '));
+      }
+      elem.appendChild(document.createTextNode(suffixText));
+      return;
+    }
+    elem.style.display = 'none';
   }
 
   function createSeigneurButton(seigneurId) {
@@ -349,7 +364,7 @@
 
   const landFilters = [
     { value: '', label: 'Aucun' },
-    { value: 'religion', label: 'Religion' },
+    { value: 'religion', label: 'Religion de la Population' },
     { value: 'seigneur_religion', label: 'Religion du seigneur' },
     { value: 'sanctuary', label: 'Sanctuaire' },
     { value: 'priory', label: 'Prieuré' },
@@ -559,7 +574,12 @@
     if (baronyTitle) {
       baronyTitle.textContent = `Baronnie: ${info.name || ''} (#${info.id || ''})`;
     }
-    setSeigneurLine(infoOwnerLine, info.seigneur_id, 'Propriétaire:');
+    setSeigneurLine(
+      infoOwnerLine,
+      info.seigneur_id,
+      'Propriétaire:',
+      info.vacant ? '(vacante)' : ''
+    );
     setLabeledLine(
       infoReligionLine,
       'Religion de la population :',
@@ -575,7 +595,8 @@
     const buildings = [];
     sancts.forEach(s => {
       const rname = religionMap[s.religion_id]?.name || '';
-      buildings.push(`Sanctuaire: ${rname}${s.active ? ' (actif)' : ' (inactif)'}`);
+      const isActive = info.religion_pop_id && String(info.religion_pop_id) === String(s.religion_id);
+      buildings.push(`Sanctuaire: ${rname} (${isActive ? 'actif' : 'inactif'})`);
     });
     if (info.priory_religion_id) buildings.push(`Prieuré: ${religionMap[info.priory_religion_id]?.name || ''}`);
     if (info.church_religion_id) buildings.push(`Église: ${religionMap[info.church_religion_id]?.name || ''}`);
@@ -748,7 +769,7 @@
     sanctuaryMap = {};
     sanctuaries.forEach(s => {
       if (!sanctuaryMap[s.barony_id]) sanctuaryMap[s.barony_id] = [];
-      sanctuaryMap[s.barony_id].push({ religion_id: s.religion_id, active: !!s.active });
+      sanctuaryMap[s.barony_id].push({ religion_id: s.religion_id });
     });
     baronyAdjacency = {};
     connections.forEach(c => {

@@ -164,6 +164,8 @@ const logState = {
 };
 let logFiltersInitialized = false;
 let logAdminOptionsLoaded = false;
+const columnPreferences = {};
+let columnPreferencesLoaded = false;
 
 const spellFields = ['label','type','costs','effects','description'];
 const spellLabels = {
@@ -184,6 +186,99 @@ async function getData(key, url){
     dataCache[key] = await fetchJSON(url);
   }
   return dataCache[key];
+}
+
+async function loadColumnPreferences() {
+  try {
+    const resp = await fetchJSON('/api/admin/table_preferences');
+    if (resp && resp.preferences && typeof resp.preferences === 'object') {
+      Object.entries(resp.preferences).forEach(([tableKey, hidden]) => {
+        columnPreferences[tableKey] = Array.isArray(hidden) ? hidden.filter(col => typeof col === 'string') : [];
+      });
+    }
+  } catch (error) {
+    console.warn('Impossible de charger les préférences de colonnes.', error);
+  } finally {
+    columnPreferencesLoaded = true;
+  }
+}
+
+function getHiddenColumns(tableKey) {
+  if (!tableKey) return [];
+  return columnPreferences[tableKey] || [];
+}
+
+async function saveHiddenColumns(tableKey, hiddenColumns) {
+  if (!tableKey) return false;
+  const resp = await fetchJSON(`/api/admin/table_preferences/${encodeURIComponent(tableKey)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ hidden_columns: hiddenColumns })
+  });
+  if (resp && resp.error) {
+    alert(`Erreur : ${resp.error}`);
+    return false;
+  }
+  columnPreferences[tableKey] = hiddenColumns;
+  return true;
+}
+
+let columnPreferencesDialogReady = false;
+let activeColumnPreferences = null;
+
+function ensureColumnPreferencesDialog() {
+  if (columnPreferencesDialogReady) return;
+  const dialog = document.getElementById('columnPreferencesDialog');
+  if (!dialog) return;
+  const cancelBtn = document.getElementById('columnPreferencesCancel');
+  const form = document.getElementById('columnPreferencesForm');
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', () => dialog.close());
+  }
+  if (form) {
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (!activeColumnPreferences) return;
+      const content = dialog.querySelector('.column-preferences-content');
+      const hiddenColumns = [];
+      content.querySelectorAll('input[type="checkbox"]').forEach(input => {
+        if (!input.checked) hiddenColumns.push(input.value);
+      });
+      const shouldClose = await activeColumnPreferences.onSave(hiddenColumns);
+      if (shouldClose !== false) dialog.close();
+    });
+  }
+  columnPreferencesDialogReady = true;
+}
+
+function openColumnPreferencesDialog({ tableKey, tableLabel, columns, hiddenColumns, onSave }) {
+  ensureColumnPreferencesDialog();
+  const dialog = document.getElementById('columnPreferencesDialog');
+  if (!dialog) return;
+  const title = dialog.querySelector('h3');
+  const content = dialog.querySelector('.column-preferences-content');
+  const label = tableLabel || tableKey || '';
+  if (title) {
+    title.textContent = label ? `Colonnes visibles (${label})` : 'Colonnes visibles';
+  }
+  if (content) {
+    content.innerHTML = '';
+    columns.forEach(col => {
+      const item = document.createElement('label');
+      item.className = 'column-preferences-item';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.value = col.key;
+      checkbox.checked = !hiddenColumns.has(col.key);
+      const span = document.createElement('span');
+      span.textContent = col.label || col.key;
+      item.appendChild(checkbox);
+      item.appendChild(span);
+      content.appendChild(item);
+    });
+  }
+  activeColumnPreferences = { tableKey, onSave };
+  dialog.showModal();
 }
 
 function showSaveIndicator(target) {
@@ -845,6 +940,13 @@ function createSanctuaryCell(item, religionsList){
   const btn = document.createElement('button');
   btn.type = 'button';
 
+  const isSanctuaryActive = (sanctuary) => {
+    if (!item.religion_pop_id || !sanctuary.religion_id) return false;
+    return String(item.religion_pop_id) === String(sanctuary.religion_id);
+  };
+
+  const statusLabel = (sanctuary) => (isSanctuaryActive(sanctuary) ? 'actif' : 'inactif');
+
   function updateSummary(){
     const sanctuaries = sanctuaryMap[item.id] || [];
     btn.textContent = `Sanctuaires (${sanctuaries.length})`;
@@ -855,7 +957,7 @@ function createSanctuaryCell(item, religionsList){
     const labels = sanctuaries.map(s => {
       const rel = religionsList.find(r => String(r.id) === String(s.religion_id));
       const name = rel ? rel.name : s.religion_id;
-      return `${name}${s.active ? ' (actif)' : ''}`;
+      return `${name} (${statusLabel(s)})`;
     });
     const short = labels.slice(0, 3);
     if(labels.length > 3) short.push('…');
@@ -869,7 +971,7 @@ function createSanctuaryCell(item, religionsList){
     popup.className = 'popup';
     const list = document.createElement('div');
 
-    function addRow(data = { id:null, religion_id:'', active:0 }){
+    function addRow(data = { id:null, religion_id:'' }){
       const row = document.createElement('div');
       row.className = 'cost-row';
 
@@ -885,9 +987,12 @@ function createSanctuaryCell(item, religionsList){
         sel.appendChild(op);
       });
 
-      const chk = document.createElement('input');
-      chk.type = 'checkbox';
-      chk.checked = !!data.active;
+      const status = document.createElement('span');
+      status.className = 'sanctuary-status';
+      const updateStatus = () => {
+        status.textContent = statusLabel({ religion_id: sel.value });
+      };
+      updateStatus();
 
       sel.addEventListener('change', async ()=>{
         const rid = parseInt(sel.value, 10);
@@ -896,32 +1001,21 @@ function createSanctuaryCell(item, religionsList){
           await fetchJSON(`/api/sanctuaries/${data.id}`, {
             method:'PUT',
             headers:{ 'Content-Type':'application/json' },
-            body:JSON.stringify({ barony_id:item.id, religion_id: rid, active:data.active ? 1 : 0 })
+            body:JSON.stringify({ barony_id:item.id, religion_id: rid })
           });
           data.religion_id = rid;
         } else {
           const res = await fetchJSON('/api/sanctuaries', {
             method:'POST',
             headers:{ 'Content-Type':'application/json' },
-            body:JSON.stringify({ barony_id:item.id, religion_id: rid, active:data.active ? 1 : 0 })
+            body:JSON.stringify({ barony_id:item.id, religion_id: rid })
           });
           data.id = res.id;
           data.religion_id = rid;
           if(!sanctuaryMap[item.id]) sanctuaryMap[item.id] = [];
           sanctuaryMap[item.id].push(data);
         }
-        updateSummary();
-        showSaveIndicator(container);
-      });
-
-      chk.addEventListener('change', async ()=>{
-        data.active = chk.checked ? 1 : 0;
-        if(!data.id) return;
-        await fetchJSON(`/api/sanctuaries/${data.id}`, {
-          method:'PUT',
-          headers:{ 'Content-Type':'application/json' },
-          body:JSON.stringify({ barony_id:item.id, religion_id:data.religion_id, active:data.active })
-        });
+        updateStatus();
         updateSummary();
         showSaveIndicator(container);
       });
@@ -940,7 +1034,7 @@ function createSanctuaryCell(item, religionsList){
       });
 
       row.appendChild(sel);
-      row.appendChild(chk);
+      row.appendChild(status);
       row.appendChild(delBtn);
       list.appendChild(row);
     }
@@ -1926,6 +2020,13 @@ function renderTable(container, rows, opts){
   let sortDir = 'asc';
 
   const extraColumns = opts.extraColumns || [];
+  const normalizedExtraColumns = extraColumns.map((col, index) => ({
+    ...col,
+    key: col.key || `extra_${index}`,
+    label: col.label || `Colonne ${index + 1}`
+  }));
+  const tableKey = opts.tableKey || opts.endpoint || container.id || '';
+  let hiddenColumns = new Set(getHiddenColumns(tableKey));
   const allowAdd = opts.allowAdd !== false;
   const relationWatch = opts.relationWatch || [];
 
@@ -1952,6 +2053,12 @@ function renderTable(container, rows, opts){
       key: f
     }))
   );
+  const columnMeta = [];
+  const applyHiddenToCell = (cell, key) => {
+    if (hiddenColumns.has(key)) {
+      cell.style.display = 'none';
+    }
+  };
   headers.forEach(h=>{
     const th = document.createElement('th');
     th.dataset.key = h.key;
@@ -1967,13 +2074,38 @@ function renderTable(container, rows, opts){
       renderBody();
     });
     headRow.appendChild(th);
+    columnMeta.push({ key: h.key, label: h.label, th, index: columnMeta.length });
   });
-  extraColumns.forEach(col => {
+  normalizedExtraColumns.forEach(col => {
     const th = document.createElement('th');
     th.textContent = col.label || '';
     headRow.appendChild(th);
+    columnMeta.push({ key: col.key, label: col.label || col.key, th, index: columnMeta.length });
   });
-  headRow.appendChild(document.createElement('th'));
+  const actionsHeader = document.createElement('th');
+  const columnToggleBtn = document.createElement('button');
+  columnToggleBtn.type = 'button';
+  columnToggleBtn.className = 'column-toggle-btn';
+  columnToggleBtn.textContent = '...';
+  columnToggleBtn.title = 'Configurer les colonnes';
+  columnToggleBtn.addEventListener('click', () => {
+    if (!tableKey) return;
+    openColumnPreferencesDialog({
+      tableKey,
+      tableLabel: opts.tableLabel,
+      columns: columnMeta,
+      hiddenColumns,
+      onSave: async (newHiddenColumns) => {
+        const saved = await saveHiddenColumns(tableKey, newHiddenColumns);
+        if (!saved) return false;
+        hiddenColumns = new Set(newHiddenColumns);
+        applyColumnVisibility();
+        return true;
+      }
+    });
+  });
+  actionsHeader.appendChild(columnToggleBtn);
+  headRow.appendChild(actionsHeader);
   thead.appendChild(headRow);
   const updateHeaders = () => {
     Array.from(headRow.children).forEach(th => {
@@ -1987,6 +2119,17 @@ function renderTable(container, rows, opts){
   };
   table.appendChild(thead);
   const tbody = document.createElement('tbody');
+
+  const applyColumnVisibility = () => {
+    columnMeta.forEach(({ key, th, index }) => {
+      const hidden = hiddenColumns.has(key);
+      if (th) th.style.display = hidden ? 'none' : '';
+      table.querySelectorAll('tbody tr').forEach(tr => {
+        const cell = tr.children[index];
+        if (cell) cell.style.display = hidden ? 'none' : '';
+      });
+    });
+  };
 
   const compareRows = (a,b)=>{
     let x = a[sortCol];
@@ -2236,16 +2379,19 @@ function renderTable(container, rows, opts){
     const tr = document.createElement('tr');
     let td = document.createElement('td');
     td.textContent = item.id;
+    applyHiddenToCell(td, 'id');
     tr.appendChild(td);
     opts.fields.forEach(f=>{
       td = document.createElement('td');
       td.appendChild(makeInput(item[f], f, item));
+      applyHiddenToCell(td, f);
       tr.appendChild(td);
     });
-    extraColumns.forEach(col => {
+    normalizedExtraColumns.forEach(col => {
       const tdExtra = document.createElement('td');
       const content = col.render ? col.render(item, tr) : document.createTextNode('');
       tdExtra.appendChild(content);
+      applyHiddenToCell(tdExtra, col.key);
       tr.appendChild(tdExtra);
     });
     td = document.createElement('td');
@@ -2298,18 +2444,22 @@ function renderTable(container, rows, opts){
 
     const appendAddRow = ()=>{
       const addRow = document.createElement('tr');
-      addRow.appendChild(document.createElement('td'));
+      const idCell = document.createElement('td');
+      applyHiddenToCell(idCell, 'id');
+      addRow.appendChild(idCell);
       const addInputs = {};
       opts.fields.forEach(f=>{
         const td = document.createElement('td');
         const inp = makeInput('', f, null);
         addInputs[f]=inp;
         td.appendChild(inp);
+        applyHiddenToCell(td, f);
         addRow.appendChild(td);
       });
-      extraColumns.forEach(()=>{
+      normalizedExtraColumns.forEach(col=>{
         const td = document.createElement('td');
         td.textContent = '';
+        applyHiddenToCell(td, col.key);
         addRow.appendChild(td);
       });
       const addTd = document.createElement('td');
@@ -2370,6 +2520,7 @@ function renderTable(container, rows, opts){
       tbody.appendChild(frag);
       if (allowAdd) appendAddRow();
     }
+    applyColumnVisibility();
   };
 
   table.appendChild(tbody);
@@ -2437,12 +2588,13 @@ async function loadSeigneurs(){
   const usersSelect = usersSelectRaw.map(u=>({ id:u.id, name:u.email }));
   const assignedUserIds = new Set(seigneurs.filter(s=>s.user_id).map(s=>s.user_id));
   const userSelectFn = (item) => usersSelect.filter(u=>!assignedUserIds.has(u.id) || (item && u.id===item.user_id));
+  const overlordSelectFn = (item) => seigneursSelect.filter(s => !item || String(s.id) !== String(item.id));
   const seigneursById = seigneurs.slice().sort((a,b)=>a.id - b.id);
   const seigneurFields = ['name','user_id','religion_id','overlord_id','player','bishop'];
   renderTable(document.getElementById('tableSeigneurs'), seigneursById, {
     endpoint:'seigneurs',
     fields:seigneurFields,
-    selects:{user_id:userSelectFn, religion_id:religionsSelect, overlord_id:seigneursSelect, player:yesNoSelect, bishop:yesNoSelect},
+    selects:{user_id:userSelectFn, religion_id:religionsSelect, overlord_id:overlordSelectFn, player:yesNoSelect, bishop:yesNoSelect},
     labels:{name:'Nom', user_id:'Utilisateur', religion_id:'Religion', overlord_id:'Suzerain', player:'Joueur', bishop:'Évêque'},
     booleanFields:['player','bishop'],
     relationWatch:['overlord_id'],
@@ -2656,7 +2808,9 @@ async function loadViscounties(){
   ]);
   const seigneursSelect = sortByName(seigneurs);
   const viscountiesById = viscounties.slice().sort((a,b)=>a.id - b.id);
-  const baroniesByName = sortByName(baronies);
+  const baroniesByName = baronies
+    .slice()
+    .sort((a,b)=>String(a.name || '').localeCompare(String(b.name || ''), 'fr', { sensitivity:'base' }));
   const baronyFieldList = baronyFields;
   renderTable(document.getElementById('tableViscounties'), viscountiesById, {
     endpoint:'viscounties',
@@ -2741,7 +2895,7 @@ async function loadBaronies(){
   sanctuaryMap = {};
   sanctuaries.forEach(s => {
     if (!sanctuaryMap[s.barony_id]) sanctuaryMap[s.barony_id] = [];
-    sanctuaryMap[s.barony_id].push({ id:s.id, religion_id:s.religion_id, active:!!s.active });
+    sanctuaryMap[s.barony_id].push({ id:s.id, religion_id:s.religion_id });
   });
   const baroniesById = baronies.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableBaronies'), baroniesById, {
@@ -2895,7 +3049,10 @@ const tabLoaders = {
   logs: () => loadLogs(1),
 };
 
-document.addEventListener('DOMContentLoaded', ()=>{
+async function initAdminPage() {
+  if (!columnPreferencesLoaded) {
+    await loadColumnPreferences();
+  }
   const buttons = document.querySelectorAll('.tab-btn');
   const panels = document.querySelectorAll('.tab-panel');
   buttons.forEach(btn=>{
@@ -2920,4 +3077,8 @@ document.addEventListener('DOMContentLoaded', ()=>{
     showLoading(panel,true);
     tabLoaders[first.dataset.tab]().finally(()=>showLoading(panel,false));
   }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  initAdminPage();
 });
