@@ -2057,6 +2057,7 @@ async function initTradeMap() {
 async function updateTradeMap(baronyId, routes) {
   await initTradeMap();
   if (!tradeMapCore) return;
+  const normalizedRoutes = Array.isArray(routes) ? routes : [];
   const bg = [...mapCore.terrainColor, 100];
   const landColor = [128, 0, 128, 100];
   const seaColor = [0, 128, 255, 100];
@@ -2068,7 +2069,7 @@ async function updateTradeMap(baronyId, routes) {
   });
   if (baronyId) {
     const landSet = new Set((tradeAdjacency[baronyId] || []).map(n => n.id));
-    (routes || []).forEach(r => landSet.add(r.id));
+    normalizedRoutes.forEach(r => landSet.add(r.id));
     const seaSet = computeSeaReachable(baronyId);
     landSet.forEach(id => {
       colorMap[String(id)] = [...landColor];
@@ -2082,7 +2083,7 @@ async function updateTradeMap(baronyId, routes) {
       }
     });
   }
-  (routes || []).forEach(r => {
+  normalizedRoutes.forEach(r => {
     if (!colorMap[String(r.id)]) colorMap[String(r.id)] = [...landColor];
   });
   if (baronyId) {
@@ -2244,15 +2245,16 @@ async function renderTradeRoutes(baronyId) {
     }
     const res = await fetch(`/api/trade_partners?barony_id=${baronyId}`);
     const routes = res.ok ? await res.json() : [];
-    currentTradeRoutes = routes;
-    await updateTradeMap(baronyId, routes);
-    if (!routes.length) {
+    const normalizedRoutes = Array.isArray(routes) ? routes : [];
+    currentTradeRoutes = normalizedRoutes;
+    await updateTradeMap(baronyId, normalizedRoutes);
+    if (!normalizedRoutes.length) {
       container.textContent = 'Aucune route commerciale';
       return;
     }
     const { landTransactions = 0, landTxMax = 0 } = gameState;
     const limitReached = landTxMax !== 0 && landTransactions >= landTxMax;
-    const rows = routes
+    const rows = normalizedRoutes
       .map(r =>
         `<tr><td>${r.id}</td><td>${r.name || ''}</td><td>${r.seigneur_name || ''}</td><td>${r.duchy_name || ''}</td><td><button class="trade-btn control-btn" data-id="${r.id}"${limitReached ? ' disabled' : ''}>Commercer</button></td></tr>`
       )
