@@ -86,6 +86,15 @@
       <select id="editCounty"><option value="">Aucun</option></select>
       <label>Terres canoniques&nbsp;:</label>
       <button id="editCanonical" class="control-btn">Gérer</button>
+      <label>Connexions&nbsp;:</label>
+      <div id="connectionList" class="connection-list"></div>
+      <div class="connection-actions">
+        <label for="connectionTargetId">Baronnie cible&nbsp;:</label>
+        <input type="number" id="connectionTargetId" min="1" placeholder="ID">
+        <label for="connectionDistance">Distance&nbsp;:</label>
+        <input type="number" id="connectionDistance" min="1" value="1">
+        <button id="addConnection" class="control-btn">Ajouter la connexion</button>
+      </div>
     </aside>
     <aside id="seaInfoPanel" class="info-panel" style="display: none;">
       <h2>Zone maritime sélectionnée</h2>
@@ -96,6 +105,15 @@
       <label for="seaEditSeigneur">Seigneur maritime&nbsp;:</label>
       <select id="seaEditSeigneur"><option value="">Aucun</option></select>
       <button id="editSeaBaronies" class="control-btn">Associer baronnies</button>
+      <label>Connexions maritimes&nbsp;:</label>
+      <div id="seaConnectionList" class="connection-list"></div>
+      <div class="connection-actions">
+        <label for="seaConnectionTargetId">Zone maritime cible&nbsp;:</label>
+        <input type="number" id="seaConnectionTargetId" min="1" placeholder="ID">
+        <label for="seaConnectionDistance">Distance&nbsp;:</label>
+        <input type="number" id="seaConnectionDistance" min="1" value="1">
+        <button id="addSeaConnection" class="control-btn">Ajouter la connexion</button>
+      </div>
     </aside>
     <div id="legend" class="legend" style="display:none;"></div>
   </main>

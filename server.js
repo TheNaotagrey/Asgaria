@@ -173,6 +173,7 @@ CREATE TABLE IF NOT EXISTS canonical_lands (
 CREATE TABLE IF NOT EXISTS barony_connections (
   barony_id_1 INTEGER NOT NULL,
   barony_id_2 INTEGER NOT NULL,
+  distance INTEGER DEFAULT 1,
   CHECK (barony_id_1 < barony_id_2),
   PRIMARY KEY(barony_id_1, barony_id_2),
   FOREIGN KEY(barony_id_1) REFERENCES baronies(id),
@@ -199,6 +200,7 @@ CREATE TABLE IF NOT EXISTS maritime_zone_pixels (
 CREATE TABLE IF NOT EXISTS maritime_zone_connections (
   zone_id_1 INTEGER NOT NULL,
   zone_id_2 INTEGER NOT NULL,
+  distance INTEGER DEFAULT 1,
   CHECK (zone_id_1 < zone_id_2),
   PRIMARY KEY(zone_id_1, zone_id_2),
   FOREIGN KEY(zone_id_1) REFERENCES maritime_zones(id),
@@ -555,6 +557,18 @@ db.exec(initSql, () => {
     if (err || !rows) return;
     if (!rows.some(r => r.name === 'seigneur_id')) {
       db.run('ALTER TABLE maritime_zones ADD COLUMN seigneur_id INTEGER');
+    }
+  });
+  db.all("PRAGMA table_info(barony_connections)", (err, rows) => {
+    if (err || !rows) return;
+    if (!rows.some(r => r.name === 'distance')) {
+      db.run('ALTER TABLE barony_connections ADD COLUMN distance INTEGER DEFAULT 1');
+    }
+  });
+  db.all("PRAGMA table_info(maritime_zone_connections)", (err, rows) => {
+    if (err || !rows) return;
+    if (!rows.some(r => r.name === 'distance')) {
+      db.run('ALTER TABLE maritime_zone_connections ADD COLUMN distance INTEGER DEFAULT 1');
     }
   });
   db.all("PRAGMA table_info(canonical_lands)", (err, rows) => {
@@ -2714,19 +2728,45 @@ app.get('/api/barony_connections', (req,res)=>{
   list('barony_connections')(req,res);
 });
 app.post('/api/barony_connections', requireAdmin, (req,res)=>{
-  let { barony_id_1, barony_id_2 } = req.body;
+  let { barony_id_1, barony_id_2, distance } = req.body;
   barony_id_1 = parseInt(barony_id_1);
   barony_id_2 = parseInt(barony_id_2);
+  distance = parseInt(distance, 10);
+  if (!distance || distance < 1) distance = 1;
   if(!barony_id_1 || !barony_id_2 || barony_id_1 === barony_id_2){
     return res.status(400).json({error:'Invalid barony ids'});
   }
   const [id1,id2] = barony_id_1 < barony_id_2 ? [barony_id_1, barony_id_2] : [barony_id_2, barony_id_1];
-  db.run('INSERT OR IGNORE INTO barony_connections (barony_id_1, barony_id_2) VALUES (?,?)',[id1,id2],function(err){
+  db.run('INSERT OR IGNORE INTO barony_connections (barony_id_1, barony_id_2, distance) VALUES (?,?,?)',[id1,id2,distance],function(err){
     if(err) return handleError(res, err);
     if (this.changes > 0) {
-      recordChange(req, { table: 'barony_connections', action: 'create', before: null, after: { barony_id_1: id1, barony_id_2: id2 }, key: `${id1}-${id2}` });
+      recordChange(req, { table: 'barony_connections', action: 'create', before: null, after: { barony_id_1: id1, barony_id_2: id2, distance }, key: `${id1}-${id2}` });
     }
     res.json({added: this.changes});
+  });
+});
+app.put('/api/barony_connections', requireAdmin, (req,res)=>{
+  let { barony_id_1, barony_id_2, distance } = req.body;
+  barony_id_1 = parseInt(barony_id_1);
+  barony_id_2 = parseInt(barony_id_2);
+  distance = parseInt(distance, 10);
+  if (!distance || distance < 1) {
+    return res.status(400).json({error:'Invalid distance'});
+  }
+  if(!barony_id_1 || !barony_id_2 || barony_id_1 === barony_id_2){
+    return res.status(400).json({error:'Invalid barony ids'});
+  }
+  const [id1,id2] = barony_id_1 < barony_id_2 ? [barony_id_1, barony_id_2] : [barony_id_2, barony_id_1];
+  db.get('SELECT * FROM barony_connections WHERE barony_id_1=? AND barony_id_2=?', [id1,id2], (err, row) => {
+    if (err) return handleError(res, err);
+    if (!row) return res.status(404).json({error:'Connexion introuvable'});
+    db.run('UPDATE barony_connections SET distance=? WHERE barony_id_1=? AND barony_id_2=?', [distance, id1, id2], function(err2){
+      if (err2) return handleError(res, err2);
+      if (this.changes > 0) {
+        recordChange(req, { table: 'barony_connections', action: 'update', before: row, after: { ...row, distance }, key: `${id1}-${id2}` });
+      }
+      res.json({updated: this.changes});
+    });
   });
 });
 app.delete('/api/barony_connections', requireAdmin, (req,res)=>{
@@ -3067,12 +3107,13 @@ app.post('/api/trade_routes/build', (req, res) => {
       db.get('SELECT 1 FROM trade_routes WHERE barony_id_1=? AND barony_id_2=?', [id1, id2], (err3, ex) => {
         if (err3) return handleError(res, err3);
         if (ex) return res.status(400).json({ error: 'Route existante' });
-        db.all('SELECT barony_id_1, barony_id_2 FROM barony_connections', [], (err4, rows) => {
+        db.all('SELECT barony_id_1, barony_id_2, distance FROM barony_connections', [], (err4, rows) => {
           if (err4) return handleError(res, err4);
           const adj = {};
           rows.forEach(r => {
-            (adj[r.barony_id_1] = adj[r.barony_id_1] || []).push(r.barony_id_2);
-            (adj[r.barony_id_2] = adj[r.barony_id_2] || []).push(r.barony_id_1);
+            const dist = r.distance || 1;
+            (adj[r.barony_id_1] = adj[r.barony_id_1] || []).push({ id: r.barony_id_2, distance: dist });
+            (adj[r.barony_id_2] = adj[r.barony_id_2] || []).push({ id: r.barony_id_1, distance: dist });
           });
           const { distanceMap } = breadthFirst(startId, cur => adj[cur] || []);
           const dist = distanceMap[targetId];
@@ -3107,19 +3148,45 @@ app.use('/api/maritime_zones', maritimeZonesRouter);
 // Maritime zone adjacency
 app.get('/api/maritime_zone_connections', (req,res)=>{ list('maritime_zone_connections')(req,res); });
 app.post('/api/maritime_zone_connections', requireAdmin, (req,res)=>{
-  let { zone_id_1, zone_id_2 } = req.body;
+  let { zone_id_1, zone_id_2, distance } = req.body;
   zone_id_1 = parseInt(zone_id_1);
   zone_id_2 = parseInt(zone_id_2);
+  distance = parseInt(distance, 10);
+  if (!distance || distance < 1) distance = 1;
   if(!zone_id_1 || !zone_id_2 || zone_id_1 === zone_id_2){
     return res.status(400).json({error:'Invalid maritime zone ids'});
   }
   const [id1,id2] = zone_id_1 < zone_id_2 ? [zone_id_1, zone_id_2] : [zone_id_2, zone_id_1];
-  db.run('INSERT OR IGNORE INTO maritime_zone_connections (zone_id_1, zone_id_2) VALUES (?,?)',[id1,id2],function(err){
+  db.run('INSERT OR IGNORE INTO maritime_zone_connections (zone_id_1, zone_id_2, distance) VALUES (?,?,?)',[id1,id2,distance],function(err){
     if(err) return handleError(res, err);
     if (this.changes > 0) {
-      recordChange(req, { table: 'maritime_zone_connections', action: 'create', before: null, after: { zone_id_1: id1, zone_id_2: id2 }, key: `${id1}-${id2}` });
+      recordChange(req, { table: 'maritime_zone_connections', action: 'create', before: null, after: { zone_id_1: id1, zone_id_2: id2, distance }, key: `${id1}-${id2}` });
     }
     res.json({added: this.changes});
+  });
+});
+app.put('/api/maritime_zone_connections', requireAdmin, (req,res)=>{
+  let { zone_id_1, zone_id_2, distance } = req.body;
+  zone_id_1 = parseInt(zone_id_1);
+  zone_id_2 = parseInt(zone_id_2);
+  distance = parseInt(distance, 10);
+  if (!distance || distance < 1) {
+    return res.status(400).json({error:'Invalid distance'});
+  }
+  if(!zone_id_1 || !zone_id_2 || zone_id_1 === zone_id_2){
+    return res.status(400).json({error:'Invalid maritime zone ids'});
+  }
+  const [id1,id2] = zone_id_1 < zone_id_2 ? [zone_id_1, zone_id_2] : [zone_id_2, zone_id_1];
+  db.get('SELECT * FROM maritime_zone_connections WHERE zone_id_1=? AND zone_id_2=?', [id1,id2], (err, row) => {
+    if (err) return handleError(res, err);
+    if (!row) return res.status(404).json({error:'Connexion introuvable'});
+    db.run('UPDATE maritime_zone_connections SET distance=? WHERE zone_id_1=? AND zone_id_2=?', [distance, id1, id2], function(err2){
+      if (err2) return handleError(res, err2);
+      if (this.changes > 0) {
+        recordChange(req, { table: 'maritime_zone_connections', action: 'update', before: row, after: { ...row, distance }, key: `${id1}-${id2}` });
+      }
+      res.json({updated: this.changes});
+    });
   });
 });
 app.delete('/api/maritime_zone_connections', requireAdmin, (req,res)=>{
