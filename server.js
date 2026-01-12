@@ -546,15 +546,30 @@ function ensureTradeRoutePaths() {
   });
 }
 
-const DEFAULT_ADMIN_RETRY_DELAY_MS = 200;
-const DEFAULT_ADMIN_MAX_RETRIES = 5;
+const DEFAULT_ADMIN_RETRY_DELAY_MS = 300;
+const DEFAULT_ADMIN_MAX_RETRIES = 15;
+const DEFAULT_ADMIN_RETRY_BACKOFF_MS = 2000;
+let defaultAdminInFlight = false;
 
 function enforceDefaultAdmins(callback, attempt = 0) {
+  if (defaultAdminInFlight) {
+    if (callback) callback(null);
+    return;
+  }
+  defaultAdminInFlight = true;
   db.run('UPDATE users SET is_admin=1 WHERE id<=3', (err) => {
-    if (err && err.code === 'SQLITE_BUSY' && attempt < DEFAULT_ADMIN_MAX_RETRIES) {
-      setTimeout(() => enforceDefaultAdmins(callback, attempt + 1), DEFAULT_ADMIN_RETRY_DELAY_MS);
+    if (err && err.code === 'SQLITE_BUSY') {
+      defaultAdminInFlight = false;
+      if (attempt < DEFAULT_ADMIN_MAX_RETRIES) {
+        const delay = DEFAULT_ADMIN_RETRY_DELAY_MS * (attempt + 1);
+        setTimeout(() => enforceDefaultAdmins(callback, attempt + 1), delay);
+        return;
+      }
+      logger.warn('Failed to ensure default admin users (base de données verrouillée), nouvelle tentative planifiée.');
+      setTimeout(() => enforceDefaultAdmins(callback, 0), DEFAULT_ADMIN_RETRY_BACKOFF_MS);
       return;
     }
+    defaultAdminInFlight = false;
     if (err) {
       logger.error('Failed to ensure default admin users', err);
     }
