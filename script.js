@@ -47,7 +47,7 @@
   const legendDiv = document.getElementById('legend');
   const landFilters = [
     { value: '', label: 'Aucun' },
-    { value: 'religion', label: 'Religion' },
+    { value: 'religion', label: 'Religion de la Population' },
     { value: 'seigneur_religion', label: 'Religion du seigneur' },
     { value: 'sanctuary', label: 'Sanctuaire' },
     { value: 'priory', label: 'Prieuré' },
