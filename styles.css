@@ -14,6 +14,7 @@ main {
   flex: 1;
   display: flex;
   position: relative;
+  min-height: 0;
 }
 
 .gestion-main {
@@ -626,6 +627,17 @@ th.multi-col {
 }
 .tab-panel.active {
   display: block;
+}
+.tab-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.tab-panels {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
 }
 .admin-table th.sortable {
   cursor: pointer;
