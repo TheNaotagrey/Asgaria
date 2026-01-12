@@ -18,6 +18,7 @@ const { StorageEffect, ResourceProductionEffect, BuildingProductionEffect, Infra
 const { breadthFirst } = require('./src/bfs');
 const app = express();
 const db = new sqlite3.Database('asgaria.db');
+db.configure('busyTimeout', 5000);
 const gunzip = promisify(zlib.gunzip);
 
 app.set('trust proxy', 1);
@@ -545,8 +546,15 @@ function ensureTradeRoutePaths() {
   });
 }
 
-function enforceDefaultAdmins(callback) {
+const DEFAULT_ADMIN_RETRY_DELAY_MS = 200;
+const DEFAULT_ADMIN_MAX_RETRIES = 5;
+
+function enforceDefaultAdmins(callback, attempt = 0) {
   db.run('UPDATE users SET is_admin=1 WHERE id<=3', (err) => {
+    if (err && err.code === 'SQLITE_BUSY' && attempt < DEFAULT_ADMIN_MAX_RETRIES) {
+      setTimeout(() => enforceDefaultAdmins(callback, attempt + 1), DEFAULT_ADMIN_RETRY_DELAY_MS);
+      return;
+    }
     if (err) {
       logger.error('Failed to ensure default admin users', err);
     }
