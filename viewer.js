@@ -923,7 +923,7 @@
       baronyAdjacency[c.barony_id_1].push({ id: c.barony_id_2, distance: dist });
       baronyAdjacency[c.barony_id_2].push({ id: c.barony_id_1, distance: dist });
     });
-    tradeRoutes = routes || [];
+    tradeRoutes = Array.isArray(routes) ? routes : [];
     buildTradeRouteMaps(tradeRoutes);
     const baronyIds = baronies.map(b => b.id);
     baronyPixels = pixelData;
