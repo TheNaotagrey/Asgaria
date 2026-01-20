@@ -24,7 +24,7 @@ main {
 
 /* En-tête avec contrôles et outils */
 .app-header {
-  background-color: #0b3d91;
+  background-color: #D13521;
   color: white;
   padding: 10px;
   display: flex;
@@ -681,6 +681,9 @@ th.multi-col {
   border-radius: 4px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
   font-size: 0.9rem;
+  max-height: 40vh;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 .legend-item {
   display: flex;

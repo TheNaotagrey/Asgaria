@@ -515,7 +515,6 @@
     { value: 'kingdom_defacto', label: 'Royaume de facto' },
     { value: 'empire', label: 'Empire de jure' },
     { value: 'empire_defacto', label: 'Empire de facto' },
-    { value: 'trade_routes', label: 'Chemins commerciaux' },
     { value: 'distance', label: 'Distance' },
     { value: 'occupation', label: 'Occupation' }
   ];
@@ -702,13 +701,13 @@
     if (infoPanel) infoPanel.style.display = 'block';
     if (seaInfoPanel) seaInfoPanel.style.display = 'none';
     if (baronyTitle) {
-      baronyTitle.textContent = `Baronnie: ${info.name || ''} (#${info.id || ''})`;
+      const vacantLabel = info.vacant ? ' (vacante)' : '';
+      baronyTitle.textContent = `Baronnie: ${info.name || ''}${vacantLabel} (#${info.id || ''})`;
     }
     setSeigneurLine(
       infoOwnerLine,
       info.seigneur_id,
-      'Propriétaire:',
-      info.vacant ? '(vacante)' : ''
+      'Propriétaire:'
     );
     const isTradeRouteFilter = filterSelect && filterSelect.value === 'trade_routes';
     if (isTradeRouteFilter) {
