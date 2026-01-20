@@ -25,6 +25,7 @@
         <button class="tab-btn" data-tab="counties">Comtés</button>
         <button class="tab-btn" data-tab="viscounties">Vicomtés</button>
         <button class="tab-btn" data-tab="baronies">Baronnies</button>
+        <button class="tab-btn" data-tab="trade-routes">Routes commerciales</button>
         <button class="tab-btn" data-tab="maritime">Zones maritimes</button>
         <button class="tab-btn" data-tab="seigneuries">Seigneuries</button>
         <button class="tab-btn" data-tab="batiments">Bâtiments</button>
@@ -78,6 +79,10 @@
         <div id="tab-baronies" class="tab-panel">
           <div class="tab-loading" style="display:none">Chargement...</div>
           <div id="tableBaronies"></div>
+        </div>
+        <div id="tab-trade-routes" class="tab-panel">
+          <div class="tab-loading" style="display:none">Chargement...</div>
+          <div id="tradeRoutesPanel"></div>
         </div>
         <div id="tab-maritime" class="tab-panel">
           <div class="tab-loading" style="display:none">Chargement...</div>
@@ -175,6 +180,29 @@
       <div class="dialog-buttons">
         <button type="button" id="columnPreferencesCancel">Annuler</button>
         <button type="submit" id="columnPreferencesSave">Enregistrer</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="tradeRouteDialog" class="confirm-dialog trade-route-dialog">
+    <form id="tradeRouteForm" method="dialog">
+      <h3 id="tradeRouteDialogTitle">Route commerciale</h3>
+      <div class="trade-route-form">
+        <div class="trade-route-fields">
+          <label for="tradeRouteBarony1">Baronnie 1</label>
+          <select id="tradeRouteBarony1"></select>
+          <label for="tradeRouteBarony2">Baronnie 2</label>
+          <select id="tradeRouteBarony2"></select>
+        </div>
+        <div class="trade-route-path">
+          <div class="trade-route-endpoint" id="tradeRouteStartLabel"></div>
+          <div id="tradeRouteSteps" class="trade-route-steps"></div>
+          <div class="trade-route-endpoint" id="tradeRouteEndLabel"></div>
+        </div>
+        <div id="tradeRouteHint" class="trade-route-hint"></div>
+      </div>
+      <div class="dialog-buttons">
+        <button type="button" id="tradeRouteCancel">Annuler</button>
+        <button type="submit" id="tradeRouteSave">Enregistrer</button>
       </div>
     </form>
   </dialog>

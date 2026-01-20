@@ -6,9 +6,13 @@
     const playerBishopColor = [255, 106, 6];
     const npcSeigneurColor = [195, 195, 195];
     const npcBishopColor = [127, 127, 127];
+    const tradeRoutePrimaryColor = [36, 163, 33];
+    const tradeRouteSecondaryColor = [255, 106, 6];
+    const tradeRoutePathColor = [195, 195, 195];
     let currentFilter = '';
     let canonicalPatterns = {};
     let colorMap = {};
+    let tradeRouteSelection = null;
 
     function isVacantBarony(info) {
       return !!(info && (info.vacant === 1 || info.vacant === '1' || info.vacant === true));
@@ -46,6 +50,114 @@
 
     function randomizeColors() {
       applyFilter(currentFilter, true);
+    }
+
+    function setTradeRouteSelection(routeId) {
+      tradeRouteSelection = routeId || null;
+      if (currentFilter === 'trade_routes') {
+        applyFilter('trade_routes');
+      }
+    }
+
+    function buildSeigneurChain(startId) {
+      const chain = [];
+      let sid = startId;
+      while (sid) {
+        chain.push(String(sid));
+        sid = data.seigneurMap?.[sid]?.overlord_id;
+      }
+      return chain;
+    }
+
+    function resolveTitleByChain({ overrideId, dejureId, titleMap, seigneurChain, seigneurToTitles }) {
+      if (overrideId && titleMap?.[overrideId]) return overrideId;
+      const dejure = dejureId && titleMap?.[dejureId];
+      if (dejure && seigneurChain.includes(String(dejure.seigneur_id))) return dejureId;
+      for (const sid of seigneurChain) {
+        const titles = seigneurToTitles?.[sid];
+        if (Array.isArray(titles) && titles.length) return titles[0];
+      }
+      return null;
+    }
+
+    function resolveDefactoCounty(info, seigneurChain) {
+      return resolveTitleByChain({
+        overrideId: info.defacto_county_id,
+        dejureId: info.county_id,
+        titleMap: data.countyMap,
+        seigneurChain,
+        seigneurToTitles: data.seigneurToCounty
+      });
+    }
+
+    function resolveDefactoViscounty(info, seigneurChain) {
+      return resolveTitleByChain({
+        overrideId: info.defacto_viscounty_id,
+        dejureId: info.viscounty_id,
+        titleMap: data.viscountyMap,
+        seigneurChain,
+        seigneurToTitles: data.seigneurToViscounty
+      });
+    }
+
+    function resolveDefactoMarquisate(info, seigneurChain) {
+      const countyId = resolveDefactoCounty(info, seigneurChain);
+      const county = countyId ? data.countyMap[countyId] : null;
+      return resolveTitleByChain({
+        overrideId: county?.defacto_marquisate_id,
+        dejureId: county?.marquisate_id,
+        titleMap: data.marquisateMap,
+        seigneurChain,
+        seigneurToTitles: data.seigneurToMarquisate
+      });
+    }
+
+    function resolveDefactoDuchy(info, seigneurChain) {
+      const countyId = resolveDefactoCounty(info, seigneurChain);
+      const county = countyId ? data.countyMap[countyId] : null;
+      return resolveTitleByChain({
+        overrideId: county?.defacto_duchy_id,
+        dejureId: county?.duchy_id,
+        titleMap: data.duchyMap,
+        seigneurChain,
+        seigneurToTitles: data.seigneurToDuchy
+      });
+    }
+
+    function resolveDefactoArchduchy(info, seigneurChain) {
+      const duchyId = resolveDefactoDuchy(info, seigneurChain);
+      const duchy = duchyId ? data.duchyMap[duchyId] : null;
+      return resolveTitleByChain({
+        overrideId: duchy?.defacto_archduchy_id,
+        dejureId: duchy?.archduchy_id,
+        titleMap: data.archduchyMap,
+        seigneurChain,
+        seigneurToTitles: data.seigneurToArchduchy
+      });
+    }
+
+    function resolveDefactoKingdom(info, seigneurChain) {
+      const duchyId = resolveDefactoDuchy(info, seigneurChain);
+      const duchy = duchyId ? data.duchyMap[duchyId] : null;
+      return resolveTitleByChain({
+        overrideId: duchy?.defacto_kingdom_id,
+        dejureId: duchy?.kingdom_id,
+        titleMap: data.kingdomMap,
+        seigneurChain,
+        seigneurToTitles: data.seigneurToKingdom
+      });
+    }
+
+    function resolveDefactoEmpire(info, seigneurChain) {
+      const kingdomId = resolveDefactoKingdom(info, seigneurChain);
+      const kingdom = kingdomId ? data.kingdomMap[kingdomId] : null;
+      return resolveTitleByChain({
+        overrideId: kingdom?.defacto_empire_id,
+        dejureId: kingdom?.empire_id,
+        titleMap: data.empireMap,
+        seigneurChain,
+        seigneurToTitles: data.seigneurToEmpire
+      });
     }
 
     function applyFilter(type, randomize = false) {
@@ -109,6 +221,37 @@
           colorMap[id] = [r, g, b, 100];
         });
         if (core.currentSelectedId && colorMap[core.currentSelectedId]) colorMap[core.currentSelectedId][3] = 180;
+        updateLegend(null);
+        core.setCanonicalPatterns({});
+        core.setColorMap(colorMap);
+        return;
+      }
+      if (type === 'trade_routes') {
+        colorMap = {};
+        const selectedId = core.currentSelectedId;
+        if (!selectedId) {
+          updateLegend(null);
+          core.setCanonicalPatterns({});
+          core.setColorMap(colorMap);
+          return;
+        }
+        const routeMap = data.tradeRouteById || {};
+        const route = tradeRouteSelection ? routeMap[tradeRouteSelection] : null;
+        if (route && Array.isArray(route.path) && route.path.length) {
+          route.path.forEach(id => {
+            if (!id) return;
+            colorMap[id] = [...tradeRoutePathColor, 100];
+          });
+          colorMap[route.barony_id_1] = [...tradeRoutePrimaryColor, 180];
+          colorMap[route.barony_id_2] = [...tradeRoutePrimaryColor, 180];
+        } else {
+          colorMap[selectedId] = [...tradeRoutePrimaryColor, 180];
+          const connected = (data.tradeRouteConnections && data.tradeRouteConnections[selectedId]) || [];
+          connected.forEach(id => {
+            if (!id) return;
+            colorMap[id] = [...tradeRouteSecondaryColor, 100];
+          });
+        }
         updateLegend(null);
         core.setCanonicalPatterns({});
         core.setColorMap(colorMap);
@@ -197,82 +340,33 @@
           groupId = kingdom ? kingdom.empire_id : null;
           groupName = data.empireMap[groupId]?.name || '';
         } else if (type === 'viscounty_defacto') {
-          let sid = info.seigneur_id;
-          while (sid) {
-            const vId = data.seigneurToViscounty[sid];
-            if (vId) {
-              groupId = vId;
-              groupName = data.viscountyMap[vId]?.name || '';
-              break;
-            }
-            sid = data.seigneurMap[sid]?.overlord_id;
-          }
+          const seigneurChain = buildSeigneurChain(info.seigneur_id);
+          groupId = resolveDefactoViscounty(info, seigneurChain);
+          groupName = data.viscountyMap[groupId]?.name || '';
         } else if (type === 'county_defacto') {
-          let sid = info.seigneur_id;
-          while (sid) {
-            const cId = data.seigneurToCounty[sid];
-            if (cId) {
-              groupId = cId;
-              groupName = data.countyMap[cId]?.name || '';
-              break;
-            }
-            sid = data.seigneurMap[sid]?.overlord_id;
-          }
+          const seigneurChain = buildSeigneurChain(info.seigneur_id);
+          groupId = resolveDefactoCounty(info, seigneurChain);
+          groupName = data.countyMap[groupId]?.name || '';
         } else if (type === 'marquisate_defacto') {
-          let sid = info.seigneur_id;
-          while (sid) {
-            const mId = data.seigneurToMarquisate[sid];
-            if (mId) {
-              groupId = mId;
-              groupName = data.marquisateMap[mId]?.name || '';
-              break;
-            }
-            sid = data.seigneurMap[sid]?.overlord_id;
-          }
+          const seigneurChain = buildSeigneurChain(info.seigneur_id);
+          groupId = resolveDefactoMarquisate(info, seigneurChain);
+          groupName = data.marquisateMap[groupId]?.name || '';
         } else if (type === 'duchy_defacto') {
-          let sid = info.seigneur_id;
-          while (sid) {
-            const dId = data.seigneurToDuchy[sid];
-            if (dId) {
-              groupId = dId;
-              groupName = data.duchyMap[dId]?.name || '';
-              break;
-            }
-            sid = data.seigneurMap[sid]?.overlord_id;
-          }
+          const seigneurChain = buildSeigneurChain(info.seigneur_id);
+          groupId = resolveDefactoDuchy(info, seigneurChain);
+          groupName = data.duchyMap[groupId]?.name || '';
         } else if (type === 'archduchy_defacto') {
-          let sid = info.seigneur_id;
-          while (sid) {
-            const aId = data.seigneurToArchduchy[sid];
-            if (aId) {
-              groupId = aId;
-              groupName = data.archduchyMap[aId]?.name || '';
-              break;
-            }
-            sid = data.seigneurMap[sid]?.overlord_id;
-          }
+          const seigneurChain = buildSeigneurChain(info.seigneur_id);
+          groupId = resolveDefactoArchduchy(info, seigneurChain);
+          groupName = data.archduchyMap[groupId]?.name || '';
         } else if (type === 'kingdom_defacto') {
-          let sid = info.seigneur_id;
-          while (sid) {
-            const kId = data.seigneurToKingdom[sid];
-            if (kId) {
-              groupId = kId;
-              groupName = data.kingdomMap[kId]?.name || '';
-              break;
-            }
-            sid = data.seigneurMap[sid]?.overlord_id;
-          }
+          const seigneurChain = buildSeigneurChain(info.seigneur_id);
+          groupId = resolveDefactoKingdom(info, seigneurChain);
+          groupName = data.kingdomMap[groupId]?.name || '';
         } else if (type === 'empire_defacto') {
-          let sid = info.seigneur_id;
-          while (sid) {
-            const eId = data.seigneurToEmpire[sid];
-            if (eId) {
-              groupId = eId;
-              groupName = data.empireMap[eId]?.name || '';
-              break;
-            }
-            sid = data.seigneurMap[sid]?.overlord_id;
-          }
+          const seigneurChain = buildSeigneurChain(info.seigneur_id);
+          groupId = resolveDefactoEmpire(info, seigneurChain);
+          groupName = data.empireMap[groupId]?.name || '';
         } else if (type === 'sanctuary') {
           const sancts = data.sanctuaryMap[id] || [];
           if (sancts.length > 0) {
@@ -405,7 +499,7 @@
     }
 
     initColorMap();
-    return { applyFilter, randomizeColors, get currentFilter() { return currentFilter; } };
+    return { applyFilter, randomizeColors, setTradeRouteSelection, get currentFilter() { return currentFilter; } };
   }
   global.mapFilters = { init };
 })(typeof window !== 'undefined' ? window : global);

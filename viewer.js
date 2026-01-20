@@ -33,6 +33,11 @@
   let sanctuaryMap = {};
   let baronyAdjacency = {};
   let mapData = {};
+  let tradeRoutes = [];
+  let tradeRouteConnections = {};
+  let tradeRouteById = {};
+  let tradeRoutesByBarony = {};
+  let selectedTradeRouteId = null;
 
   let filterManager = null;
   let core = null;
@@ -46,6 +51,8 @@
   const infoOwnerLine = document.getElementById('infoOwnerLine');
   const infoReligionLine = document.getElementById('infoReligionLine');
   const infoCultureLine = document.getElementById('infoCultureLine');
+  const tradeRoutesSection = document.getElementById('tradeRoutesSection');
+  const tradeRoutesList = document.getElementById('tradeRoutesList');
   const feudalSection = document.getElementById('feudalSection');
   const infoFeudalBody = document.getElementById('infoFeudalBody');
   const religiousSection = document.getElementById('religiousBuildingsSection');
@@ -71,6 +78,8 @@
   const filterSelect = document.getElementById('filterSelect');
   const randomBtn = document.getElementById('randomBtn');
   const pixelLoading = document.getElementById('pixelLoading');
+  const tradeRouteInfoDialog = document.getElementById('tradeRouteInfoDialog');
+  const tradeRouteInfoContent = document.getElementById('tradeRouteInfoContent');
 
   function setLine(elem, text) {
     if (!elem) return;
@@ -191,20 +200,27 @@
     setSeigneurLine(seigneurOverlordLine, seigneur.overlord_id, 'Suzerain:');
 
     const titles = [];
-    const empireId = seigneurToEmpire[seigneurId];
-    if (empireId && empireMap[empireId]) titles.push(`Empereur de ${empireMap[empireId].name}`);
-    const kingdomId = seigneurToKingdom[seigneurId];
-    if (kingdomId && kingdomMap[kingdomId]) titles.push(`Roi de ${kingdomMap[kingdomId].name}`);
-    const archduchyId = seigneurToArchduchy[seigneurId];
-    if (archduchyId && archduchyMap[archduchyId]) titles.push(`Archiduc de ${archduchyMap[archduchyId].name}`);
-    const duchyId = seigneurToDuchy[seigneurId];
-    if (duchyId && duchyMap[duchyId]) titles.push(`Duc de ${duchyMap[duchyId].name}`);
-    const marquisateId = seigneurToMarquisate[seigneurId];
-    if (marquisateId && marquisateMap[marquisateId]) titles.push(`Marquis de ${marquisateMap[marquisateId].name}`);
-    const countyId = seigneurToCounty[seigneurId];
-    if (countyId && countyMap[countyId]) titles.push(`Comte de ${countyMap[countyId].name}`);
-    const viscountyId = seigneurToViscounty[seigneurId];
-    if (viscountyId && viscountyMap[viscountyId]) titles.push(`Vicomte de ${viscountyMap[viscountyId].name}`);
+    (seigneurToEmpire[seigneurId] || []).forEach(empireId => {
+      if (empireId && empireMap[empireId]) titles.push(`Empereur de ${empireMap[empireId].name}`);
+    });
+    (seigneurToKingdom[seigneurId] || []).forEach(kingdomId => {
+      if (kingdomId && kingdomMap[kingdomId]) titles.push(`Roi de ${kingdomMap[kingdomId].name}`);
+    });
+    (seigneurToArchduchy[seigneurId] || []).forEach(archduchyId => {
+      if (archduchyId && archduchyMap[archduchyId]) titles.push(`Archiduc de ${archduchyMap[archduchyId].name}`);
+    });
+    (seigneurToDuchy[seigneurId] || []).forEach(duchyId => {
+      if (duchyId && duchyMap[duchyId]) titles.push(`Duc de ${duchyMap[duchyId].name}`);
+    });
+    (seigneurToMarquisate[seigneurId] || []).forEach(marquisateId => {
+      if (marquisateId && marquisateMap[marquisateId]) titles.push(`Marquis de ${marquisateMap[marquisateId].name}`);
+    });
+    (seigneurToCounty[seigneurId] || []).forEach(countyId => {
+      if (countyId && countyMap[countyId]) titles.push(`Comte de ${countyMap[countyId].name}`);
+    });
+    (seigneurToViscounty[seigneurId] || []).forEach(viscountyId => {
+      if (viscountyId && viscountyMap[viscountyId]) titles.push(`Vicomte de ${viscountyMap[viscountyId].name}`);
+    });
     const ownedBaronies = Object.values(baronyLookup)
       .filter(b => b.seigneur_id === seigneurId)
       .map(b => ({ id: b.id, name: b.name }));
@@ -232,6 +248,126 @@
       });
     } else {
       section.style.display = 'none';
+    }
+  }
+
+  function setTradeRouteInfoMode(active) {
+    if (infoReligionLine) infoReligionLine.style.display = active ? 'none' : '';
+    if (infoCultureLine) infoCultureLine.style.display = active ? 'none' : '';
+    if (feudalSection) feudalSection.style.display = active ? 'none' : '';
+    if (religiousSection) religiousSection.style.display = active ? 'none' : '';
+    if (canonicalOwnedSection) canonicalOwnedSection.style.display = active ? 'none' : '';
+    if (canonicalParentSection) canonicalParentSection.style.display = active ? 'none' : '';
+    if (tradeRoutesSection) tradeRoutesSection.style.display = active ? 'block' : 'none';
+  }
+
+  function parseTradeRoutePath(raw) {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw.map(val => parseInt(val, 10)).filter(Number.isFinite);
+    if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          return parsed.map(val => parseInt(val, 10)).filter(Number.isFinite);
+        }
+      } catch (err) {
+        return [];
+      }
+    }
+    return [];
+  }
+
+  function buildTradeRouteMaps(routes) {
+    tradeRouteConnections = {};
+    tradeRouteById = {};
+    tradeRoutesByBarony = {};
+    const connectionSets = {};
+    routes.forEach(route => {
+      const id = parseInt(route.id, 10);
+      const barony1 = parseInt(route.barony_id_1, 10);
+      const barony2 = parseInt(route.barony_id_2, 10);
+      if (!id || !barony1 || !barony2) return;
+      const path = parseTradeRoutePath(route.path);
+      const normalized = { ...route, id, barony_id_1: barony1, barony_id_2: barony2, path };
+      tradeRouteById[id] = normalized;
+      if (!tradeRoutesByBarony[barony1]) tradeRoutesByBarony[barony1] = [];
+      if (!tradeRoutesByBarony[barony2]) tradeRoutesByBarony[barony2] = [];
+      tradeRoutesByBarony[barony1].push(id);
+      tradeRoutesByBarony[barony2].push(id);
+      if (!connectionSets[barony1]) connectionSets[barony1] = new Set();
+      if (!connectionSets[barony2]) connectionSets[barony2] = new Set();
+      connectionSets[barony1].add(barony2);
+      connectionSets[barony2].add(barony1);
+    });
+    Object.keys(connectionSets).forEach(id => {
+      tradeRouteConnections[id] = Array.from(connectionSets[id]);
+    });
+  }
+
+  function renderTradeRoutesList(baronyId) {
+    if (!tradeRoutesList || !tradeRoutesSection) return;
+    tradeRoutesList.innerHTML = '';
+    const routeIds = tradeRoutesByBarony[baronyId] || [];
+    if (!routeIds.length) {
+      tradeRoutesList.textContent = 'Aucune route commerciale';
+      return;
+    }
+    const rows = routeIds.map(routeId => {
+      const route = tradeRouteById[routeId];
+      const otherId = route.barony_id_1 === baronyId ? route.barony_id_2 : route.barony_id_1;
+      const otherName = baronyMeta[otherId]?.name || baronyLookup[otherId]?.name || `Baronnie #${otherId}`;
+      const pathLength = route.path ? route.path.length : 0;
+      return `
+        <tr>
+          <td><button class="control-btn trade-route-btn" data-id="${routeId}">#${routeId}</button></td>
+          <td>${otherName}</td>
+          <td>${pathLength}</td>
+        </tr>
+      `;
+    }).join('');
+    tradeRoutesList.innerHTML = `<table class="admin-table"><tr><th>ID</th><th>Destination</th><th>Chemin (nœuds)</th></tr>${rows}</table>`;
+    tradeRoutesList.querySelectorAll('.trade-route-btn').forEach(btn => {
+      btn.addEventListener('click', () => openTradeRouteInfo(parseInt(btn.dataset.id, 10)));
+    });
+  }
+
+  function openTradeRouteInfo(routeId) {
+    if (!routeId || !tradeRouteInfoDialog || !tradeRouteInfoContent) return;
+    const route = tradeRouteById[routeId];
+    if (!route) return;
+    tradeRouteInfoContent.innerHTML = '';
+    const startHeader = document.createElement('div');
+    startHeader.className = 'trade-route-info-header';
+    startHeader.appendChild(createBaronyButton(route.barony_id_1));
+    tradeRouteInfoContent.appendChild(startHeader);
+    const pathList = document.createElement('ul');
+    pathList.className = 'trade-route-info-path';
+    const intermediates = (route.path || []).slice(1, -1);
+    if (!intermediates.length) {
+      const empty = document.createElement('div');
+      empty.className = 'trade-route-empty';
+      empty.textContent = 'Trajet direct.';
+      tradeRouteInfoContent.appendChild(empty);
+    } else {
+      intermediates.forEach(id => {
+        const li = document.createElement('li');
+        li.appendChild(createBaronyButton(id));
+        pathList.appendChild(li);
+      });
+      tradeRouteInfoContent.appendChild(pathList);
+    }
+    const endHeader = document.createElement('div');
+    endHeader.className = 'trade-route-info-header';
+    endHeader.appendChild(createBaronyButton(route.barony_id_2));
+    tradeRouteInfoContent.appendChild(endHeader);
+    selectedTradeRouteId = routeId;
+    if (filterManager && typeof filterManager.setTradeRouteSelection === 'function') {
+      filterManager.setTradeRouteSelection(routeId);
+    }
+    if (tradeRouteInfoDialog.showModal) {
+      tradeRouteInfoDialog.showModal();
+    } else {
+      tradeRouteInfoDialog.setAttribute('open', 'open');
     }
   }
 
@@ -274,19 +410,124 @@
     }
   }
 
-  function findDefactoEntity(seigneurId, mapping, entityMap) {
-    let sid = seigneurId;
+  function addSeigneurTitle(map, seigneurId, titleId) {
+    if (!seigneurId || !titleId) return;
+    const key = String(seigneurId);
+    if (!map[key]) map[key] = [];
+    map[key].push(titleId);
+  }
+
+  function finalizeSeigneurTitleMap(map) {
+    Object.values(map).forEach(list => {
+      list.sort((a, b) => a - b);
+    });
+  }
+
+  function buildSeigneurChain(startId) {
+    const chain = [];
+    let sid = startId;
     while (sid) {
-      const entityId = mapping[sid];
-      if (entityId) return entityMap[entityId];
+      chain.push(String(sid));
       sid = seigneurMap[sid]?.overlord_id;
     }
+    return chain;
+  }
+
+  function resolveTitleByChain({ overrideId, dejureId, titleMap, seigneurChain, seigneurToTitles }) {
+    if (overrideId && titleMap?.[overrideId]) return overrideId;
+    const dejure = dejureId && titleMap?.[dejureId];
+    if (dejure && seigneurChain.includes(String(dejure.seigneur_id))) return dejureId;
+    for (const sid of seigneurChain) {
+      const titles = seigneurToTitles?.[sid];
+      if (Array.isArray(titles) && titles.length) return titles[0];
+    }
     return null;
+  }
+
+  function resolveDefactoCounty(info, seigneurChain) {
+    return resolveTitleByChain({
+      overrideId: info.defacto_county_id,
+      dejureId: info.county_id,
+      titleMap: countyMap,
+      seigneurChain,
+      seigneurToTitles: seigneurToCounty
+    });
+  }
+
+  function resolveDefactoViscounty(info, seigneurChain) {
+    return resolveTitleByChain({
+      overrideId: info.defacto_viscounty_id,
+      dejureId: info.viscounty_id,
+      titleMap: viscountyMap,
+      seigneurChain,
+      seigneurToTitles: seigneurToViscounty
+    });
+  }
+
+  function resolveDefactoMarquisate(info, seigneurChain) {
+    const countyId = resolveDefactoCounty(info, seigneurChain);
+    const county = countyId ? countyMap[countyId] : null;
+    return resolveTitleByChain({
+      overrideId: county?.defacto_marquisate_id,
+      dejureId: county?.marquisate_id,
+      titleMap: marquisateMap,
+      seigneurChain,
+      seigneurToTitles: seigneurToMarquisate
+    });
+  }
+
+  function resolveDefactoDuchy(info, seigneurChain) {
+    const countyId = resolveDefactoCounty(info, seigneurChain);
+    const county = countyId ? countyMap[countyId] : null;
+    return resolveTitleByChain({
+      overrideId: county?.defacto_duchy_id,
+      dejureId: county?.duchy_id,
+      titleMap: duchyMap,
+      seigneurChain,
+      seigneurToTitles: seigneurToDuchy
+    });
+  }
+
+  function resolveDefactoArchduchy(info, seigneurChain) {
+    const duchyId = resolveDefactoDuchy(info, seigneurChain);
+    const duchy = duchyId ? duchyMap[duchyId] : null;
+    return resolveTitleByChain({
+      overrideId: duchy?.defacto_archduchy_id,
+      dejureId: duchy?.archduchy_id,
+      titleMap: archduchyMap,
+      seigneurChain,
+      seigneurToTitles: seigneurToArchduchy
+    });
+  }
+
+  function resolveDefactoKingdom(info, seigneurChain) {
+    const duchyId = resolveDefactoDuchy(info, seigneurChain);
+    const duchy = duchyId ? duchyMap[duchyId] : null;
+    return resolveTitleByChain({
+      overrideId: duchy?.defacto_kingdom_id,
+      dejureId: duchy?.kingdom_id,
+      titleMap: kingdomMap,
+      seigneurChain,
+      seigneurToTitles: seigneurToKingdom
+    });
+  }
+
+  function resolveDefactoEmpire(info, seigneurChain) {
+    const kingdomId = resolveDefactoKingdom(info, seigneurChain);
+    const kingdom = kingdomId ? kingdomMap[kingdomId] : null;
+    return resolveTitleByChain({
+      overrideId: kingdom?.defacto_empire_id,
+      dejureId: kingdom?.empire_id,
+      titleMap: empireMap,
+      seigneurChain,
+      seigneurToTitles: seigneurToEmpire
+    });
   }
 
   function setFeudalTable(section, tbody, info) {
     if (!section || !tbody || !info) return;
     tbody.innerHTML = '';
+    const seigneurChain = buildSeigneurChain(info.seigneur_id);
     const viscounty = viscountyMap[info.viscounty_id];
     const county = countyMap[info.county_id];
     const marquisate = county ? marquisateMap[county.marquisate_id] : null;
@@ -299,37 +540,37 @@
       viscounty: {
         level: 'Vicomté',
         dejure: viscounty?.name || '',
-        defacto: findDefactoEntity(info.seigneur_id, seigneurToViscounty, viscountyMap)?.name || ''
+        defacto: viscountyMap[resolveDefactoViscounty(info, seigneurChain)]?.name || ''
       },
       county: {
         level: 'Comté',
         dejure: county?.name || '',
-        defacto: findDefactoEntity(info.seigneur_id, seigneurToCounty, countyMap)?.name || ''
+        defacto: countyMap[resolveDefactoCounty(info, seigneurChain)]?.name || ''
       },
       marquisate: {
         level: 'Marquisat',
         dejure: marquisate?.name || '',
-        defacto: findDefactoEntity(info.seigneur_id, seigneurToMarquisate, marquisateMap)?.name || ''
+        defacto: marquisateMap[resolveDefactoMarquisate(info, seigneurChain)]?.name || ''
       },
       duchy: {
         level: 'Duché',
         dejure: duchy?.name || '',
-        defacto: findDefactoEntity(info.seigneur_id, seigneurToDuchy, duchyMap)?.name || ''
+        defacto: duchyMap[resolveDefactoDuchy(info, seigneurChain)]?.name || ''
       },
       archduchy: {
         level: 'Archiduché',
         dejure: archduchy?.name || '',
-        defacto: findDefactoEntity(info.seigneur_id, seigneurToArchduchy, archduchyMap)?.name || ''
+        defacto: archduchyMap[resolveDefactoArchduchy(info, seigneurChain)]?.name || ''
       },
       kingdom: {
         level: 'Royaume',
         dejure: kingdom?.name || '',
-        defacto: findDefactoEntity(info.seigneur_id, seigneurToKingdom, kingdomMap)?.name || ''
+        defacto: kingdomMap[resolveDefactoKingdom(info, seigneurChain)]?.name || ''
       },
       empire: {
         level: 'Empire',
         dejure: empire?.name || '',
-        defacto: findDefactoEntity(info.seigneur_id, seigneurToEmpire, empireMap)?.name || ''
+        defacto: empireMap[resolveDefactoEmpire(info, seigneurChain)]?.name || ''
       }
     };
 
@@ -572,14 +813,26 @@
     if (infoPanel) infoPanel.style.display = 'block';
     if (seaInfoPanel) seaInfoPanel.style.display = 'none';
     if (baronyTitle) {
-      baronyTitle.textContent = `Baronnie: ${info.name || ''} (#${info.id || ''})`;
+      const vacantLabel = info.vacant ? ' (vacante)' : '';
+      baronyTitle.textContent = `Baronnie: ${info.name || ''}${vacantLabel} (#${info.id || ''})`;
     }
     setSeigneurLine(
       infoOwnerLine,
       info.seigneur_id,
-      'Propriétaire:',
-      info.vacant ? '(vacante)' : ''
+      'Propriétaire:'
     );
+    const isTradeRouteFilter = filterSelect && filterSelect.value === 'trade_routes';
+    if (isTradeRouteFilter) {
+      selectedTradeRouteId = null;
+      if (filterManager && typeof filterManager.setTradeRouteSelection === 'function') {
+        filterManager.setTradeRouteSelection(null);
+      }
+      setTradeRouteInfoMode(true);
+      renderTradeRoutesList(info.id);
+      if (filterManager) filterManager.applyFilter('trade_routes');
+      return;
+    }
+    setTradeRouteInfoMode(false);
     setLabeledLine(
       infoReligionLine,
       'Religion de la population :',
@@ -651,25 +904,33 @@
       archduchyMap = {};
       empireMap = {};
       seigneurToCounty = {};
-      counties.forEach(c => { countyMap[c.id] = c; if (c.seigneur_id) seigneurToCounty[c.seigneur_id] = c.id; });
+      counties.forEach(c => { countyMap[c.id] = c; addSeigneurTitle(seigneurToCounty, c.seigneur_id, c.id); });
       seigneurToDuchy = {};
-      duchies.forEach(d => { duchyMap[d.id] = d; if (d.seigneur_id) seigneurToDuchy[d.seigneur_id] = d.id; });
+      duchies.forEach(d => { duchyMap[d.id] = d; addSeigneurTitle(seigneurToDuchy, d.seigneur_id, d.id); });
       seigneurToKingdom = {};
-      kingdoms.forEach(k => { kingdomMap[k.id] = k; if (k.seigneur_id) seigneurToKingdom[k.seigneur_id] = k.id; });
+      kingdoms.forEach(k => { kingdomMap[k.id] = k; addSeigneurTitle(seigneurToKingdom, k.seigneur_id, k.id); });
       seigneurToViscounty = {};
-      viscounties.forEach(v => { viscountyMap[v.id] = v; if (v.seigneur_id) seigneurToViscounty[v.seigneur_id] = v.id; });
+      viscounties.forEach(v => { viscountyMap[v.id] = v; addSeigneurTitle(seigneurToViscounty, v.seigneur_id, v.id); });
       seigneurToMarquisate = {};
-      marquisates.forEach(m => { marquisateMap[m.id] = m; if (m.seigneur_id) seigneurToMarquisate[m.seigneur_id] = m.id; });
+      marquisates.forEach(m => { marquisateMap[m.id] = m; addSeigneurTitle(seigneurToMarquisate, m.seigneur_id, m.id); });
       seigneurToArchduchy = {};
-      archduchies.forEach(a => { archduchyMap[a.id] = a; if (a.seigneur_id) seigneurToArchduchy[a.seigneur_id] = a.id; });
+      archduchies.forEach(a => { archduchyMap[a.id] = a; addSeigneurTitle(seigneurToArchduchy, a.seigneur_id, a.id); });
       seigneurToEmpire = {};
-      empires.forEach(e => { empireMap[e.id] = e; if (e.seigneur_id) seigneurToEmpire[e.seigneur_id] = e.id; });
+      empires.forEach(e => { empireMap[e.id] = e; addSeigneurTitle(seigneurToEmpire, e.seigneur_id, e.id); });
+      finalizeSeigneurTitleMap(seigneurToCounty);
+      finalizeSeigneurTitleMap(seigneurToDuchy);
+      finalizeSeigneurTitleMap(seigneurToKingdom);
+      finalizeSeigneurTitleMap(seigneurToViscounty);
+      finalizeSeigneurTitleMap(seigneurToMarquisate);
+      finalizeSeigneurTitleMap(seigneurToArchduchy);
+      finalizeSeigneurTitleMap(seigneurToEmpire);
       baronyAdjacency = {};
       connections.forEach(c => {
+        const dist = parseInt(c.distance, 10) || 1;
         if (!baronyAdjacency[c.zone_id_1]) baronyAdjacency[c.zone_id_1] = [];
         if (!baronyAdjacency[c.zone_id_2]) baronyAdjacency[c.zone_id_2] = [];
-        baronyAdjacency[c.zone_id_1].push(c.zone_id_2);
-        baronyAdjacency[c.zone_id_2].push(c.zone_id_1);
+        baronyAdjacency[c.zone_id_1].push({ id: c.zone_id_2, distance: dist });
+        baronyAdjacency[c.zone_id_2].push({ id: c.zone_id_1, distance: dist });
       });
       const baronyIds = [...new Set(zoneBaronies.map(zb => zb.barony_id))];
       baronyPixels = {};
@@ -708,7 +969,7 @@
       };
       return mapData;
     }
-    const [baronies, seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires, canonicalLands, sanctuaries, connections] = await Promise.all([
+    const [baronies, seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires, canonicalLands, sanctuaries, connections, routes] = await Promise.all([
       fetch(API_BASE + '/api/baronies').then(r => r.json()),
       fetch(API_BASE + '/api/seigneurs').then(r => r.json()),
       fetch(API_BASE + '/api/religions').then(r => r.json()),
@@ -722,7 +983,8 @@
       fetch(API_BASE + '/api/empires').then(r => r.json()),
       fetch(API_BASE + '/api/canonical_lands').then(r => r.json()),
       fetch(API_BASE + '/api/sanctuaries').then(r => r.json()),
-      fetch(API_BASE + '/api/barony_connections').then(r => r.json())
+      fetch(API_BASE + '/api/barony_connections').then(r => r.json()),
+      fetch(API_BASE + '/api/trade_routes').then(r => r.json())
     ]);
     baronyMeta = {};
     baronyLookup = {};
@@ -735,25 +997,32 @@
     cultures.forEach(c => { cultureMapInfo[c.id] = c; });
     countyMap = {};
     seigneurToCounty = {};
-    counties.forEach(c => { countyMap[c.id] = c; if (c.seigneur_id) seigneurToCounty[c.seigneur_id] = c.id; });
+    counties.forEach(c => { countyMap[c.id] = c; addSeigneurTitle(seigneurToCounty, c.seigneur_id, c.id); });
     duchyMap = {};
     seigneurToDuchy = {};
-    duchies.forEach(d => { duchyMap[d.id] = d; if (d.seigneur_id) seigneurToDuchy[d.seigneur_id] = d.id; });
+    duchies.forEach(d => { duchyMap[d.id] = d; addSeigneurTitle(seigneurToDuchy, d.seigneur_id, d.id); });
     kingdomMap = {};
     seigneurToKingdom = {};
-    kingdoms.forEach(k => { kingdomMap[k.id] = k; if (k.seigneur_id) seigneurToKingdom[k.seigneur_id] = k.id; });
+    kingdoms.forEach(k => { kingdomMap[k.id] = k; addSeigneurTitle(seigneurToKingdom, k.seigneur_id, k.id); });
     viscountyMap = {};
     seigneurToViscounty = {};
-    viscounties.forEach(v => { viscountyMap[v.id] = v; if (v.seigneur_id) seigneurToViscounty[v.seigneur_id] = v.id; });
+    viscounties.forEach(v => { viscountyMap[v.id] = v; addSeigneurTitle(seigneurToViscounty, v.seigneur_id, v.id); });
     marquisateMap = {};
     seigneurToMarquisate = {};
-    marquisates.forEach(m => { marquisateMap[m.id] = m; if (m.seigneur_id) seigneurToMarquisate[m.seigneur_id] = m.id; });
+    marquisates.forEach(m => { marquisateMap[m.id] = m; addSeigneurTitle(seigneurToMarquisate, m.seigneur_id, m.id); });
     archduchyMap = {};
     seigneurToArchduchy = {};
-    archduchies.forEach(a => { archduchyMap[a.id] = a; if (a.seigneur_id) seigneurToArchduchy[a.seigneur_id] = a.id; });
+    archduchies.forEach(a => { archduchyMap[a.id] = a; addSeigneurTitle(seigneurToArchduchy, a.seigneur_id, a.id); });
     empireMap = {};
     seigneurToEmpire = {};
-    empires.forEach(e => { empireMap[e.id] = e; if (e.seigneur_id) seigneurToEmpire[e.seigneur_id] = e.id; });
+    empires.forEach(e => { empireMap[e.id] = e; addSeigneurTitle(seigneurToEmpire, e.seigneur_id, e.id); });
+    finalizeSeigneurTitleMap(seigneurToCounty);
+    finalizeSeigneurTitleMap(seigneurToDuchy);
+    finalizeSeigneurTitleMap(seigneurToKingdom);
+    finalizeSeigneurTitleMap(seigneurToViscounty);
+    finalizeSeigneurTitleMap(seigneurToMarquisate);
+    finalizeSeigneurTitleMap(seigneurToArchduchy);
+    finalizeSeigneurTitleMap(seigneurToEmpire);
     canonicalLandMap = {};
     canonicalParents = {};
     canonicalLands.forEach(cl => {
@@ -773,11 +1042,14 @@
     });
     baronyAdjacency = {};
     connections.forEach(c => {
+      const dist = parseInt(c.distance, 10) || 1;
       if (!baronyAdjacency[c.barony_id_1]) baronyAdjacency[c.barony_id_1] = [];
       if (!baronyAdjacency[c.barony_id_2]) baronyAdjacency[c.barony_id_2] = [];
-      baronyAdjacency[c.barony_id_1].push(c.barony_id_2);
-      baronyAdjacency[c.barony_id_2].push(c.barony_id_1);
+      baronyAdjacency[c.barony_id_1].push({ id: c.barony_id_2, distance: dist });
+      baronyAdjacency[c.barony_id_2].push({ id: c.barony_id_1, distance: dist });
     });
+    tradeRoutes = Array.isArray(routes) ? routes : [];
+    buildTradeRouteMaps(tradeRoutes);
     const baronyIds = baronies.map(b => b.id);
     baronyPixels = pixelData;
     fetchBaronyPixelsInChunks(baronyIds, pixelData).catch(err => console.error(err));
@@ -798,6 +1070,8 @@
       canonicalDependents,
       sanctuaryMap,
       baronyAdjacency,
+      tradeRouteConnections,
+      tradeRouteById,
       baronyLookup,
       seigneurToViscounty,
       seigneurToCounty,
@@ -834,8 +1108,21 @@
       core.ready.then(() => {
         filterManager = mapFilters.init(core, mapData, { updateLegend });
         if (filterSelect) {
-          filterSelect.addEventListener('change', () => filterManager.applyFilter(filterSelect.value));
-          filterManager.applyFilter(filterSelect.value);
+          const handleFilterChange = () => {
+            if (filterSelect.value !== 'trade_routes') {
+              selectedTradeRouteId = null;
+              if (filterManager && typeof filterManager.setTradeRouteSelection === 'function') {
+                filterManager.setTradeRouteSelection(null);
+              }
+              setTradeRouteInfoMode(false);
+            } else if (core.currentSelectedId) {
+              setTradeRouteInfoMode(true);
+              renderTradeRoutesList(core.currentSelectedId);
+            }
+            filterManager.applyFilter(filterSelect.value);
+          };
+          filterSelect.addEventListener('change', handleFilterChange);
+          handleFilterChange();
         }
         if (randomBtn) randomBtn.addEventListener('click', () => filterManager.randomizeColors());
       });

@@ -91,6 +91,19 @@
   }
   populateFilters();
 
+  function addSeigneurTitle(map, seigneurId, titleId) {
+    if (!seigneurId || !titleId) return;
+    const key = String(seigneurId);
+    if (!map[key]) map[key] = [];
+    map[key].push(titleId);
+  }
+
+  function finalizeSeigneurTitleMap(map) {
+    Object.values(map).forEach(list => {
+      list.sort((a, b) => a - b);
+    });
+  }
+
   const linkBtn = document.getElementById('linkBarony');
   const unlinkBtn = document.getElementById('unlinkBarony');
 
@@ -113,8 +126,117 @@
   const editViscountySelect = document.getElementById('editViscounty');
   const editCountySelect = document.getElementById('editCounty');
   const seaEditSeigneurSelect = document.getElementById('seaEditSeigneur');
+  const connectionList = document.getElementById('connectionList');
+  const connectionTargetInput = document.getElementById('connectionTargetId');
+  const connectionDistanceInput = document.getElementById('connectionDistance');
+  const addConnectionBtn = document.getElementById('addConnection');
+  const seaConnectionList = document.getElementById('seaConnectionList');
+  const seaConnectionTargetInput = document.getElementById('seaConnectionTargetId');
+  const seaConnectionDistanceInput = document.getElementById('seaConnectionDistance');
+  const addSeaConnectionBtn = document.getElementById('addSeaConnection');
 
   const canonicalKey = id => (id === null || id === undefined ? '' : String(id));
+  const normalizeDistance = value => {
+    const parsed = parseInt(value, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+  };
+  function getConnectionEndpoint() {
+    return mapMode === 'sea' ? '/api/maritime_zone_connections' : '/api/barony_connections';
+  }
+  function getConnectionPayload(sourceId, targetId, distance) {
+    if (mapMode === 'sea') {
+      return { zone_id_1: sourceId, zone_id_2: targetId, distance };
+    }
+    return { barony_id_1: sourceId, barony_id_2: targetId, distance };
+  }
+  function getConnectionListFor(id) {
+    return baronyAdjacency[id] || [];
+  }
+  function upsertConnection(sourceId, targetId, distance) {
+    if (!baronyAdjacency[sourceId]) baronyAdjacency[sourceId] = [];
+    const list = baronyAdjacency[sourceId];
+    const existing = list.find(c => c.id === targetId);
+    if (existing) {
+      existing.distance = distance;
+    } else {
+      list.push({ id: targetId, distance });
+    }
+  }
+  function removeConnection(sourceId, targetId) {
+    if (!baronyAdjacency[sourceId]) return;
+    baronyAdjacency[sourceId] = baronyAdjacency[sourceId].filter(c => c.id !== targetId);
+  }
+  function renderConnections() {
+    const listEl = mapMode === 'sea' ? seaConnectionList : connectionList;
+    if (!listEl) return;
+    const selectedId = mapMode === 'sea' ? currentSeaZoneId : currentSelectedId;
+    listEl.innerHTML = '';
+    if (!selectedId) return;
+    const connections = [...getConnectionListFor(selectedId)];
+    connections.sort((a, b) => a.id - b.id);
+    connections.forEach(conn => {
+      const row = document.createElement('div');
+      row.className = 'connection-row';
+      const label = document.createElement('span');
+      const name = baronyMeta[conn.id]?.name || 'N/D';
+      label.textContent = `${conn.id} - ${name}`;
+      const distanceInput = document.createElement('input');
+      distanceInput.type = 'number';
+      distanceInput.min = '1';
+      distanceInput.value = conn.distance || 1;
+      distanceInput.addEventListener('change', () => {
+        const distance = normalizeDistance(distanceInput.value);
+        distanceInput.value = distance;
+        fetch(`${API_BASE}${getConnectionEndpoint()}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(getConnectionPayload(selectedId, conn.id, distance))
+        }).then(() => {
+          upsertConnection(selectedId, conn.id, distance);
+          upsertConnection(conn.id, selectedId, distance);
+          renderConnections();
+        });
+      });
+      const removeBtn = document.createElement('button');
+      removeBtn.textContent = 'Retirer';
+      removeBtn.addEventListener('click', () => {
+        fetch(`${API_BASE}${getConnectionEndpoint()}`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(getConnectionPayload(selectedId, conn.id))
+        }).then(() => {
+          removeConnection(selectedId, conn.id);
+          removeConnection(conn.id, selectedId);
+          renderConnections();
+        });
+      });
+      row.appendChild(label);
+      row.appendChild(distanceInput);
+      row.appendChild(removeBtn);
+      listEl.appendChild(row);
+    });
+  }
+  function addConnectionFromInputs() {
+    const selectedId = mapMode === 'sea' ? currentSeaZoneId : currentSelectedId;
+    if (!selectedId) return;
+    const targetInput = mapMode === 'sea' ? seaConnectionTargetInput : connectionTargetInput;
+    const distanceInput = mapMode === 'sea' ? seaConnectionDistanceInput : connectionDistanceInput;
+    if (!targetInput || !distanceInput) return;
+    const targetId = parseInt(targetInput.value, 10);
+    if (!targetId || targetId === selectedId) return;
+    const distance = normalizeDistance(distanceInput.value);
+    fetch(`${API_BASE}${getConnectionEndpoint()}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(getConnectionPayload(selectedId, targetId, distance))
+    }).then(() => {
+      upsertConnection(selectedId, targetId, distance);
+      upsertConnection(targetId, selectedId, distance);
+      renderConnections();
+    });
+  }
+  if (addConnectionBtn) addConnectionBtn.addEventListener('click', addConnectionFromInputs);
+  if (addSeaConnectionBtn) addSeaConnectionBtn.addEventListener('click', addConnectionFromInputs);
 
   function updateLegend(groups) {
     if (!legendDiv) return;
@@ -564,23 +686,25 @@
       const targetId = id;
       const method = pendingAction === 'link' ? 'POST' : 'DELETE';
       const connectionEndpoint = mapMode === 'sea' ? '/api/maritime_zone_connections' : '/api/barony_connections';
+      const selectedDistance = normalizeDistance((mapMode === 'sea' ? seaConnectionDistanceInput : connectionDistanceInput)?.value);
       const body = mapMode === 'sea'
-        ? { zone_id_1: sourceId, zone_id_2: targetId }
-        : { barony_id_1: sourceId, barony_id_2: targetId };
+        ? { zone_id_1: sourceId, zone_id_2: targetId, distance: selectedDistance }
+        : { barony_id_1: sourceId, barony_id_2: targetId, distance: selectedDistance };
       fetch(`${API_BASE}${connectionEndpoint}`, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        body: JSON.stringify(method === 'POST' ? body : (mapMode === 'sea'
+          ? { zone_id_1: sourceId, zone_id_2: targetId }
+          : { barony_id_1: sourceId, barony_id_2: targetId }))
       }).then(() => {
         if (pendingAction === 'link') {
-          if (!baronyAdjacency[sourceId]) baronyAdjacency[sourceId] = [];
-          if (!baronyAdjacency[targetId]) baronyAdjacency[targetId] = [];
-          if (!baronyAdjacency[sourceId].includes(targetId)) baronyAdjacency[sourceId].push(targetId);
-          if (!baronyAdjacency[targetId].includes(sourceId)) baronyAdjacency[targetId].push(sourceId);
+          upsertConnection(sourceId, targetId, selectedDistance);
+          upsertConnection(targetId, sourceId, selectedDistance);
         } else {
-          if (baronyAdjacency[sourceId]) baronyAdjacency[sourceId] = baronyAdjacency[sourceId].filter(b => b !== targetId);
-          if (baronyAdjacency[targetId]) baronyAdjacency[targetId] = baronyAdjacency[targetId].filter(b => b !== sourceId);
+          removeConnection(sourceId, targetId);
+          removeConnection(targetId, sourceId);
         }
+        renderConnections();
       });
       pendingLinkId = null;
       pendingAction = null;
@@ -610,6 +734,7 @@
       currentSeaZoneId = id;
       if (!id) {
         if (seaInfoPanel) seaInfoPanel.style.display = 'none';
+        renderConnections();
         core.drawAll();
         return;
       }
@@ -621,6 +746,7 @@
       if (filterManager && filterSelect && (filterSelect.value === 'distance' || filterSelect.value === 'baronies')) {
         filterManager.applyFilter(filterSelect.value);
       }
+      renderConnections();
       core.drawAll();
       return;
     }
@@ -628,6 +754,7 @@
 
     if (!id) {
       if (infoPanel) infoPanel.style.display = 'none';
+      renderConnections();
       return;
     }
     if (infoPanel) infoPanel.style.display = 'block';
@@ -646,6 +773,7 @@
     if (filterManager && filterSelect && filterSelect.value === 'distance') {
       filterManager.applyFilter('distance');
     }
+    renderConnections();
   }
 
   async function fetchData() {
@@ -680,27 +808,34 @@
       populateSelect(editCultureSelect, cultureMapInfo, 'Aucune');
       countyMap = {};
       seigneurToCounty = {};
-      counties.forEach(c => { countyMap[c.id] = c; if (c.seigneur_id) seigneurToCounty[c.seigneur_id] = c.id; });
+      counties.forEach(c => { countyMap[c.id] = c; addSeigneurTitle(seigneurToCounty, c.seigneur_id, c.id); });
       populateSelect(editCountySelect, countyMap, 'Aucun');
       duchyMap = {};
       seigneurToDuchy = {};
-      duchies.forEach(d => { duchyMap[d.id] = d; if (d.seigneur_id) seigneurToDuchy[d.seigneur_id] = d.id; });
+      duchies.forEach(d => { duchyMap[d.id] = d; addSeigneurTitle(seigneurToDuchy, d.seigneur_id, d.id); });
       kingdomMap = {};
       seigneurToKingdom = {};
-      kingdoms.forEach(k => { kingdomMap[k.id] = k; if (k.seigneur_id) seigneurToKingdom[k.seigneur_id] = k.id; });
+      kingdoms.forEach(k => { kingdomMap[k.id] = k; addSeigneurTitle(seigneurToKingdom, k.seigneur_id, k.id); });
       viscountyMap = {};
       seigneurToViscounty = {};
-      viscounties.forEach(v => { viscountyMap[v.id] = v; if (v.seigneur_id) seigneurToViscounty[v.seigneur_id] = v.id; });
+      viscounties.forEach(v => { viscountyMap[v.id] = v; addSeigneurTitle(seigneurToViscounty, v.seigneur_id, v.id); });
       populateSelect(editViscountySelect, viscountyMap, 'Aucune');
       marquisateMap = {};
       seigneurToMarquisate = {};
-      marquisates.forEach(m => { marquisateMap[m.id] = m; if (m.seigneur_id) seigneurToMarquisate[m.seigneur_id] = m.id; });
+      marquisates.forEach(m => { marquisateMap[m.id] = m; addSeigneurTitle(seigneurToMarquisate, m.seigneur_id, m.id); });
       archduchyMap = {};
       seigneurToArchduchy = {};
-      archduchies.forEach(a => { archduchyMap[a.id] = a; if (a.seigneur_id) seigneurToArchduchy[a.seigneur_id] = a.id; });
+      archduchies.forEach(a => { archduchyMap[a.id] = a; addSeigneurTitle(seigneurToArchduchy, a.seigneur_id, a.id); });
       empireMap = {};
       seigneurToEmpire = {};
-      empires.forEach(e => { empireMap[e.id] = e; if (e.seigneur_id) seigneurToEmpire[e.seigneur_id] = e.id; });
+      empires.forEach(e => { empireMap[e.id] = e; addSeigneurTitle(seigneurToEmpire, e.seigneur_id, e.id); });
+      finalizeSeigneurTitleMap(seigneurToCounty);
+      finalizeSeigneurTitleMap(seigneurToDuchy);
+      finalizeSeigneurTitleMap(seigneurToKingdom);
+      finalizeSeigneurTitleMap(seigneurToViscounty);
+      finalizeSeigneurTitleMap(seigneurToMarquisate);
+      finalizeSeigneurTitleMap(seigneurToArchduchy);
+      finalizeSeigneurTitleMap(seigneurToEmpire);
       canonicalLandMap = {};
       canonicalDependents = {};
       canonicalLands.forEach(cl => {
@@ -718,10 +853,11 @@
       });
       baronyAdjacency = {};
       connections.forEach(c => {
+        const dist = normalizeDistance(c.distance);
         if (!baronyAdjacency[c.barony_id_1]) baronyAdjacency[c.barony_id_1] = [];
         if (!baronyAdjacency[c.barony_id_2]) baronyAdjacency[c.barony_id_2] = [];
-        baronyAdjacency[c.barony_id_1].push(c.barony_id_2);
-        baronyAdjacency[c.barony_id_2].push(c.barony_id_1);
+        baronyAdjacency[c.barony_id_1].push({ id: c.barony_id_2, distance: dist });
+        baronyAdjacency[c.barony_id_2].push({ id: c.barony_id_1, distance: dist });
       });
       const baronyIds = entities.map(e => e.id);
       baronyPixelData = pixelData;
@@ -737,10 +873,11 @@
       populateSelect(seaEditSeigneurSelect, seigneurMap, 'Aucun');
       baronyAdjacency = {};
       connections.forEach(c => {
+        const dist = normalizeDistance(c.distance);
         if (!baronyAdjacency[c.zone_id_1]) baronyAdjacency[c.zone_id_1] = [];
         if (!baronyAdjacency[c.zone_id_2]) baronyAdjacency[c.zone_id_2] = [];
-        baronyAdjacency[c.zone_id_1].push(c.zone_id_2);
-        baronyAdjacency[c.zone_id_2].push(c.zone_id_1);
+        baronyAdjacency[c.zone_id_1].push({ id: c.zone_id_2, distance: dist });
+        baronyAdjacency[c.zone_id_2].push({ id: c.zone_id_1, distance: dist });
       });
       seaPixelData = pixelData;
       const baronyIds = [...new Set(zoneBaronies.map(zb => zb.barony_id))];
@@ -861,10 +998,10 @@
           const list = baronyAdjacency[k];
           const keyNum = parseInt(k, 10);
           if (keyNum === currentSelectedId) {
-            baronyAdjacency[newId] = list.map(v => (v === currentSelectedId ? newId : v));
+            baronyAdjacency[newId] = list.map(v => (v.id === currentSelectedId ? { ...v, id: newId } : v));
             delete baronyAdjacency[k];
           } else {
-            baronyAdjacency[k] = list.map(v => (v === currentSelectedId ? newId : v));
+            baronyAdjacency[k] = list.map(v => (v.id === currentSelectedId ? { ...v, id: newId } : v));
           }
         });
       }

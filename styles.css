@@ -24,7 +24,7 @@ main {
 
 /* En-tête avec contrôles et outils */
 .app-header {
-  background-color: #0b3d91;
+  background-color: #D13521;
   color: white;
   padding: 10px;
   display: flex;
@@ -378,6 +378,32 @@ main {
 .info-panel button:hover {
   background-color: #3d6db2;
 }
+.connection-list {
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.connection-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 6px;
+  align-items: center;
+  font-size: 0.9rem;
+  background: #f6f8ff;
+  border: 1px solid #d6def7;
+  padding: 4px;
+  border-radius: 4px;
+}
+.connection-row input {
+  width: 70px;
+  margin: 0;
+}
+.connection-actions {
+  margin-top: 6px;
+  display: grid;
+  gap: 4px;
+}
 .seigneur-link,
 .barony-link {
   margin: 0;
@@ -655,6 +681,9 @@ th.multi-col {
   border-radius: 4px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
   font-size: 0.9rem;
+  max-height: 40vh;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 .legend-item {
   display: flex;
@@ -705,6 +734,76 @@ th.multi-col {
   justify-content: flex-end;
   gap: 10px;
   margin-top: 10px;
+}
+
+.trade-route-dialog {
+  min-width: 320px;
+}
+
+.trade-route-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.trade-route-fields {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 8px;
+  align-items: center;
+}
+
+.trade-route-path {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: #f8f8f8;
+}
+
+.trade-route-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.trade-route-endpoint {
+  font-weight: bold;
+  text-align: center;
+}
+
+.trade-route-hint {
+  font-size: 0.9rem;
+  color: #b04a00;
+}
+
+.trade-route-info-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.table-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+
+.trade-route-info-header {
+  font-weight: bold;
+  text-align: center;
+}
+
+.trade-route-info-path {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.trade-route-empty {
+  font-style: italic;
+  color: #555;
 }
 
 .column-preferences-dialog {

@@ -2020,17 +2020,19 @@ async function initTradeMap() {
       ]);
       tradeAdjacency = {};
       connections.forEach(c => {
+        const dist = parseInt(c.distance, 10) || 1;
         if (!tradeAdjacency[c.barony_id_1]) tradeAdjacency[c.barony_id_1] = [];
         if (!tradeAdjacency[c.barony_id_2]) tradeAdjacency[c.barony_id_2] = [];
-        tradeAdjacency[c.barony_id_1].push(c.barony_id_2);
-        tradeAdjacency[c.barony_id_2].push(c.barony_id_1);
+        tradeAdjacency[c.barony_id_1].push({ id: c.barony_id_2, distance: dist });
+        tradeAdjacency[c.barony_id_2].push({ id: c.barony_id_1, distance: dist });
       });
       seaZoneAdjacency = {};
       zoneConns.forEach(c => {
+        const dist = parseInt(c.distance, 10) || 1;
         if (!seaZoneAdjacency[c.zone_id_1]) seaZoneAdjacency[c.zone_id_1] = [];
         if (!seaZoneAdjacency[c.zone_id_2]) seaZoneAdjacency[c.zone_id_2] = [];
-        seaZoneAdjacency[c.zone_id_1].push(c.zone_id_2);
-        seaZoneAdjacency[c.zone_id_2].push(c.zone_id_1);
+        seaZoneAdjacency[c.zone_id_1].push({ id: c.zone_id_2, distance: dist });
+        seaZoneAdjacency[c.zone_id_2].push({ id: c.zone_id_1, distance: dist });
       });
       zoneBaronies = {};
       baronyZones = {};
@@ -2055,6 +2057,7 @@ async function initTradeMap() {
 async function updateTradeMap(baronyId, routes) {
   await initTradeMap();
   if (!tradeMapCore) return;
+  const normalizedRoutes = Array.isArray(routes) ? routes : [];
   const bg = [...mapCore.terrainColor, 100];
   const landColor = [128, 0, 128, 100];
   const seaColor = [0, 128, 255, 100];
@@ -2065,8 +2068,8 @@ async function updateTradeMap(baronyId, routes) {
     colorMap[id] = [...bg];
   });
   if (baronyId) {
-    const landSet = new Set(tradeAdjacency[baronyId] || []);
-    (routes || []).forEach(r => landSet.add(r.id));
+    const landSet = new Set((tradeAdjacency[baronyId] || []).map(n => n.id));
+    normalizedRoutes.forEach(r => landSet.add(r.id));
     const seaSet = computeSeaReachable(baronyId);
     landSet.forEach(id => {
       colorMap[String(id)] = [...landColor];
@@ -2080,7 +2083,7 @@ async function updateTradeMap(baronyId, routes) {
       }
     });
   }
-  (routes || []).forEach(r => {
+  normalizedRoutes.forEach(r => {
     if (!colorMap[String(r.id)]) colorMap[String(r.id)] = [...landColor];
   });
   if (baronyId) {
@@ -2112,7 +2115,7 @@ function computeSeaReachable(start) {
 
 function getAvailableMethods(targetId) {
   const methods = [];
-  const landPossible = (tradeAdjacency[currentTradeBaronyId] || []).includes(targetId) ||
+  const landPossible = (tradeAdjacency[currentTradeBaronyId] || []).some(n => n.id === targetId) ||
     currentTradeRoutes.some(r => r.id === targetId);
   const seaPossible = computeSeaReachable(currentTradeBaronyId).has(targetId);
   if (landPossible && (!gameState.landTxMax || gameState.landTransactions < gameState.landTxMax)) methods.push('land');
@@ -2130,12 +2133,10 @@ async function startTradeRouteCreation() {
   if (!currentTradeBaronyId) return;
   await ensureTradeData();
   const dists = computeDistances(currentTradeBaronyId);
-  const existing = new Set(currentTradeRoutes.map(r => r.id));
   eligibleTargets = {};
   tradeBaronies.forEach(b => {
     if (!b.seigneur_id) return;
     if (b.id === currentTradeBaronyId) return;
-    if (existing.has(b.id)) return;
     if (dists[b.id] == null) return;
     eligibleTargets[b.id] = { ...b, distance: dists[b.id] };
   });
@@ -2244,15 +2245,16 @@ async function renderTradeRoutes(baronyId) {
     }
     const res = await fetch(`/api/trade_partners?barony_id=${baronyId}`);
     const routes = res.ok ? await res.json() : [];
-    currentTradeRoutes = routes;
-    await updateTradeMap(baronyId, routes);
-    if (!routes.length) {
+    const normalizedRoutes = Array.isArray(routes) ? routes : [];
+    currentTradeRoutes = normalizedRoutes;
+    await updateTradeMap(baronyId, normalizedRoutes);
+    if (!normalizedRoutes.length) {
       container.textContent = 'Aucune route commerciale';
       return;
     }
     const { landTransactions = 0, landTxMax = 0 } = gameState;
     const limitReached = landTxMax !== 0 && landTransactions >= landTxMax;
-    const rows = routes
+    const rows = normalizedRoutes
       .map(r =>
         `<tr><td>${r.id}</td><td>${r.name || ''}</td><td>${r.seigneur_name || ''}</td><td>${r.duchy_name || ''}</td><td><button class="trade-btn control-btn" data-id="${r.id}"${limitReached ? ' disabled' : ''}>Commercer</button></td></tr>`
       )
@@ -2545,4 +2547,3 @@ function buildTooltipValue(val, details, suffix = '') {
     .map(d => `<tr><td>${formatDetailLabel(d.label)}</td><td>${spanAmount(d.amount, suffix)}</td></tr>`).join('');
   return `<div class="tooltip">${val}<table class="tooltip-table">${rows}</table></div>`;
 }
-
