@@ -91,6 +91,19 @@
   }
   populateFilters();
 
+  function addSeigneurTitle(map, seigneurId, titleId) {
+    if (!seigneurId || !titleId) return;
+    const key = String(seigneurId);
+    if (!map[key]) map[key] = [];
+    map[key].push(titleId);
+  }
+
+  function finalizeSeigneurTitleMap(map) {
+    Object.values(map).forEach(list => {
+      list.sort((a, b) => a - b);
+    });
+  }
+
   const linkBtn = document.getElementById('linkBarony');
   const unlinkBtn = document.getElementById('unlinkBarony');
 
@@ -795,27 +808,34 @@
       populateSelect(editCultureSelect, cultureMapInfo, 'Aucune');
       countyMap = {};
       seigneurToCounty = {};
-      counties.forEach(c => { countyMap[c.id] = c; if (c.seigneur_id) seigneurToCounty[c.seigneur_id] = c.id; });
+      counties.forEach(c => { countyMap[c.id] = c; addSeigneurTitle(seigneurToCounty, c.seigneur_id, c.id); });
       populateSelect(editCountySelect, countyMap, 'Aucun');
       duchyMap = {};
       seigneurToDuchy = {};
-      duchies.forEach(d => { duchyMap[d.id] = d; if (d.seigneur_id) seigneurToDuchy[d.seigneur_id] = d.id; });
+      duchies.forEach(d => { duchyMap[d.id] = d; addSeigneurTitle(seigneurToDuchy, d.seigneur_id, d.id); });
       kingdomMap = {};
       seigneurToKingdom = {};
-      kingdoms.forEach(k => { kingdomMap[k.id] = k; if (k.seigneur_id) seigneurToKingdom[k.seigneur_id] = k.id; });
+      kingdoms.forEach(k => { kingdomMap[k.id] = k; addSeigneurTitle(seigneurToKingdom, k.seigneur_id, k.id); });
       viscountyMap = {};
       seigneurToViscounty = {};
-      viscounties.forEach(v => { viscountyMap[v.id] = v; if (v.seigneur_id) seigneurToViscounty[v.seigneur_id] = v.id; });
+      viscounties.forEach(v => { viscountyMap[v.id] = v; addSeigneurTitle(seigneurToViscounty, v.seigneur_id, v.id); });
       populateSelect(editViscountySelect, viscountyMap, 'Aucune');
       marquisateMap = {};
       seigneurToMarquisate = {};
-      marquisates.forEach(m => { marquisateMap[m.id] = m; if (m.seigneur_id) seigneurToMarquisate[m.seigneur_id] = m.id; });
+      marquisates.forEach(m => { marquisateMap[m.id] = m; addSeigneurTitle(seigneurToMarquisate, m.seigneur_id, m.id); });
       archduchyMap = {};
       seigneurToArchduchy = {};
-      archduchies.forEach(a => { archduchyMap[a.id] = a; if (a.seigneur_id) seigneurToArchduchy[a.seigneur_id] = a.id; });
+      archduchies.forEach(a => { archduchyMap[a.id] = a; addSeigneurTitle(seigneurToArchduchy, a.seigneur_id, a.id); });
       empireMap = {};
       seigneurToEmpire = {};
-      empires.forEach(e => { empireMap[e.id] = e; if (e.seigneur_id) seigneurToEmpire[e.seigneur_id] = e.id; });
+      empires.forEach(e => { empireMap[e.id] = e; addSeigneurTitle(seigneurToEmpire, e.seigneur_id, e.id); });
+      finalizeSeigneurTitleMap(seigneurToCounty);
+      finalizeSeigneurTitleMap(seigneurToDuchy);
+      finalizeSeigneurTitleMap(seigneurToKingdom);
+      finalizeSeigneurTitleMap(seigneurToViscounty);
+      finalizeSeigneurTitleMap(seigneurToMarquisate);
+      finalizeSeigneurTitleMap(seigneurToArchduchy);
+      finalizeSeigneurTitleMap(seigneurToEmpire);
       canonicalLandMap = {};
       canonicalDependents = {};
       canonicalLands.forEach(cl => {

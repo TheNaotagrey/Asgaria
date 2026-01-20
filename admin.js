@@ -55,7 +55,7 @@ const baronyPropLabels = {
   effects:'Effets'
 };
 
-const baronyFields = ['name','seigneur_id','religion_pop_id','culture_id','county_id','viscounty_id','priory_religion_id','church_religion_id','cathedral_religion_id','vacant','color'];
+const baronyFields = ['name','seigneur_id','religion_pop_id','culture_id','county_id','viscounty_id','defacto_county_id','defacto_viscounty_id','priory_religion_id','church_religion_id','cathedral_religion_id','vacant','color'];
 const baronyLabels = {
   name:'Nom',
   seigneur_id:'Seigneur',
@@ -63,6 +63,8 @@ const baronyLabels = {
   culture_id:'Culture',
   county_id:'Comté',
   viscounty_id:'Vicomté',
+  defacto_county_id:'Comté de facto',
+  defacto_viscounty_id:'Vicomté de facto',
   priory_religion_id:'Prieuré',
   church_religion_id:'Église',
   cathedral_religion_id:'Cathédrale',
@@ -2704,7 +2706,7 @@ async function loadEmpires(){
   const seigneursSelect = sortByName(seigneurs);
   const empiresById = empires.slice().sort((a,b)=>a.id - b.id);
   const kingdomsByName = sortByName(kingdoms);
-  const kingdomFields = ['name','seigneur_id','empire_id','color'];
+  const kingdomFields = ['name','seigneur_id','empire_id','defacto_empire_id','color'];
   renderTable(document.getElementById('tableEmpires'), empiresById, {
     endpoint:'empires',
     fields:['name','seigneur_id','color'],
@@ -2735,12 +2737,12 @@ async function loadKingdoms(){
   const empiresSelect = sortByName(empires);
   const kingdomsById = kingdoms.slice().sort((a,b)=>a.id - b.id);
   const duchiesByName = sortByName(duchies);
-  const duchyFields = ['name','seigneur_id','kingdom_id','archduchy_id','color'];
+  const duchyFields = ['name','seigneur_id','kingdom_id','archduchy_id','defacto_kingdom_id','defacto_archduchy_id','color'];
   renderTable(document.getElementById('tableKingdoms'), kingdomsById, {
     endpoint:'kingdoms',
-    fields:['name','seigneur_id','empire_id','color'],
-    selects:{seigneur_id:seigneursSelect, empire_id:empiresSelect},
-    labels:{name:'Nom', seigneur_id:'Détenteur du titre', empire_id:'Empire', color:'Couleur'},
+    fields:['name','seigneur_id','empire_id','defacto_empire_id','color'],
+    selects:{seigneur_id:seigneursSelect, empire_id:empiresSelect, defacto_empire_id:empiresSelect},
+    labels:{name:'Nom', seigneur_id:'Détenteur du titre', empire_id:'Empire', defacto_empire_id:'Empire de facto', color:'Couleur'},
     colorFields:['color'],
     relationWatch:['empire_id'],
     extraColumns:[{
@@ -2765,7 +2767,7 @@ async function loadArchduchies(){
   const seigneursSelect = sortByName(seigneurs);
   const archduchiesById = archduchies.slice().sort((a,b)=>a.id - b.id);
   const duchiesByName = sortByName(duchies);
-  const duchyFields = ['name','seigneur_id','kingdom_id','archduchy_id','color'];
+  const duchyFields = ['name','seigneur_id','kingdom_id','archduchy_id','defacto_kingdom_id','defacto_archduchy_id','color'];
   renderTable(document.getElementById('tableArchduchies'), archduchiesById, {
     endpoint:'archduchies',
     fields:['name','seigneur_id','color'],
@@ -2798,12 +2800,12 @@ async function loadDuchies(){
   const archduchiesSelect = sortByName(archduchies);
   const duchiesById = duchies.slice().sort((a,b)=>a.id - b.id);
   const countiesByName = sortByName(counties);
-  const countyFields = ['name','seigneur_id','duchy_id','marquisate_id','color'];
+  const countyFields = ['name','seigneur_id','duchy_id','marquisate_id','defacto_duchy_id','defacto_marquisate_id','color'];
   renderTable(document.getElementById('tableDuchies'), duchiesById, {
     endpoint:'duchies',
-    fields:['name','seigneur_id','kingdom_id','archduchy_id','color'],
-    selects:{seigneur_id:seigneursSelect, kingdom_id:kingdomsSelect, archduchy_id:archduchiesSelect},
-    labels:{name:'Nom', seigneur_id:'Détenteur du titre', kingdom_id:'Royaume', archduchy_id:'Archiduché', color:'Couleur'},
+    fields:['name','seigneur_id','kingdom_id','archduchy_id','defacto_kingdom_id','defacto_archduchy_id','color'],
+    selects:{seigneur_id:seigneursSelect, kingdom_id:kingdomsSelect, archduchy_id:archduchiesSelect, defacto_kingdom_id:kingdomsSelect, defacto_archduchy_id:archduchiesSelect},
+    labels:{name:'Nom', seigneur_id:'Détenteur du titre', kingdom_id:'Royaume', archduchy_id:'Archiduché', defacto_kingdom_id:'Royaume de facto', defacto_archduchy_id:'Archiduché de facto', color:'Couleur'},
     colorFields:['color'],
     relationWatch:['kingdom_id','archduchy_id'],
     extraColumns:[{
@@ -2828,7 +2830,7 @@ async function loadMarquisates(){
   const seigneursSelect = sortByName(seigneurs);
   const marquisatesById = marquisates.slice().sort((a,b)=>a.id - b.id);
   const countiesByName = sortByName(counties);
-  const countyFields = ['name','seigneur_id','duchy_id','marquisate_id','color'];
+  const countyFields = ['name','seigneur_id','duchy_id','marquisate_id','defacto_duchy_id','defacto_marquisate_id','color'];
   renderTable(document.getElementById('tableMarquisates'), marquisatesById, {
     endpoint:'marquisates',
     fields:['name','seigneur_id','color'],
@@ -2862,12 +2864,12 @@ async function loadCounties(){
   const countiesById = counties.slice().sort((a,b)=>a.id - b.id);
   const baroniesByName = sortByName(baronies);
   const baronyFieldList = baronyFields;
-  const countyFields = ['name','seigneur_id','duchy_id','marquisate_id','color'];
+  const countyFields = ['name','seigneur_id','duchy_id','marquisate_id','defacto_duchy_id','defacto_marquisate_id','color'];
   renderTable(document.getElementById('tableCounties'), countiesById, {
     endpoint:'counties',
-    fields:['name','seigneur_id','duchy_id','marquisate_id','color'],
-    selects:{seigneur_id:seigneursSelect, duchy_id:duchiesSelect, marquisate_id:marquisatesSelect},
-    labels:{name:'Nom', seigneur_id:'Détenteur du titre', duchy_id:'Duché', marquisate_id:'Marquisat', color:'Couleur'},
+    fields:['name','seigneur_id','duchy_id','marquisate_id','defacto_duchy_id','defacto_marquisate_id','color'],
+    selects:{seigneur_id:seigneursSelect, duchy_id:duchiesSelect, marquisate_id:marquisatesSelect, defacto_duchy_id:duchiesSelect, defacto_marquisate_id:marquisatesSelect},
+    labels:{name:'Nom', seigneur_id:'Détenteur du titre', duchy_id:'Duché', marquisate_id:'Marquisat', defacto_duchy_id:'Duché de facto', defacto_marquisate_id:'Marquisat de facto', color:'Couleur'},
     colorFields:['color'],
     relationWatch:['duchy_id','marquisate_id'],
     extraColumns:[{
@@ -2991,6 +2993,8 @@ async function loadBaronies(){
       culture_id:culturesSelect,
       county_id:countiesSelect,
       viscounty_id:viscountiesSelect,
+      defacto_county_id:countiesSelect,
+      defacto_viscounty_id:viscountiesSelect,
       priory_religion_id:religionsSelect,
       church_religion_id:religionsSelect,
       cathedral_religion_id:religionsSelect,
@@ -3002,6 +3006,8 @@ async function loadBaronies(){
       culture_id:'Aucune',
       county_id:'Aucun',
       viscounty_id:'Aucune',
+      defacto_county_id:'Aucun',
+      defacto_viscounty_id:'Aucune',
       priory_religion_id:'Aucun',
       church_religion_id:'Aucune',
       cathedral_religion_id:'Aucune'

@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS kingdoms (
   name TEXT UNIQUE,
   seigneur_id INTEGER,
   empire_id INTEGER,
+  defacto_empire_id INTEGER,
   color TEXT,
   FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id),
   FOREIGN KEY(empire_id) REFERENCES empires(id)
@@ -104,6 +105,8 @@ CREATE TABLE IF NOT EXISTS duchies (
   seigneur_id INTEGER,
   kingdom_id INTEGER,
   archduchy_id INTEGER,
+  defacto_kingdom_id INTEGER,
+  defacto_archduchy_id INTEGER,
   color TEXT,
   FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id),
   FOREIGN KEY(kingdom_id) REFERENCES kingdoms(id),
@@ -122,6 +125,8 @@ CREATE TABLE IF NOT EXISTS counties (
   seigneur_id INTEGER,
   duchy_id INTEGER,
   marquisate_id INTEGER,
+  defacto_duchy_id INTEGER,
+  defacto_marquisate_id INTEGER,
   color TEXT,
   FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id),
   FOREIGN KEY(duchy_id) REFERENCES duchies(id),
@@ -141,6 +146,8 @@ CREATE TABLE IF NOT EXISTS baronies (
   religion_pop_id INTEGER,
   county_id INTEGER,
   viscounty_id INTEGER,
+  defacto_county_id INTEGER,
+  defacto_viscounty_id INTEGER,
   culture_id INTEGER,
   priory_religion_id INTEGER,
   church_religion_id INTEGER,
@@ -689,6 +696,12 @@ db.serialize(() => {
     if (!rows.some(r => r.name === 'viscounty_id')) {
       db.run('ALTER TABLE baronies ADD COLUMN viscounty_id INTEGER');
     }
+    if (!rows.some(r => r.name === 'defacto_county_id')) {
+      db.run('ALTER TABLE baronies ADD COLUMN defacto_county_id INTEGER');
+    }
+    if (!rows.some(r => r.name === 'defacto_viscounty_id')) {
+      db.run('ALTER TABLE baronies ADD COLUMN defacto_viscounty_id INTEGER');
+    }
     if (!rows.some(r => r.name === 'priory_religion_id')) {
       db.run('ALTER TABLE baronies ADD COLUMN priory_religion_id INTEGER');
     }
@@ -720,6 +733,12 @@ db.serialize(() => {
       if (!rows.some(r => r.name === 'marquisate_id')) {
         db.run('ALTER TABLE counties ADD COLUMN marquisate_id INTEGER');
       }
+      if (!rows.some(r => r.name === 'defacto_duchy_id')) {
+        db.run('ALTER TABLE counties ADD COLUMN defacto_duchy_id INTEGER');
+      }
+      if (!rows.some(r => r.name === 'defacto_marquisate_id')) {
+        db.run('ALTER TABLE counties ADD COLUMN defacto_marquisate_id INTEGER');
+      }
       if (!rows.some(r => r.name === 'seigneur_id')) {
         db.run('ALTER TABLE counties ADD COLUMN seigneur_id INTEGER REFERENCES seigneurs(id)');
       }
@@ -730,6 +749,12 @@ db.serialize(() => {
       if (!rows.some(r => r.name === 'archduchy_id')) {
         db.run('ALTER TABLE duchies ADD COLUMN archduchy_id INTEGER');
       }
+      if (!rows.some(r => r.name === 'defacto_kingdom_id')) {
+        db.run('ALTER TABLE duchies ADD COLUMN defacto_kingdom_id INTEGER');
+      }
+      if (!rows.some(r => r.name === 'defacto_archduchy_id')) {
+        db.run('ALTER TABLE duchies ADD COLUMN defacto_archduchy_id INTEGER');
+      }
       if (!rows.some(r => r.name === 'seigneur_id')) {
         db.run('ALTER TABLE duchies ADD COLUMN seigneur_id INTEGER REFERENCES seigneurs(id)');
       }
@@ -739,6 +764,9 @@ db.serialize(() => {
     if (!err && rows) {
       if (!rows.some(r => r.name === 'empire_id')) {
         db.run('ALTER TABLE kingdoms ADD COLUMN empire_id INTEGER');
+      }
+      if (!rows.some(r => r.name === 'defacto_empire_id')) {
+        db.run('ALTER TABLE kingdoms ADD COLUMN defacto_empire_id INTEGER');
       }
       if (!rows.some(r => r.name === 'seigneur_id')) {
         db.run('ALTER TABLE kingdoms ADD COLUMN seigneur_id INTEGER REFERENCES seigneurs(id)');
