@@ -434,13 +434,19 @@
   }
 
   function resolveTitleByChain({ overrideId, dejureId, titleMap, seigneurChain, seigneurToTitles }) {
-    if (overrideId && titleMap?.[overrideId]) return overrideId;
-    const dejure = dejureId && titleMap?.[dejureId];
-    if (dejure && seigneurChain.includes(String(dejure.seigneur_id))) return dejureId;
+    const isOwnedByChain = titleId => {
+      if (!titleId) return false;
+      const title = titleMap?.[titleId];
+      return title && seigneurChain.includes(String(title.seigneur_id));
+    };
+    if (overrideId && isOwnedByChain(overrideId)) return overrideId;
     for (const sid of seigneurChain) {
       const titles = seigneurToTitles?.[sid];
-      if (Array.isArray(titles) && titles.length) return titles[0];
+      if (!Array.isArray(titles) || titles.length === 0) continue;
+      if (dejureId && titles.includes(dejureId) && isOwnedByChain(dejureId)) return dejureId;
+      return titles[0];
     }
+    if (dejureId && isOwnedByChain(dejureId)) return dejureId;
     return null;
   }
 

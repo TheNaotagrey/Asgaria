@@ -117,6 +117,7 @@
   const editReligionPopSelect = document.getElementById('editReligionPop');
   const editSanctuariesBtn = document.getElementById('editSanctuaries');
   const editCanonicalBtn = document.getElementById('editCanonical');
+  const editConnectionsBtn = document.getElementById('editConnections');
   const editPrioryReligionSelect = document.getElementById('editPrioryReligion');
   const editChurchReligionSelect = document.getElementById('editChurchReligion');
   const editCathedralReligionSelect = document.getElementById('editCathedralReligion');
@@ -126,16 +127,13 @@
   const editViscountySelect = document.getElementById('editViscounty');
   const editCountySelect = document.getElementById('editCounty');
   const seaEditSeigneurSelect = document.getElementById('seaEditSeigneur');
-  const connectionList = document.getElementById('connectionList');
-  const connectionTargetInput = document.getElementById('connectionTargetId');
-  const connectionDistanceInput = document.getElementById('connectionDistance');
-  const addConnectionBtn = document.getElementById('addConnection');
   const seaConnectionList = document.getElementById('seaConnectionList');
   const seaConnectionTargetInput = document.getElementById('seaConnectionTargetId');
   const seaConnectionDistanceInput = document.getElementById('seaConnectionDistance');
   const addSeaConnectionBtn = document.getElementById('addSeaConnection');
 
   const canonicalKey = id => (id === null || id === undefined ? '' : String(id));
+  let baronyConnectionDistance = 1;
   const normalizeDistance = value => {
     const parsed = parseInt(value, 10);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
@@ -166,10 +164,8 @@
     if (!baronyAdjacency[sourceId]) return;
     baronyAdjacency[sourceId] = baronyAdjacency[sourceId].filter(c => c.id !== targetId);
   }
-  function renderConnections() {
-    const listEl = mapMode === 'sea' ? seaConnectionList : connectionList;
+  function renderConnections(listEl = (mapMode === 'sea' ? seaConnectionList : null), selectedId = (mapMode === 'sea' ? currentSeaZoneId : currentSelectedId)) {
     if (!listEl) return;
-    const selectedId = mapMode === 'sea' ? currentSeaZoneId : currentSelectedId;
     listEl.innerHTML = '';
     if (!selectedId) return;
     const connections = [...getConnectionListFor(selectedId)];
@@ -216,15 +212,16 @@
       listEl.appendChild(row);
     });
   }
-  function addConnectionFromInputs() {
+  function addConnectionFromInputs(targetInput = (mapMode === 'sea' ? seaConnectionTargetInput : null), distanceInput = (mapMode === 'sea' ? seaConnectionDistanceInput : null), listEl) {
     const selectedId = mapMode === 'sea' ? currentSeaZoneId : currentSelectedId;
     if (!selectedId) return;
-    const targetInput = mapMode === 'sea' ? seaConnectionTargetInput : connectionTargetInput;
-    const distanceInput = mapMode === 'sea' ? seaConnectionDistanceInput : connectionDistanceInput;
     if (!targetInput || !distanceInput) return;
     const targetId = parseInt(targetInput.value, 10);
     if (!targetId || targetId === selectedId) return;
     const distance = normalizeDistance(distanceInput.value);
+    if (mapMode !== 'sea') {
+      baronyConnectionDistance = distance;
+    }
     fetch(`${API_BASE}${getConnectionEndpoint()}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -232,11 +229,15 @@
     }).then(() => {
       upsertConnection(selectedId, targetId, distance);
       upsertConnection(targetId, selectedId, distance);
-      renderConnections();
+      renderConnections(listEl);
     });
   }
-  if (addConnectionBtn) addConnectionBtn.addEventListener('click', addConnectionFromInputs);
-  if (addSeaConnectionBtn) addSeaConnectionBtn.addEventListener('click', addConnectionFromInputs);
+  if (addSeaConnectionBtn) addSeaConnectionBtn.addEventListener('click', () => addConnectionFromInputs());
+
+  function getSelectedDistance() {
+    if (mapMode === 'sea') return normalizeDistance(seaConnectionDistanceInput?.value);
+    return baronyConnectionDistance;
+  }
 
   function updateLegend(groups) {
     if (!legendDiv) return;
@@ -657,6 +658,60 @@
     });
   }
 
+  if (editConnectionsBtn) {
+    editConnectionsBtn.addEventListener('click', () => {
+      if (!currentSelectedId) return;
+      const overlay = document.createElement('div');
+      overlay.className = 'popup-overlay';
+      const popup = document.createElement('div');
+      popup.className = 'popup';
+      const list = document.createElement('div');
+
+      const actionRow = document.createElement('div');
+      actionRow.className = 'connection-actions';
+      const targetLabel = document.createElement('label');
+      targetLabel.textContent = 'Baronnie cible\u00a0:';
+      const targetInput = document.createElement('input');
+      targetInput.type = 'number';
+      targetInput.min = '1';
+      targetInput.placeholder = 'ID';
+      const distanceLabel = document.createElement('label');
+      distanceLabel.textContent = 'Distance\u00a0:';
+      const distanceInput = document.createElement('input');
+      distanceInput.type = 'number';
+      distanceInput.min = '1';
+      distanceInput.value = baronyConnectionDistance;
+      distanceInput.addEventListener('change', () => {
+        baronyConnectionDistance = normalizeDistance(distanceInput.value);
+        distanceInput.value = baronyConnectionDistance;
+      });
+      const addBtn = document.createElement('button');
+      addBtn.className = 'control-btn';
+      addBtn.textContent = 'Ajouter la connexion';
+      addBtn.addEventListener('click', () => {
+        addConnectionFromInputs(targetInput, distanceInput, list);
+        targetInput.value = '';
+      });
+
+      actionRow.appendChild(targetLabel);
+      actionRow.appendChild(targetInput);
+      actionRow.appendChild(distanceLabel);
+      actionRow.appendChild(distanceInput);
+      actionRow.appendChild(addBtn);
+
+      const closeBtn = document.createElement('button');
+      closeBtn.textContent = 'Fermer';
+      closeBtn.addEventListener('click', () => overlay.remove());
+
+      popup.appendChild(list);
+      popup.appendChild(actionRow);
+      popup.appendChild(closeBtn);
+      overlay.appendChild(popup);
+      document.body.appendChild(overlay);
+      renderConnections(list, currentSelectedId);
+    });
+  }
+
   if (editSeaBaroniesBtn) {
     editSeaBaroniesBtn.addEventListener('click', () => {
       if (!currentSeaZoneId) return;
@@ -686,7 +741,7 @@
       const targetId = id;
       const method = pendingAction === 'link' ? 'POST' : 'DELETE';
       const connectionEndpoint = mapMode === 'sea' ? '/api/maritime_zone_connections' : '/api/barony_connections';
-      const selectedDistance = normalizeDistance((mapMode === 'sea' ? seaConnectionDistanceInput : connectionDistanceInput)?.value);
+      const selectedDistance = getSelectedDistance();
       const body = mapMode === 'sea'
         ? { zone_id_1: sourceId, zone_id_2: targetId, distance: selectedDistance }
         : { barony_id_1: sourceId, barony_id_2: targetId, distance: selectedDistance };
