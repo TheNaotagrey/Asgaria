@@ -485,14 +485,6 @@
     return null;
   }
 
-  function chooseClosestDejure(startIndex, dejureMap) {
-    for (let i = startIndex + 1; i < rankSequence.length; i++) {
-      const key = rankSequence[i];
-      if (dejureMap[key]) return { rankKey: key, id: dejureMap[key] };
-    }
-    return null;
-  }
-
   function getOverrideCandidates(rankKey, info) {
     const overrides = [];
     if (!info) return overrides;
@@ -578,7 +570,7 @@
         if (selected) return selected;
       }
     }
-    return chooseClosestDejure(startIndex, dejureMap);
+    return null;
   }
 
   function resolveDefactoTitle(info, targetRankKey) {
