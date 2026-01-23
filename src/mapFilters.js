@@ -69,20 +69,15 @@
       return chain;
     }
 
-    function resolveTitleByChain({ overrideId, dejureId, titleMap, seigneurChain, seigneurToTitles }) {
-      const isOwnedByChain = titleId => {
-        if (!titleId) return false;
-        const title = titleMap?.[titleId];
-        return title && seigneurChain.includes(String(title.seigneur_id));
-      };
-      if (overrideId && isOwnedByChain(overrideId)) return overrideId;
+    function resolveTitleByChain({ overrideId, dejureId, titleMap, seigneurChain, seigneurToTitles, allowFallback = true }) {
+      if (overrideId) return overrideId;
+      if (dejureId) return dejureId;
+      if (!allowFallback) return null;
       for (const sid of seigneurChain) {
         const titles = seigneurToTitles?.[sid];
         if (!Array.isArray(titles) || titles.length === 0) continue;
-        if (dejureId && titles.includes(dejureId) && isOwnedByChain(dejureId)) return dejureId;
         return titles[0];
       }
-      if (dejureId && isOwnedByChain(dejureId)) return dejureId;
       return null;
     }
 
