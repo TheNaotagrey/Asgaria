@@ -434,6 +434,23 @@
     empire: { map: empireMap, seigneurTo: seigneurToEmpire }
   };
 
+  function refreshTitleConfig() {
+    titleConfig.viscounty.map = viscountyMap;
+    titleConfig.viscounty.seigneurTo = seigneurToViscounty;
+    titleConfig.county.map = countyMap;
+    titleConfig.county.seigneurTo = seigneurToCounty;
+    titleConfig.marquisate.map = marquisateMap;
+    titleConfig.marquisate.seigneurTo = seigneurToMarquisate;
+    titleConfig.duchy.map = duchyMap;
+    titleConfig.duchy.seigneurTo = seigneurToDuchy;
+    titleConfig.archduchy.map = archduchyMap;
+    titleConfig.archduchy.seigneurTo = seigneurToArchduchy;
+    titleConfig.kingdom.map = kingdomMap;
+    titleConfig.kingdom.seigneurTo = seigneurToKingdom;
+    titleConfig.empire.map = empireMap;
+    titleConfig.empire.seigneurTo = seigneurToEmpire;
+  }
+
   function getRankIndex(rankKey) {
     return rankSequence.indexOf(rankKey);
   }
@@ -994,6 +1011,7 @@
       finalizeSeigneurTitleMap(seigneurToMarquisate);
       finalizeSeigneurTitleMap(seigneurToArchduchy);
       finalizeSeigneurTitleMap(seigneurToEmpire);
+      refreshTitleConfig();
       baronyAdjacency = {};
       connections.forEach(c => {
         const dist = parseInt(c.distance, 10) || 1;
@@ -1093,6 +1111,7 @@
     finalizeSeigneurTitleMap(seigneurToMarquisate);
     finalizeSeigneurTitleMap(seigneurToArchduchy);
     finalizeSeigneurTitleMap(seigneurToEmpire);
+    refreshTitleConfig();
     canonicalLandMap = {};
     canonicalParents = {};
     canonicalLands.forEach(cl => {
