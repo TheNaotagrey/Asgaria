@@ -779,6 +779,155 @@ th.multi-col {
   color: #b04a00;
 }
 
+/* Organigrame féodal */
+.organigramme-main {
+  display: flex;
+  gap: 16px;
+  padding: 16px;
+}
+
+.organigramme-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: #fefefe;
+  border-radius: 12px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+  padding: 16px;
+  min-width: 0;
+}
+
+.organigramme-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.organigramme-status {
+  font-weight: 600;
+}
+
+.organigramme-status[data-tone='error'] {
+  color: #b3261e;
+}
+
+.organigramme-status[data-tone='warn'] {
+  color: #b26a00;
+}
+
+.organigramme-status[data-tone='success'] {
+  color: #2e7d32;
+}
+
+.organigramme-hint {
+  font-size: 0.9rem;
+  color: #607d8b;
+}
+
+.organigramme-canvas {
+  flex: 1;
+  border-radius: 10px;
+  border: 1px solid #e0e0e0;
+  background: #fafafa;
+  position: relative;
+  overflow: hidden;
+}
+
+.organigramme-svg {
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+}
+
+.organigramme-svg:active {
+  cursor: grabbing;
+}
+
+.organigramme-node-label {
+  font-size: 14px;
+  font-weight: 600;
+  fill: #2b2b2b;
+  pointer-events: none;
+}
+
+.organigramme-node {
+  cursor: pointer;
+}
+
+.organigramme-legend {
+  width: 240px;
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
+}
+
+.organigramme-legend h2 {
+  margin-top: 0;
+  font-size: 1rem;
+}
+
+.organigramme-legend-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.organigramme-legend-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95rem;
+}
+
+.legend-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.seigneur-dialog {
+  min-width: 360px;
+}
+
+.seigneur-dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.seigneur-dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dialog-section ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.dialog-line {
+  font-size: 0.95rem;
+}
+
+@media (max-width: 1100px) {
+  .organigramme-main {
+    flex-direction: column;
+  }
+
+  .organigramme-legend {
+    width: auto;
+  }
+}
+
 .trade-route-info-content {
   display: flex;
   flex-direction: column;

@@ -141,6 +141,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     navButtons.push(mapBtn);
   }
 
+  if (authArea && current !== 'organigrame.html') {
+    const organigrammeBtn = document.createElement('button');
+    organigrammeBtn.className = 'control-btn';
+    organigrammeBtn.textContent = 'Organigrame';
+    organigrammeBtn.onclick = () => location.href = 'organigrame.html';
+    navButtons.push(organigrammeBtn);
+  }
+
   const hasControls = typeof controls !== 'undefined' && controls;
 
   if (user && hasControls && authArea) {
