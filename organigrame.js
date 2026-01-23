@@ -29,6 +29,7 @@ const state = {
   titlesBySeigneur: new Map(),
   highestTitleBySeigneur: new Map(),
   vassalsByOverlord: new Map(),
+  nodePositions: new Map(),
   graphBounds: { minX: 0, maxX: 0, minY: 0, maxY: 0 },
   transform: { scale: 1, x: 30, y: 30 }
 };
@@ -41,13 +42,15 @@ const elements = {
   canvas: null,
   resetBtn: null,
   legend: null,
-  dialog: null,
-  dialogTitle: null,
-  dialogIdentity: null,
-  dialogReligion: null,
-  dialogOverlord: null,
-  dialogTitles: null,
-  dialogVassals: null
+  infoPanel: null,
+  infoClose: null,
+  infoTitle: null,
+  infoName: null,
+  infoHighest: null,
+  infoReligion: null,
+  infoOverlord: null,
+  infoTitles: null,
+  infoVassals: null
 };
 
 function cacheElements() {
@@ -58,13 +61,15 @@ function cacheElements() {
   elements.canvas = document.getElementById('organigramCanvas');
   elements.resetBtn = document.getElementById('resetViewBtn');
   elements.legend = document.getElementById('organigramLegend');
-  elements.dialog = document.getElementById('seigneurDialog');
-  elements.dialogTitle = document.getElementById('seigneurDialogTitle');
-  elements.dialogIdentity = document.getElementById('seigneurDialogIdentity');
-  elements.dialogReligion = document.getElementById('seigneurDialogReligion');
-  elements.dialogOverlord = document.getElementById('seigneurDialogOverlord');
-  elements.dialogTitles = document.getElementById('seigneurDialogTitles');
-  elements.dialogVassals = document.getElementById('seigneurDialogVassals');
+  elements.infoPanel = document.getElementById('seigneurInfoPanel');
+  elements.infoClose = document.getElementById('seigneurInfoClose');
+  elements.infoTitle = document.getElementById('seigneurInfoTitle');
+  elements.infoName = document.getElementById('seigneurInfoName');
+  elements.infoHighest = document.getElementById('seigneurInfoHighest');
+  elements.infoReligion = document.getElementById('seigneurInfoReligion');
+  elements.infoOverlord = document.getElementById('seigneurInfoOverlord');
+  elements.infoTitles = document.getElementById('seigneurInfoTitles');
+  elements.infoVassals = document.getElementById('seigneurInfoVassals');
 }
 
 function waitForHeaderControls() {
@@ -100,6 +105,7 @@ function buildMaps(data) {
   state.titlesBySeigneur.clear();
   state.highestTitleBySeigneur.clear();
   state.vassalsByOverlord.clear();
+  state.nodePositions.clear();
 
   data.seigneurs.forEach((seigneur) => {
     state.seigneursById.set(seigneur.id, seigneur);
@@ -164,7 +170,14 @@ function populateSelect() {
   }
 
   elements.select.disabled = false;
-  const sorted = [...topSeigneurs].sort((a, b) => formatRootLabel(a).localeCompare(formatRootLabel(b), 'fr'));
+  const sorted = [...topSeigneurs].sort((a, b) => {
+    const styleA = state.highestTitleBySeigneur.get(a.id) || titleStyleByKey.seigneur;
+    const styleB = state.highestTitleBySeigneur.get(b.id) || titleStyleByKey.seigneur;
+    const rankA = TITLE_STYLES.findIndex((style) => style.key === styleA.key);
+    const rankB = TITLE_STYLES.findIndex((style) => style.key === styleB.key);
+    if (rankA !== rankB) return rankA - rankB;
+    return formatRootLabel(a).localeCompare(formatRootLabel(b), 'fr');
+  });
   sorted.forEach((seigneur, index) => {
     const option = document.createElement('option');
     option.value = String(seigneur.id);
@@ -236,9 +249,10 @@ function applyTransform() {
 function renderGraph(rootId) {
   if (!elements.graph) return;
   elements.graph.innerHTML = '';
+  state.nodePositions.clear();
 
   const root = buildTree(rootId);
-  assignPositions(root, 0, 180);
+  assignPositions(root, 0, 150);
   const nodes = flattenTree(root);
   updateBounds(nodes);
 
@@ -255,7 +269,10 @@ function renderGraph(rootId) {
       const startY = node.y + parentHeight / 2;
       const endX = child.x;
       const endY = child.y - childHeight / 2;
-      const midY = (startY + endY) / 2;
+      const parentIndex = TITLE_STYLES.findIndex((style) => style.key === parentStyle.key);
+      const nextStyle = TITLE_STYLES[parentIndex + 1];
+      const nextLevelTop = nextStyle ? nextStyle.y - (nextStyle.size * 0.9) / 2 : endY;
+      const midY = (startY + nextLevelTop) / 2;
 
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('d', `M ${startX} ${startY} V ${midY} H ${endX} V ${endY}`);
@@ -291,16 +308,22 @@ function renderGraph(rootId) {
     rect.setAttribute('stroke-width', '3');
     rect.setAttribute('filter', 'url(#shadow)');
 
-    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    text.setAttribute('x', width / 2);
-    text.setAttribute('y', height / 2 + 5);
-    text.setAttribute('text-anchor', 'middle');
-    text.setAttribute('class', 'organigramme-node-label');
-    text.textContent = seigneur.name;
+    const foreignObject = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+    foreignObject.setAttribute('x', '0');
+    foreignObject.setAttribute('y', '0');
+    foreignObject.setAttribute('width', width);
+    foreignObject.setAttribute('height', height);
+
+    const label = document.createElement('div');
+    label.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+    label.className = 'organigramme-node-label';
+    label.textContent = seigneur.name;
+    foreignObject.appendChild(label);
 
     group.appendChild(rect);
-    group.appendChild(text);
+    group.appendChild(foreignObject);
     nodesGroup.appendChild(group);
+    state.nodePositions.set(node.id, { x: node.x, y: node.y, width, height });
   });
 
   const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
@@ -333,7 +356,7 @@ function renderOrganigram() {
 
 function renderDialog(seigneurId) {
   const seigneur = state.seigneursById.get(seigneurId);
-  if (!seigneur || !elements.dialog) return;
+  if (!seigneur || !elements.infoPanel) return;
   const highest = state.highestTitleBySeigneur.get(seigneurId) || titleStyleByKey.seigneur;
   const titles = (state.titlesBySeigneur.get(seigneurId) || []).sort((a, b) => {
     const rankA = TITLE_STYLES.findIndex((style) => style.key === a.key);
@@ -341,50 +364,77 @@ function renderDialog(seigneurId) {
     return rankA - rankB;
   });
   const vassalIds = state.vassalsByOverlord.get(seigneurId) || [];
+  const highestTitleName = titles.find((title) => title.key === highest.key)?.name;
 
-  elements.dialogTitle.textContent = seigneur.name;
-  elements.dialogIdentity.textContent = `Titre le plus élevé : ${highest.label}`;
-  elements.dialogReligion.textContent = seigneur.religion_name
-    ? `Religion : ${seigneur.religion_name}`
-    : 'Religion : inconnue';
+  elements.infoTitle.textContent = 'Seigneur sélectionné';
+  elements.infoName.textContent = seigneur.name;
+  elements.infoHighest.textContent = highestTitleName ? `${highest.label} ${highestTitleName}` : highest.label;
+  elements.infoReligion.textContent = seigneur.religion_name || 'Inconnue';
 
+  elements.infoOverlord.textContent = '';
   if (seigneur.overlord_id) {
     const overlord = state.seigneursById.get(seigneur.overlord_id);
-    elements.dialogOverlord.textContent = overlord
-      ? `Suzerain : ${overlord.name}`
-      : 'Suzerain : inconnu';
+    if (overlord) {
+      elements.infoOverlord.appendChild(createSeigneurButton(overlord.id, overlord.name));
+    } else {
+      elements.infoOverlord.textContent = 'Inconnu';
+    }
   } else {
-    elements.dialogOverlord.textContent = 'Suzerain : aucun (top-level)';
+    elements.infoOverlord.textContent = 'Aucun';
   }
 
-  elements.dialogTitles.innerHTML = '';
+  elements.infoTitles.innerHTML = '';
   if (titles.length) {
     titles.forEach((title) => {
       const li = document.createElement('li');
       li.textContent = `${title.label} – ${title.name}`;
-      elements.dialogTitles.appendChild(li);
+      elements.infoTitles.appendChild(li);
     });
   } else {
     const li = document.createElement('li');
     li.textContent = 'Aucun titre recensé.';
-    elements.dialogTitles.appendChild(li);
+    elements.infoTitles.appendChild(li);
   }
 
-  elements.dialogVassals.innerHTML = '';
+  elements.infoVassals.innerHTML = '';
   if (vassalIds.length) {
     vassalIds.forEach((id) => {
       const vassal = state.seigneursById.get(id);
-      const li = document.createElement('li');
-      li.textContent = vassal ? vassal.name : `Vassal #${id}`;
-      elements.dialogVassals.appendChild(li);
+      if (!vassal) return;
+      elements.infoVassals.appendChild(createSeigneurButton(vassal.id, vassal.name));
     });
   } else {
-    const li = document.createElement('li');
-    li.textContent = 'Aucun vassal direct.';
-    elements.dialogVassals.appendChild(li);
+    const empty = document.createElement('div');
+    empty.className = 'organigramme-empty';
+    empty.textContent = 'Aucun vassal direct.';
+    elements.infoVassals.appendChild(empty);
   }
 
-  elements.dialog.showModal();
+  elements.infoPanel.style.display = 'block';
+}
+
+function createSeigneurButton(seigneurId, label) {
+  const seigneur = state.seigneursById.get(seigneurId);
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'control-btn organigramme-seigneur-btn';
+  button.textContent = label || seigneur?.name || `Seigneur #${seigneurId}`;
+  button.addEventListener('click', () => {
+    renderDialog(seigneurId);
+    centerOnSeigneur(seigneurId);
+  });
+  return button;
+}
+
+function centerOnSeigneur(seigneurId) {
+  if (!elements.canvas) return;
+  const position = state.nodePositions.get(seigneurId);
+  if (!position) return;
+  const rect = elements.canvas.getBoundingClientRect();
+  const scale = state.transform.scale;
+  state.transform.x = rect.width / 2 - position.x * scale;
+  state.transform.y = rect.height / 2 - position.y * scale;
+  applyTransform();
 }
 
 function setupInteractions() {
@@ -431,11 +481,20 @@ function setupInteractions() {
     const nodeGroup = event.target.closest('.organigramme-node');
     if (!nodeGroup) return;
     const id = Number(nodeGroup.dataset.id);
-    if (id) renderDialog(id);
+    if (id) {
+      renderDialog(id);
+      centerOnSeigneur(id);
+    }
   });
 
   if (elements.resetBtn) {
     elements.resetBtn.addEventListener('click', () => resetView());
+  }
+
+  if (elements.infoClose) {
+    elements.infoClose.addEventListener('click', () => {
+      if (elements.infoPanel) elements.infoPanel.style.display = 'none';
+    });
   }
 }
 
