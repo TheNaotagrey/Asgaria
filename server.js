@@ -1849,6 +1849,42 @@ app.get('/api/baronies', (req, res) => {
     list('baronies')(req, res);
   }
 });
+
+app.get('/api/organigrammes', (req, res) => {
+  const db = req.app.get('db');
+  const dbAll = (sql, params = []) => new Promise((resolve, reject) => {
+    db.all(sql, params, (err, rows) => {
+      if (err) return reject(err);
+      return resolve(rows);
+    });
+  });
+
+  const titleQueries = {
+    empires: 'SELECT id, name, seigneur_id, color FROM empires',
+    kingdoms: 'SELECT id, name, seigneur_id, empire_id, color FROM kingdoms',
+    archduchies: 'SELECT id, name, seigneur_id, color FROM archduchies',
+    duchies: 'SELECT id, name, seigneur_id, kingdom_id, archduchy_id, color FROM duchies',
+    marquisates: 'SELECT id, name, seigneur_id, color FROM marquisates',
+    counties: 'SELECT id, name, seigneur_id, duchy_id, marquisate_id, color FROM counties',
+    viscounties: 'SELECT id, name, seigneur_id, color FROM viscounties',
+    baronies: 'SELECT id, name, seigneur_id, color FROM baronies'
+  };
+
+  Promise.all([
+    dbAll(`SELECT s.id, s.name, s.overlord_id, s.religion_id, s.player, s.bishop, r.name as religion_name
+           FROM seigneurs s
+           LEFT JOIN religions r ON s.religion_id=r.id`),
+    ...Object.values(titleQueries).map((query) => dbAll(query))
+  ])
+    .then(([seigneurs, ...titleRows]) => {
+      const titles = {};
+      Object.keys(titleQueries).forEach((key, idx) => {
+        titles[key] = titleRows[idx];
+      });
+      res.json({ seigneurs, titles });
+    })
+    .catch((err) => handleError(res, err));
+});
 app.use('/api/baronies', crudRoutes('baronies', baronyFields));
 
 const baronyPropFields = ['barony_id','water_access','sea_access','has_or','has_argent','has_fer','has_pierre','has_epices','has_perle','has_encens','has_huiles','has_pierre_precieuses','has_soie','has_sel','has_fourrure','has_teinture','has_ivoire','has_vin','field_limit','fishing_limit','high_sea_boat_limit','effects'];

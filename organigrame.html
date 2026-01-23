@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Organigrame féodal</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <script src="renderHeader.js"></script>
+  <script>
+    renderHeader('Organigrame féodal', () => {
+      const controlsRow = document.getElementById('controls');
+      if (!controlsRow) return;
+
+      const label = document.createElement('label');
+      label.setAttribute('for', 'organigramSelect');
+      label.textContent = 'Organigrame :';
+
+      const select = document.createElement('select');
+      select.id = 'organigramSelect';
+      select.className = 'control-btn';
+
+      const resetBtn = document.createElement('button');
+      resetBtn.id = 'resetViewBtn';
+      resetBtn.className = 'control-btn';
+      resetBtn.type = 'button';
+      resetBtn.textContent = 'Recentrer la vue';
+
+      const authArea = document.getElementById('authArea');
+      if (authArea) {
+        controlsRow.insertBefore(label, authArea);
+        controlsRow.insertBefore(select, authArea);
+        controlsRow.insertBefore(resetBtn, authArea);
+      } else {
+        controlsRow.append(label, select, resetBtn);
+      }
+    });
+  </script>
+  <main class="organigramme-main">
+    <section class="organigramme-panel">
+      <div class="organigramme-toolbar">
+        <span id="organigramStatus" class="organigramme-status">Chargement de l’organigrame…</span>
+        <span class="organigramme-hint">Astuce&nbsp;: maintenez le clic pour déplacer, molette pour zoomer.</span>
+      </div>
+      <div id="organigramCanvas" class="organigramme-canvas">
+        <svg id="organigramSvg" class="organigramme-svg" role="img" aria-label="Organigrame féodal">
+          <g id="organigramGraph"></g>
+        </svg>
+      </div>
+    </section>
+    <aside class="organigramme-legend">
+      <h2>Légende des titres</h2>
+      <ul id="organigramLegend" class="organigramme-legend-list"></ul>
+    </aside>
+  </main>
+
+  <dialog id="seigneurDialog" class="confirm-dialog seigneur-dialog">
+    <form method="dialog" class="seigneur-dialog-form">
+      <h3 id="seigneurDialogTitle">Seigneur</h3>
+      <div class="seigneur-dialog-content">
+        <div id="seigneurDialogIdentity" class="dialog-line"></div>
+        <div id="seigneurDialogReligion" class="dialog-line"></div>
+        <div id="seigneurDialogOverlord" class="dialog-line"></div>
+        <div class="dialog-section">
+          <h4>Titres détenus</h4>
+          <ul id="seigneurDialogTitles"></ul>
+        </div>
+        <div class="dialog-section">
+          <h4>Vassaux directs</h4>
+          <ul id="seigneurDialogVassals"></ul>
+        </div>
+      </div>
+      <div class="dialog-buttons">
+        <button type="submit" class="control-btn">Fermer</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="organigrame.js"></script>
+  <script src="auth.js"></script>
+</body>
+</html>
