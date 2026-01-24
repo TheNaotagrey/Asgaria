@@ -147,8 +147,20 @@ function buildMaps(data) {
   });
 }
 
+function hasTitle(seigneurId) {
+  return (state.titlesBySeigneur.get(seigneurId) || []).length > 0;
+}
+
+function hasVassal(seigneurId) {
+  return (state.vassalsByOverlord.get(seigneurId) || []).length > 0;
+}
+
+function isEligibleRoot(seigneurId) {
+  return hasTitle(seigneurId) && hasVassal(seigneurId);
+}
+
 function getTopLevelSeigneurs() {
-  return state.data.seigneurs.filter((seigneur) => !seigneur.overlord_id);
+  return state.data.seigneurs.filter((seigneur) => !seigneur.overlord_id && isEligibleRoot(seigneur.id));
 }
 
 function formatRootLabel(seigneur) {
@@ -169,7 +181,7 @@ function populateSelect() {
   if (!topSeigneurs.length) {
     const option = document.createElement('option');
     option.value = '';
-    option.textContent = 'Aucun organigrame disponible';
+    option.textContent = 'Aucun organigramme disponible';
     elements.select.appendChild(option);
     elements.select.disabled = true;
     return;
@@ -398,13 +410,13 @@ function renderOrganigram() {
   if (!elements.select) return;
   const rootId = Number(elements.select.value);
   if (!rootId) {
-    setStatus('Aucun organigrame disponible pour le moment.', 'warn');
+    setStatus('Aucun organigramme disponible pour le moment.', 'warn');
     elements.graph.innerHTML = '';
     return;
   }
 
   const seigneur = state.seigneursById.get(rootId);
-  setStatus(`Organigrame de ${seigneur ? seigneur.name : 'la lignée sélectionnée'}.`, 'success');
+  setStatus(`Organigramme de ${seigneur ? seigneur.name : 'la lignée sélectionnée'}.`, 'success');
   renderGraph(rootId);
   resetView();
 }
@@ -568,7 +580,7 @@ async function loadOrganigram() {
     renderOrganigram();
   } catch (error) {
     console.error(error);
-    setStatus('Impossible de charger l’organigrame. Réessayez plus tard.', 'error');
+    setStatus('Impossible de charger l’organigramme. Réessayez plus tard.', 'error');
   }
 }
 

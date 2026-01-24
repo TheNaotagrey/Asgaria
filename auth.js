@@ -141,12 +141,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     navButtons.push(mapBtn);
   }
 
-  if (authArea && current !== 'organigrame.html') {
-    const organigrammeBtn = document.createElement('button');
-    organigrammeBtn.className = 'control-btn';
-    organigrammeBtn.textContent = 'Organigrame';
-    organigrammeBtn.onclick = () => location.href = 'organigrame.html';
-    navButtons.push(organigrammeBtn);
+  if (user && authArea && current !== 'organigramme.html') {
+    try {
+      const accessRes = await fetch('/api/organigramme_access');
+      if (accessRes.ok) {
+        const access = await accessRes.json();
+        if (access?.eligible) {
+          const organigrammeBtn = document.createElement('button');
+          organigrammeBtn.className = 'control-btn';
+          organigrammeBtn.textContent = 'Organigramme';
+          organigrammeBtn.onclick = () => location.href = 'organigramme.html';
+          navButtons.push(organigrammeBtn);
+        }
+      }
+    } catch {}
   }
 
   const hasControls = typeof controls !== 'undefined' && controls;
