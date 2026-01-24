@@ -858,7 +858,9 @@ th.multi-col {
   width: 100%;
   padding: 4px 8px;
   box-sizing: border-box;
-  white-space: nowrap;
+  white-space: normal;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .organigramme-node {
