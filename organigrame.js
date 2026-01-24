@@ -25,6 +25,8 @@ const titleStyleByKey = Object.fromEntries(TITLE_STYLES.map((style) => [style.ke
 const LABEL_FONT = '600 14px "Segoe UI", Arial, sans-serif';
 const LABEL_HORIZONTAL_PADDING = 8;
 const LABEL_VERTICAL_PADDING = 4;
+const LABEL_MAX_WIDTH = 180;
+const LABEL_LINE_HEIGHT = 18;
 const LABEL_MEASURE_CANVAS = document.createElement('canvas');
 
 const state = {
@@ -238,8 +240,11 @@ function getNodeSizeById(seigneurId) {
     return { width: baseWidth, height: baseHeight };
   }
   const textWidth = measureLabelWidth(seigneur.name);
-  const width = Math.max(baseWidth, textWidth + LABEL_HORIZONTAL_PADDING * 2);
-  const height = Math.max(baseHeight, 14 + LABEL_VERTICAL_PADDING * 2);
+  const maxWidth = Math.max(baseWidth, LABEL_MAX_WIDTH);
+  const width = Math.max(baseWidth, Math.min(textWidth + LABEL_HORIZONTAL_PADDING * 2, maxWidth));
+  const availableWidth = Math.max(1, width - LABEL_HORIZONTAL_PADDING * 2);
+  const lineCount = Math.max(1, Math.ceil(textWidth / availableWidth));
+  const height = Math.max(baseHeight, lineCount * LABEL_LINE_HEIGHT + LABEL_VERTICAL_PADDING * 2);
   return { width, height };
 }
 
@@ -298,8 +303,13 @@ function renderGraph(rootId) {
   state.nodePositions.clear();
 
   const root = buildTree(rootId);
-  assignPositions(root, 0, 150);
   const nodes = flattenTree(root);
+  const maxNodeWidth = nodes.reduce((maxWidth, node) => {
+    const { width } = getNodeSizeById(node.id);
+    return Math.max(maxWidth, width);
+  }, 0);
+  const unitWidth = Math.max(150, maxNodeWidth + 40);
+  assignPositions(root, 0, unitWidth);
   updateBounds(nodes);
 
   const linksGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
