@@ -55,6 +55,66 @@ main {
   gap: 6px;
 }
 
+.seigneur-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+}
+
+.seigneur-search input {
+  width: 200px;
+  max-width: 45vw;
+  padding: 6px 10px;
+  border-radius: 16px;
+  border: 1px solid #ddd;
+  font-size: 0.9rem;
+}
+
+.seigneur-search input:focus {
+  outline: none;
+  border-color: #ffffff;
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.3);
+}
+
+.seigneur-search-results {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: #fff;
+  color: #333;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  min-width: 220px;
+  max-width: 320px;
+  max-height: 240px;
+  overflow-y: auto;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  display: none;
+  z-index: 1200;
+}
+
+.seigneur-search-results button {
+  width: 100%;
+  border: none;
+  background: none;
+  text-align: left;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.seigneur-search-results button:hover,
+.seigneur-search-results button:focus {
+  background: #f2f4f8;
+}
+
+.seigneur-search-empty {
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  color: #666;
+}
+
 .loading-indicator {
   color: #555;
   font-style: italic;
