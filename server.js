@@ -1057,6 +1057,41 @@ app.get('/api/me', (req, res) => {
   }
 });
 
+app.get('/api/organigramme_access', (req, res) => {
+  if (!req.session.user) return res.json({ eligible: false });
+  db.get('SELECT id FROM seigneurs WHERE user_id=?', [req.session.user.id], (err, row) => {
+    if (err) return handleError(res, err);
+    if (!row) return res.json({ eligible: false });
+    const seigneurId = row.id;
+    const titleQuery = `
+      SELECT COUNT(*) as count FROM (
+        SELECT seigneur_id FROM empires WHERE seigneur_id=?
+        UNION ALL SELECT seigneur_id FROM kingdoms WHERE seigneur_id=?
+        UNION ALL SELECT seigneur_id FROM archduchies WHERE seigneur_id=?
+        UNION ALL SELECT seigneur_id FROM duchies WHERE seigneur_id=?
+        UNION ALL SELECT seigneur_id FROM marquisates WHERE seigneur_id=?
+        UNION ALL SELECT seigneur_id FROM counties WHERE seigneur_id=?
+        UNION ALL SELECT seigneur_id FROM viscounties WHERE seigneur_id=?
+        UNION ALL SELECT seigneur_id FROM baronies WHERE seigneur_id=?
+      )`;
+    const params = Array(8).fill(seigneurId);
+    db.get(titleQuery, params, (titleErr, titleRow) => {
+      if (titleErr) return handleError(res, titleErr);
+      db.get('SELECT COUNT(*) as count FROM seigneurs WHERE overlord_id=?', [seigneurId], (vassalErr, vassalRow) => {
+        if (vassalErr) return handleError(res, vassalErr);
+        const titleCount = titleRow?.count || 0;
+        const vassalCount = vassalRow?.count || 0;
+        res.json({
+          eligible: titleCount > 0 && vassalCount > 0,
+          seigneur_id: seigneurId,
+          title_count: titleCount,
+          vassal_count: vassalCount
+        });
+      });
+    });
+  });
+});
+
 app.get('/api/notifications', (req, res) => {
   if (!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
   db.all('SELECT id, message, link, is_read, created_at FROM notifications WHERE user_id=? ORDER BY created_at DESC', [req.session.user.id], (err, rows) => {

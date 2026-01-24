@@ -2,19 +2,19 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>Organigrame féodal</title>
+  <title>Organigramme féodal</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <script src="renderHeader.js"></script>
   <script>
-    renderHeader('Organigrame féodal', () => {
+    renderHeader('Organigramme féodal', () => {
       const controlsRow = document.getElementById('controls');
       if (!controlsRow) return;
 
       const label = document.createElement('label');
       label.setAttribute('for', 'organigramSelect');
-      label.textContent = 'Organigrame :';
+      label.textContent = 'Organigramme :';
 
       const select = document.createElement('select');
       select.id = 'organigramSelect';
@@ -39,11 +39,11 @@
   <main class="organigramme-main">
     <section class="organigramme-stage">
       <div class="organigramme-toolbar">
-        <span id="organigramStatus" class="organigramme-status">Chargement de l’organigrame…</span>
+        <span id="organigramStatus" class="organigramme-status">Chargement de l’organigramme…</span>
         <span class="organigramme-hint">Astuce&nbsp;: maintenez le clic pour déplacer, molette pour zoomer.</span>
       </div>
       <div id="organigramCanvas" class="organigramme-canvas">
-        <svg id="organigramSvg" class="organigramme-svg" role="img" aria-label="Organigrame féodal">
+        <svg id="organigramSvg" class="organigramme-svg" role="img" aria-label="Organigramme féodal">
           <g id="organigramGraph"></g>
         </svg>
         <aside class="organigramme-legend legend">
@@ -74,7 +74,7 @@
     </aside>
   </main>
 
-  <script src="organigrame.js"></script>
+  <script src="organigramme.js"></script>
   <script src="auth.js"></script>
 </body>
 </html>
