@@ -805,22 +805,6 @@ th.multi-col {
   border-bottom: 1px solid #e0e0e0;
 }
 
-.organigramme-status {
-  font-weight: 600;
-}
-
-.organigramme-status[data-tone='error'] {
-  color: #b3261e;
-}
-
-.organigramme-status[data-tone='warn'] {
-  color: #b26a00;
-}
-
-.organigramme-status[data-tone='success'] {
-  color: #2e7d32;
-}
-
 .organigramme-hint {
   font-size: 0.9rem;
   color: #607d8b;
