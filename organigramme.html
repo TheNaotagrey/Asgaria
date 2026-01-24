@@ -26,13 +26,32 @@
       resetBtn.type = 'button';
       resetBtn.textContent = 'Recentrer la vue';
 
+      const searchWrapper = document.createElement('div');
+      searchWrapper.className = 'seigneur-search';
+
+      const searchInput = document.createElement('input');
+      searchInput.id = 'seigneurSearchInput';
+      searchInput.type = 'search';
+      searchInput.placeholder = 'Rechercher un seigneur…';
+      searchInput.autocomplete = 'off';
+      searchInput.setAttribute('aria-label', 'Rechercher un seigneur');
+
+      const searchResults = document.createElement('div');
+      searchResults.id = 'seigneurSearchResults';
+      searchResults.className = 'seigneur-search-results';
+      searchResults.setAttribute('role', 'listbox');
+      searchResults.setAttribute('aria-label', 'Résultats de recherche des seigneurs');
+
+      searchWrapper.append(searchInput, searchResults);
+
       const authArea = document.getElementById('authArea');
       if (authArea) {
         controlsRow.insertBefore(label, authArea);
         controlsRow.insertBefore(select, authArea);
         controlsRow.insertBefore(resetBtn, authArea);
+        authArea.appendChild(searchWrapper);
       } else {
-        controlsRow.append(label, select, resetBtn);
+        controlsRow.append(label, select, resetBtn, searchWrapper);
       }
     });
   </script>
