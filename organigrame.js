@@ -22,6 +22,10 @@ const TITLE_TABLE_MAP = {
 };
 
 const titleStyleByKey = Object.fromEntries(TITLE_STYLES.map((style) => [style.key, style]));
+const LABEL_FONT = '600 14px "Segoe UI", Arial, sans-serif';
+const LABEL_HORIZONTAL_PADDING = 8;
+const LABEL_VERTICAL_PADDING = 4;
+const LABEL_MEASURE_CANVAS = document.createElement('canvas');
 
 const state = {
   data: null,
@@ -218,15 +222,34 @@ function flattenTree(node) {
   return nodes;
 }
 
+function measureLabelWidth(text) {
+  const context = LABEL_MEASURE_CANVAS.getContext('2d');
+  if (!context) return 0;
+  context.font = LABEL_FONT;
+  return context.measureText(text).width;
+}
+
+function getNodeSizeById(seigneurId) {
+  const seigneur = state.seigneursById.get(seigneurId);
+  const style = state.highestTitleBySeigneur.get(seigneurId) || titleStyleByKey.seigneur;
+  const baseWidth = style.size * 2.4;
+  const baseHeight = style.size * 0.9;
+  if (!seigneur) {
+    return { width: baseWidth, height: baseHeight };
+  }
+  const textWidth = measureLabelWidth(seigneur.name);
+  const width = Math.max(baseWidth, textWidth + LABEL_HORIZONTAL_PADDING * 2);
+  const height = Math.max(baseHeight, 14 + LABEL_VERTICAL_PADDING * 2);
+  return { width, height };
+}
+
 function updateBounds(nodes) {
   let minX = Infinity;
   let maxX = -Infinity;
   let minY = Infinity;
   let maxY = -Infinity;
   nodes.forEach((node) => {
-    const style = state.highestTitleBySeigneur.get(node.id) || titleStyleByKey.seigneur;
-    const width = style.size * 2.4;
-    const height = style.size * 0.9;
+    const { width, height } = getNodeSizeById(node.id);
     minX = Math.min(minX, node.x - width / 2);
     maxX = Math.max(maxX, node.x + width / 2);
     minY = Math.min(minY, node.y - height / 2);
@@ -236,7 +259,30 @@ function updateBounds(nodes) {
 }
 
 function resetView() {
-  state.transform = { scale: 1, x: 30, y: 30 };
+  if (!elements.canvas) {
+    state.transform = { scale: 1, x: 30, y: 30 };
+    applyTransform();
+    return;
+  }
+  const { minX, maxX, minY, maxY } = state.graphBounds;
+  if (!Number.isFinite(minX) || !Number.isFinite(maxX) || !Number.isFinite(minY) || !Number.isFinite(maxY)) {
+    state.transform = { scale: 1, x: 30, y: 30 };
+    applyTransform();
+    return;
+  }
+  const rect = elements.canvas.getBoundingClientRect();
+  const padding = 40;
+  const graphHeight = Math.max(1, maxY - minY);
+  let scale = (rect.height - padding * 2) / graphHeight;
+  scale = Math.min(2.5, Math.max(0.4, scale));
+  const rootId = Number(elements.select?.value);
+  const rootPosition = state.nodePositions.get(rootId);
+  const centerX = rootPosition ? rootPosition.x : (minX + maxX) / 2;
+  state.transform = {
+    scale,
+    x: rect.width / 2 - centerX * scale,
+    y: padding - minY * scale
+  };
   applyTransform();
 }
 
@@ -290,8 +336,7 @@ function renderGraph(rootId) {
     const seigneur = state.seigneursById.get(node.id);
     if (!seigneur) return;
     const style = state.highestTitleBySeigneur.get(node.id) || titleStyleByKey.seigneur;
-    const width = style.size * 2.4;
-    const height = style.size * 0.9;
+    const { width, height } = getNodeSizeById(node.id);
 
     const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     group.setAttribute('class', 'organigramme-node');
@@ -451,6 +496,8 @@ function setupInteractions() {
   };
 
   elements.canvas.addEventListener('mousedown', (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
     isDragging = true;
     lastPosition = { x: event.clientX, y: event.clientY };
   });
