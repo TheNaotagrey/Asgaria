@@ -23,8 +23,8 @@ const TITLE_TABLE_MAP = {
 
 const titleStyleByKey = Object.fromEntries(TITLE_STYLES.map((style) => [style.key, style]));
 const LABEL_FONT = '600 14px "Segoe UI", Arial, sans-serif';
-const LABEL_HORIZONTAL_PADDING = 8;
-const LABEL_VERTICAL_PADDING = 4;
+const LABEL_HORIZONTAL_PADDING = 12;
+const LABEL_VERTICAL_PADDING = 6;
 const LABEL_MAX_WIDTH = 180;
 const LABEL_LINE_HEIGHT = 18;
 const LABEL_MEASURE_CANVAS = document.createElement('canvas');
@@ -184,16 +184,6 @@ function getFuzzyScore(query, candidate) {
   return score;
 }
 
-function formatSeigneurSearchLabel(seigneurId) {
-  const seigneur = state.seigneursById.get(seigneurId);
-  if (!seigneur) return '';
-  const highest = state.highestTitleBySeigneur.get(seigneurId) || titleStyleByKey.seigneur;
-  if (highest.key !== 'seigneur') {
-    return `${highest.label} ${seigneur.name}`;
-  }
-  return seigneur.name;
-}
-
 function hideSearchResults() {
   if (!elements.searchResults) return;
   elements.searchResults.style.display = 'none';
@@ -260,10 +250,10 @@ function updateSearchResults(query) {
     const button = document.createElement('button');
     button.type = 'button';
     button.setAttribute('role', 'option');
-    button.textContent = formatSeigneurSearchLabel(match.id) || match.name;
+    button.textContent = match.name;
     button.addEventListener('click', () => {
       if (elements.searchInput) {
-        elements.searchInput.value = match.name;
+        elements.searchInput.value = '';
       }
       hideSearchResults();
       selectSeigneur(match.id);
@@ -365,24 +355,33 @@ function populateSelect() {
 function buildTree(rootId) {
   const buildNode = (id) => {
     const children = (state.vassalsByOverlord.get(id) || []).map(buildNode);
-    const width = children.reduce((sum, child) => sum + child.width, 0) || 1;
-    return { id, children, width, x: 0, y: 0 };
+    const nodeSize = getNodeSizeById(id);
+    const gap = 40;
+    const childrenWidth = children.reduce((sum, child) => sum + child.width, 0)
+      + Math.max(0, children.length - 1) * gap;
+    const width = Math.max(nodeSize.width, childrenWidth || 0);
+    return {
+      id,
+      children,
+      width,
+      nodeWidth: nodeSize.width,
+      x: 0,
+      y: 0
+    };
   };
   return buildNode(rootId);
 }
 
-function assignPositions(node, startX, unitWidth) {
-  let cursor = startX;
+function assignPositions(node, startX) {
+  const gap = 40;
+  const childrenWidth = node.children.reduce((sum, child) => sum + child.width, 0)
+    + Math.max(0, node.children.length - 1) * gap;
+  let cursor = startX + (node.width - childrenWidth) / 2;
   node.children.forEach((child) => {
-    assignPositions(child, cursor, unitWidth);
-    cursor += child.width * unitWidth;
+    assignPositions(child, cursor);
+    cursor += child.width + gap;
   });
-  const totalWidth = node.width * unitWidth;
-  if (node.children.length) {
-    node.x = (node.children[0].x + node.children[node.children.length - 1].x) / 2;
-  } else {
-    node.x = startX + totalWidth / 2;
-  }
+  node.x = startX + node.width / 2;
   const titleStyle = state.highestTitleBySeigneur.get(node.id) || titleStyleByKey.seigneur;
   node.y = titleStyle.y;
 }
@@ -473,12 +472,7 @@ function renderGraph(rootId) {
 
   const root = buildTree(rootId);
   const nodes = flattenTree(root);
-  const maxNodeWidth = nodes.reduce((maxWidth, node) => {
-    const { width } = getNodeSizeById(node.id);
-    return Math.max(maxWidth, width);
-  }, 0);
-  const unitWidth = Math.max(150, maxNodeWidth + 40);
-  assignPositions(root, 0, unitWidth);
+  assignPositions(root, 0);
   updateBounds(nodes);
 
   const linksGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');

@@ -59,7 +59,7 @@ main {
   position: relative;
   display: flex;
   align-items: center;
-  margin-left: auto;
+  margin-left: 0;
 }
 
 .seigneur-search input {
@@ -75,6 +75,13 @@ main {
   outline: none;
   border-color: #ffffff;
   box-shadow: 0 0 0 2px rgba(255,255,255,0.3);
+}
+
+.organigramme-search-overlay {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1200;
 }
 
 .seigneur-search-results {
@@ -900,10 +907,10 @@ th.multi-col {
   text-align: center;
   height: 100%;
   width: 100%;
-  padding: 4px 8px;
+  padding: 6px 12px;
   box-sizing: border-box;
   white-space: normal;
-  line-height: 1.2;
+  line-height: 18px;
   overflow-wrap: anywhere;
 }
 
