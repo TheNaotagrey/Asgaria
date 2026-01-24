@@ -720,6 +720,8 @@ function setupInteractions() {
 
   elements.canvas.addEventListener('mousedown', (event) => {
     if (event.button !== 0) return;
+    if (event.target.closest('.seigneur-search')) return;
+    if (event.target.closest('.seigneur-search-results')) return;
     event.preventDefault();
     isDragging = true;
     lastPosition = { x: event.clientX, y: event.clientY };
