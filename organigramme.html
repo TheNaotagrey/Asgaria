@@ -56,7 +56,14 @@
       resetBtn.type = 'button';
       resetBtn.textContent = 'Recentrer la vue';
 
-      controlsRow.append(label, select, resetBtn);
+      const authArea = document.getElementById('authArea');
+      if (authArea) {
+        controlsRow.insertBefore(resetBtn, authArea);
+        controlsRow.insertBefore(select, resetBtn);
+        controlsRow.insertBefore(label, select);
+      } else {
+        controlsRow.append(label, select, resetBtn);
+      }
 
       const searchWrapper = document.createElement('div');
       searchWrapper.className = 'seigneur-search';
