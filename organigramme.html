@@ -7,38 +7,10 @@
 </head>
 <body>
   <script src="renderHeader.js"></script>
-  <script>
-    renderHeader('Organigramme féodal', () => {
-      const controlsRow = document.getElementById('controls');
-      if (!controlsRow) return;
-
-      const label = document.createElement('label');
-      label.setAttribute('for', 'organigramSelect');
-      label.textContent = 'Organigramme :';
-
-      const select = document.createElement('select');
-      select.id = 'organigramSelect';
-      select.className = 'control-btn';
-
-      const resetBtn = document.createElement('button');
-      resetBtn.id = 'resetViewBtn';
-      resetBtn.className = 'control-btn';
-      resetBtn.type = 'button';
-      resetBtn.textContent = 'Recentrer la vue';
-
-      const authArea = document.getElementById('authArea');
-      if (authArea) {
-        controlsRow.insertBefore(label, authArea);
-        controlsRow.insertBefore(select, authArea);
-        controlsRow.insertBefore(resetBtn, authArea);
-      } else {
-        controlsRow.append(label, select, resetBtn);
-      }
-    });
-  </script>
   <main class="organigramme-main">
     <section class="organigramme-stage">
       <div id="organigramCanvas" class="organigramme-canvas">
+        <div id="organigramSearchOverlay" class="organigramme-search-overlay"></div>
         <svg id="organigramSvg" class="organigramme-svg" role="img" aria-label="Organigramme féodal">
           <g id="organigramGraph"></g>
         </svg>
@@ -65,6 +37,68 @@
     </aside>
   </main>
 
+  <script>
+    renderHeader('Organigramme féodal', () => {
+      const controlsRow = document.getElementById('controls');
+      if (!controlsRow) return;
+
+      const label = document.createElement('label');
+      label.setAttribute('for', 'organigramSelect');
+      label.textContent = 'Organigramme :';
+
+      const select = document.createElement('select');
+      select.id = 'organigramSelect';
+      select.className = 'control-btn';
+
+      const resetBtn = document.createElement('button');
+      resetBtn.id = 'resetViewBtn';
+      resetBtn.className = 'control-btn';
+      resetBtn.type = 'button';
+      resetBtn.textContent = 'Recentrer la vue';
+
+      const authArea = document.getElementById('authArea');
+      if (authArea) {
+        controlsRow.insertBefore(resetBtn, authArea);
+        controlsRow.insertBefore(select, resetBtn);
+        controlsRow.insertBefore(label, select);
+      } else {
+        controlsRow.append(label, select, resetBtn);
+      }
+
+      const searchWrapper = document.createElement('div');
+      searchWrapper.className = 'seigneur-search';
+
+      const searchInput = document.createElement('input');
+      searchInput.id = 'seigneurSearchInput';
+      searchInput.type = 'search';
+      searchInput.placeholder = 'Rechercher un seigneur…';
+      searchInput.autocomplete = 'off';
+      searchInput.setAttribute('aria-label', 'Rechercher un seigneur');
+
+      const searchResults = document.createElement('div');
+      searchResults.id = 'seigneurSearchResults';
+      searchResults.className = 'seigneur-search-results';
+      searchResults.setAttribute('role', 'listbox');
+      searchResults.setAttribute('aria-label', 'Résultats de recherche des seigneurs');
+
+      searchWrapper.append(searchInput, searchResults);
+
+      const attachSearch = () => {
+        const searchSlot = document.getElementById('organigramSearchOverlay');
+        if (searchSlot && !searchSlot.contains(searchWrapper)) {
+          searchSlot.appendChild(searchWrapper);
+          return true;
+        }
+        return false;
+      };
+
+      if (!attachSearch()) {
+        window.addEventListener('DOMContentLoaded', () => {
+          attachSearch();
+        }, { once: true });
+      }
+    });
+  </script>
   <script src="organigramme.js"></script>
   <script src="auth.js"></script>
 </body>

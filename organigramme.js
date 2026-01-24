@@ -23,8 +23,8 @@ const TITLE_TABLE_MAP = {
 
 const titleStyleByKey = Object.fromEntries(TITLE_STYLES.map((style) => [style.key, style]));
 const LABEL_FONT = '600 14px "Segoe UI", Arial, sans-serif';
-const LABEL_HORIZONTAL_PADDING = 8;
-const LABEL_VERTICAL_PADDING = 4;
+const LABEL_HORIZONTAL_PADDING = 12;
+const LABEL_VERTICAL_PADDING = 6;
 const LABEL_MAX_WIDTH = 180;
 const LABEL_LINE_HEIGHT = 18;
 const LABEL_MEASURE_CANVAS = document.createElement('canvas');
@@ -36,6 +36,7 @@ const state = {
   highestTitleBySeigneur: new Map(),
   vassalsByOverlord: new Map(),
   nodePositions: new Map(),
+  searchIndex: [],
   graphBounds: { minX: 0, maxX: 0, minY: 0, maxY: 0 },
   transform: { scale: 1, x: 30, y: 30 }
 };
@@ -54,7 +55,9 @@ const elements = {
   infoTitles: null,
   infoVassals: null,
   titlesSection: null,
-  vassalsSection: null
+  vassalsSection: null,
+  searchInput: null,
+  searchResults: null
 };
 
 function cacheElements() {
@@ -64,6 +67,8 @@ function cacheElements() {
   elements.canvas = document.getElementById('organigramCanvas');
   elements.resetBtn = document.getElementById('resetViewBtn');
   elements.legend = document.getElementById('organigramLegend');
+  elements.searchInput = document.getElementById('seigneurSearchInput');
+  elements.searchResults = document.getElementById('seigneurSearchResults');
   elements.infoPanel = document.getElementById('seigneurInfoPanel');
   elements.infoTitle = document.getElementById('seigneurInfoTitle');
   elements.infoReligion = document.getElementById('seigneurInfoReligion');
@@ -102,6 +107,7 @@ function buildMaps(data) {
   state.highestTitleBySeigneur.clear();
   state.vassalsByOverlord.clear();
   state.nodePositions.clear();
+  state.searchIndex = [];
 
   data.seigneurs.forEach((seigneur) => {
     state.seigneursById.set(seigneur.id, seigneur);
@@ -114,6 +120,11 @@ function buildMaps(data) {
       }
       state.vassalsByOverlord.get(seigneur.overlord_id).push(seigneur.id);
     }
+    state.searchIndex.push({
+      id: seigneur.id,
+      name: seigneur.name || '',
+      normalizedName: normalizeText(seigneur.name || '')
+    });
   });
 
   Object.entries(data.titles).forEach(([table, rows]) => {
@@ -134,6 +145,152 @@ function buildMaps(data) {
   state.titlesBySeigneur.forEach((titles, seigneurId) => {
     const highest = TITLE_STYLES.find((style) => titles.some((title) => title.key === style.key));
     state.highestTitleBySeigneur.set(seigneurId, highest || titleStyleByKey.seigneur);
+  });
+}
+
+function normalizeText(value) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+function isSubsequence(needle, haystack) {
+  let index = 0;
+  for (const char of needle) {
+    index = haystack.indexOf(char, index);
+    if (index === -1) return false;
+    index += 1;
+  }
+  return true;
+}
+
+function getFuzzyScore(query, candidate) {
+  const terms = query.split(/\s+/).filter(Boolean);
+  if (!terms.length) return null;
+  let score = 0;
+  for (const term of terms) {
+    const index = candidate.indexOf(term);
+    if (index !== -1) {
+      score += 100 - index;
+      continue;
+    }
+    if (isSubsequence(term, candidate)) {
+      score += 10;
+      continue;
+    }
+    return null;
+  }
+  return score;
+}
+
+function hideSearchResults() {
+  if (!elements.searchResults) return;
+  elements.searchResults.style.display = 'none';
+  elements.searchResults.innerHTML = '';
+}
+
+function findRootSeigneurId(seigneurId) {
+  let currentId = seigneurId;
+  let guard = 0;
+  while (guard < 100) {
+    const seigneur = state.seigneursById.get(currentId);
+    if (!seigneur || !seigneur.overlord_id) break;
+    currentId = seigneur.overlord_id;
+    guard += 1;
+  }
+  return currentId;
+}
+
+function selectSeigneur(seigneurId) {
+  const id = Number(seigneurId);
+  if (!id) return;
+  if (!state.nodePositions.has(id)) {
+    const rootId = findRootSeigneurId(id);
+    if (elements.select) {
+      const option = elements.select.querySelector(`option[value="${rootId}"]`);
+      if (option) {
+        elements.select.value = String(rootId);
+        renderOrganigram();
+      }
+    }
+  }
+  renderDialog(id);
+  centerOnSeigneur(id);
+}
+
+function updateSearchResults(query) {
+  if (!elements.searchResults) return;
+  const normalizedQuery = normalizeText(query.trim());
+  if (!normalizedQuery) {
+    hideSearchResults();
+    return;
+  }
+  const matches = state.searchIndex
+    .map((entry) => {
+      const score = getFuzzyScore(normalizedQuery, entry.normalizedName);
+      if (score === null) return null;
+      return { ...entry, score };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, 'fr'))
+    .slice(0, 8);
+
+  elements.searchResults.innerHTML = '';
+  if (!matches.length) {
+    const empty = document.createElement('div');
+    empty.className = 'seigneur-search-empty';
+    empty.textContent = 'Aucun seigneur trouvé.';
+    elements.searchResults.appendChild(empty);
+    elements.searchResults.style.display = 'block';
+    return;
+  }
+
+  matches.forEach((match) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.setAttribute('role', 'option');
+    button.textContent = match.name;
+    button.addEventListener('click', () => {
+      if (elements.searchInput) {
+        elements.searchInput.value = '';
+      }
+      hideSearchResults();
+      selectSeigneur(match.id);
+    });
+    elements.searchResults.appendChild(button);
+  });
+  elements.searchResults.style.display = 'block';
+}
+
+function setupSearch() {
+  if (!elements.searchInput || !elements.searchResults) return;
+  elements.searchInput.addEventListener('input', (event) => {
+    updateSearchResults(event.target.value);
+  });
+  elements.searchInput.addEventListener('focus', (event) => {
+    updateSearchResults(event.target.value);
+  });
+  elements.searchInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      const firstResult = elements.searchResults.querySelector('button');
+      if (firstResult) firstResult.click();
+    }
+    if (event.key === 'Escape') {
+      hideSearchResults();
+      elements.searchInput.blur();
+    }
+  });
+  document.addEventListener('click', (event) => {
+    if (!elements.searchResults || !elements.searchInput) return;
+    if (
+      elements.searchResults.contains(event.target) ||
+      elements.searchInput.contains(event.target)
+    ) {
+      return;
+    }
+    hideSearchResults();
   });
 }
 
@@ -198,24 +355,33 @@ function populateSelect() {
 function buildTree(rootId) {
   const buildNode = (id) => {
     const children = (state.vassalsByOverlord.get(id) || []).map(buildNode);
-    const width = children.reduce((sum, child) => sum + child.width, 0) || 1;
-    return { id, children, width, x: 0, y: 0 };
+    const nodeSize = getNodeSizeById(id);
+    const gap = 40;
+    const childrenWidth = children.reduce((sum, child) => sum + child.width, 0)
+      + Math.max(0, children.length - 1) * gap;
+    const width = Math.max(nodeSize.width, childrenWidth || 0);
+    return {
+      id,
+      children,
+      width,
+      nodeWidth: nodeSize.width,
+      x: 0,
+      y: 0
+    };
   };
   return buildNode(rootId);
 }
 
-function assignPositions(node, startX, unitWidth) {
-  let cursor = startX;
+function assignPositions(node, startX) {
+  const gap = 40;
+  const childrenWidth = node.children.reduce((sum, child) => sum + child.width, 0)
+    + Math.max(0, node.children.length - 1) * gap;
+  let cursor = startX + (node.width - childrenWidth) / 2;
   node.children.forEach((child) => {
-    assignPositions(child, cursor, unitWidth);
-    cursor += child.width * unitWidth;
+    assignPositions(child, cursor);
+    cursor += child.width + gap;
   });
-  const totalWidth = node.width * unitWidth;
-  if (node.children.length) {
-    node.x = (node.children[0].x + node.children[node.children.length - 1].x) / 2;
-  } else {
-    node.x = startX + totalWidth / 2;
-  }
+  node.x = startX + node.width / 2;
   const titleStyle = state.highestTitleBySeigneur.get(node.id) || titleStyleByKey.seigneur;
   node.y = titleStyle.y;
 }
@@ -306,12 +472,7 @@ function renderGraph(rootId) {
 
   const root = buildTree(rootId);
   const nodes = flattenTree(root);
-  const maxNodeWidth = nodes.reduce((maxWidth, node) => {
-    const { width } = getNodeSizeById(node.id);
-    return Math.max(maxWidth, width);
-  }, 0);
-  const unitWidth = Math.max(150, maxNodeWidth + 40);
-  assignPositions(root, 0, unitWidth);
+  assignPositions(root, 0);
   updateBounds(nodes);
 
   const linksGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -559,6 +720,8 @@ function setupInteractions() {
 
   elements.canvas.addEventListener('mousedown', (event) => {
     if (event.button !== 0) return;
+    if (event.target.closest('.seigneur-search')) return;
+    if (event.target.closest('.seigneur-search-results')) return;
     event.preventDefault();
     isDragging = true;
     lastPosition = { x: event.clientX, y: event.clientY };
@@ -629,6 +792,7 @@ waitForHeaderControls().then(() => {
     elements.select.addEventListener('change', renderOrganigram);
   }
   initLegend();
+  setupSearch();
   setupInteractions();
   loadOrganigram();
 });
