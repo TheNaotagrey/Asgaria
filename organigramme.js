@@ -42,7 +42,6 @@ const state = {
 
 const elements = {
   select: null,
-  status: null,
   svg: null,
   graph: null,
   canvas: null,
@@ -60,7 +59,6 @@ const elements = {
 
 function cacheElements() {
   elements.select = document.getElementById('organigramSelect');
-  elements.status = document.getElementById('organigramStatus');
   elements.svg = document.getElementById('organigramSvg');
   elements.graph = document.getElementById('organigramGraph');
   elements.canvas = document.getElementById('organigramCanvas');
@@ -86,12 +84,6 @@ function waitForHeaderControls() {
       }
     }, 50);
   });
-}
-
-function setStatus(message, tone = 'info') {
-  if (!elements.status) return;
-  elements.status.textContent = message;
-  elements.status.dataset.tone = tone;
 }
 
 function initLegend() {
@@ -408,13 +400,13 @@ function renderOrganigram() {
   if (!elements.select) return;
   const rootId = Number(elements.select.value);
   if (!rootId) {
-    setStatus('Aucun organigramme disponible pour le moment.', 'warn');
+    console.warn('Aucun organigramme disponible pour le moment.');
     elements.graph.innerHTML = '';
     return;
   }
 
   const seigneur = state.seigneursById.get(rootId);
-  setStatus(`Organigramme de ${seigneur ? seigneur.name : 'la lignée sélectionnée'}.`, 'success');
+  console.info(`Organigramme de ${seigneur ? seigneur.name : 'la lignée sélectionnée'}.`);
   renderGraph(rootId);
   resetView();
 }
@@ -615,7 +607,7 @@ function hideInfoPanel() {
 }
 
 async function loadOrganigram() {
-  setStatus('Chargement des données…');
+  console.info('Chargement des données de l’organigramme.');
   try {
     const res = await fetch('/api/organigrammes');
     if (!res.ok) throw new Error('Erreur de chargement');
@@ -627,7 +619,7 @@ async function loadOrganigram() {
     renderOrganigram();
   } catch (error) {
     console.error(error);
-    setStatus('Impossible de charger l’organigramme. Réessayez plus tard.', 'error');
+    console.error('Impossible de charger l’organigramme. Réessayez plus tard.');
   }
 }
 
