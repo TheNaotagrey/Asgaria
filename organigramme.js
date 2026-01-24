@@ -49,14 +49,13 @@ const elements = {
   resetBtn: null,
   legend: null,
   infoPanel: null,
-  infoClose: null,
   infoTitle: null,
-  infoName: null,
-  infoHighest: null,
   infoReligion: null,
   infoOverlord: null,
   infoTitles: null,
-  infoVassals: null
+  infoVassals: null,
+  titlesSection: null,
+  vassalsSection: null
 };
 
 function cacheElements() {
@@ -68,14 +67,13 @@ function cacheElements() {
   elements.resetBtn = document.getElementById('resetViewBtn');
   elements.legend = document.getElementById('organigramLegend');
   elements.infoPanel = document.getElementById('seigneurInfoPanel');
-  elements.infoClose = document.getElementById('seigneurInfoClose');
   elements.infoTitle = document.getElementById('seigneurInfoTitle');
-  elements.infoName = document.getElementById('seigneurInfoName');
-  elements.infoHighest = document.getElementById('seigneurInfoHighest');
   elements.infoReligion = document.getElementById('seigneurInfoReligion');
   elements.infoOverlord = document.getElementById('seigneurInfoOverlord');
   elements.infoTitles = document.getElementById('seigneurInfoTitles');
   elements.infoVassals = document.getElementById('seigneurInfoVassals');
+  elements.titlesSection = document.getElementById('seigneurTitlesSection');
+  elements.vassalsSection = document.getElementById('seigneurVassalsSection');
 }
 
 function waitForHeaderControls() {
@@ -424,43 +422,30 @@ function renderOrganigram() {
 function renderDialog(seigneurId) {
   const seigneur = state.seigneursById.get(seigneurId);
   if (!seigneur || !elements.infoPanel) return;
-  const highest = state.highestTitleBySeigneur.get(seigneurId) || titleStyleByKey.seigneur;
   const titles = (state.titlesBySeigneur.get(seigneurId) || []).sort((a, b) => {
     const rankA = TITLE_STYLES.findIndex((style) => style.key === a.key);
     const rankB = TITLE_STYLES.findIndex((style) => style.key === b.key);
     return rankA - rankB;
   });
   const vassalIds = state.vassalsByOverlord.get(seigneurId) || [];
-  const highestTitleName = titles.find((title) => title.key === highest.key)?.name;
 
-  elements.infoTitle.textContent = 'Seigneur sélectionné';
-  elements.infoName.textContent = seigneur.name;
-  elements.infoHighest.textContent = highestTitleName ? `${highest.label} ${highestTitleName}` : highest.label;
-  elements.infoReligion.textContent = seigneur.religion_name || 'Inconnue';
-
-  elements.infoOverlord.textContent = '';
-  if (seigneur.overlord_id) {
-    const overlord = state.seigneursById.get(seigneur.overlord_id);
-    if (overlord) {
-      elements.infoOverlord.appendChild(createSeigneurButton(overlord.id, overlord.name));
-    } else {
-      elements.infoOverlord.textContent = 'Inconnu';
-    }
-  } else {
-    elements.infoOverlord.textContent = 'Aucun';
-  }
+  elements.infoTitle.textContent = seigneur.name;
+  setLabeledLine(elements.infoReligion, 'Religion :', seigneur.religion_name || 'Inconnue');
+  setSeigneurLine(elements.infoOverlord, seigneur.overlord_id, 'Suzerain :');
 
   elements.infoTitles.innerHTML = '';
   if (titles.length) {
     titles.forEach((title) => {
       const li = document.createElement('li');
-      li.textContent = `${title.label} – ${title.name}`;
+      li.textContent = formatTitleName(title);
       elements.infoTitles.appendChild(li);
     });
+    if (elements.titlesSection) elements.titlesSection.style.display = 'block';
   } else {
     const li = document.createElement('li');
     li.textContent = 'Aucun titre recensé.';
     elements.infoTitles.appendChild(li);
+    if (elements.titlesSection) elements.titlesSection.style.display = 'block';
   }
 
   elements.infoVassals.innerHTML = '';
@@ -470,14 +455,76 @@ function renderDialog(seigneurId) {
       if (!vassal) return;
       elements.infoVassals.appendChild(createSeigneurButton(vassal.id, vassal.name));
     });
+    if (elements.vassalsSection) elements.vassalsSection.style.display = 'block';
   } else {
     const empty = document.createElement('div');
     empty.className = 'organigramme-empty';
     empty.textContent = 'Aucun vassal direct.';
     elements.infoVassals.appendChild(empty);
+    if (elements.vassalsSection) elements.vassalsSection.style.display = 'block';
   }
 
   elements.infoPanel.style.display = 'block';
+}
+
+function formatTitleName(title) {
+  const prefixMap = {
+    empire: 'Empereur de',
+    kingdom: 'Roi de',
+    archduchy: 'Archiduc de',
+    duchy: 'Duc de',
+    marquisate: 'Marquis de',
+    county: 'Comte de',
+    viscounty: 'Vicomte de',
+    barony: 'Baron de'
+  };
+  const prefix = prefixMap[title.key];
+  if (prefix && title.name) {
+    return `${prefix} ${title.name}`;
+  }
+  if (title.name) {
+    return `${title.label} ${title.name}`;
+  }
+  return title.label;
+}
+
+function setLabeledLine(elem, label, value) {
+  if (!elem) return;
+  elem.innerHTML = '';
+  if (!value) {
+    elem.style.display = 'none';
+    return;
+  }
+  elem.style.display = 'flex';
+  const labelSpan = document.createElement('span');
+  labelSpan.className = 'info-label';
+  labelSpan.textContent = label;
+  elem.appendChild(labelSpan);
+  elem.appendChild(document.createTextNode(' '));
+  const valueSpan = document.createElement('span');
+  valueSpan.textContent = value;
+  elem.appendChild(valueSpan);
+}
+
+function setSeigneurLine(elem, seigneurId, label) {
+  if (!elem) return;
+  elem.innerHTML = '';
+  elem.style.display = 'flex';
+  const labelSpan = document.createElement('span');
+  labelSpan.className = 'info-label';
+  labelSpan.textContent = label;
+  elem.appendChild(labelSpan);
+  elem.appendChild(document.createTextNode(' '));
+  if (seigneurId) {
+    const overlord = state.seigneursById.get(seigneurId);
+    if (overlord) {
+      elem.appendChild(createSeigneurButton(overlord.id, overlord.name));
+      return;
+    }
+    elem.appendChild(document.createTextNode('Inconnu'));
+    return;
+  }
+  elem.appendChild(document.createTextNode('Aucun'));
 }
 
 function createSeigneurButton(seigneurId, label) {
@@ -511,6 +558,7 @@ function setupInteractions() {
 
   const onPointerMove = (event) => {
     if (!isDragging) return;
+    hideInfoPanel();
     state.transform.x += event.clientX - lastPosition.x;
     state.transform.y += event.clientY - lastPosition.y;
     lastPosition = { x: event.clientX, y: event.clientY };
@@ -530,6 +578,7 @@ function setupInteractions() {
 
   elements.canvas.addEventListener('wheel', (event) => {
     event.preventDefault();
+    hideInfoPanel();
     const rect = elements.canvas.getBoundingClientRect();
     const zoomIntensity = 0.0015;
     const delta = -event.deltaY * zoomIntensity;
@@ -559,12 +608,10 @@ function setupInteractions() {
   if (elements.resetBtn) {
     elements.resetBtn.addEventListener('click', () => resetView());
   }
+}
 
-  if (elements.infoClose) {
-    elements.infoClose.addEventListener('click', () => {
-      if (elements.infoPanel) elements.infoPanel.style.display = 'none';
-    });
-  }
+function hideInfoPanel() {
+  if (elements.infoPanel) elements.infoPanel.style.display = 'none';
 }
 
 async function loadOrganigram() {

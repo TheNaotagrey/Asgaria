@@ -54,23 +54,18 @@
     </section>
     <aside id="seigneurInfoPanel" class="info-panel organigramme-info-panel" style="display: none;">
       <div class="info-header">
-        <h2 id="seigneurInfoTitle">Seigneur sélectionné</h2>
-        <button type="button" id="seigneurInfoClose" class="control-btn">Fermer</button>
+        <h2 id="seigneurInfoTitle">Seigneur</h2>
       </div>
-      <div class="info-group">
-        <div class="info-row"><span class="info-label">Nom&nbsp;:</span><span id="seigneurInfoName"></span></div>
-        <div class="info-row"><span class="info-label">Titre&nbsp;:</span><span id="seigneurInfoHighest"></span></div>
-        <div class="info-row"><span class="info-label">Religion&nbsp;:</span><span id="seigneurInfoReligion"></span></div>
-        <div class="info-row"><span class="info-label">Suzerain&nbsp;:</span><span id="seigneurInfoOverlord"></span></div>
-      </div>
-      <div class="info-group">
-        <h3>Titres détenus</h3>
+      <div class="info-row" id="seigneurInfoReligion"></div>
+      <div class="info-row seigneur-line" id="seigneurInfoOverlord"></div>
+      <section class="info-group" id="seigneurTitlesSection">
+        <h3>Titres</h3>
         <ul id="seigneurInfoTitles"></ul>
-      </div>
-      <div class="info-group">
-        <h3>Vassaux directs</h3>
+      </section>
+      <section class="info-group" id="seigneurVassalsSection">
+        <h3>Vassaux</h3>
         <div id="seigneurInfoVassals" class="organigramme-seigneur-buttons"></div>
-      </div>
+      </section>
     </aside>
   </main>
 
