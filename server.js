@@ -1271,6 +1271,52 @@ app.use('/api/counties', crudRoutes('counties',['name','seigneur_id','duchy_id',
 app.use('/api/viscounties', crudRoutes('viscounties',['name','seigneur_id','color']));
 app.use('/api/religions', crudRoutes('religions',['name','color']));
 app.use('/api/cultures', crudRoutes('cultures',['name','color']));
+app.delete('/api/seigneurs/:id', requireAdmin, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: 'Identifiant de seigneur invalide.' });
+  }
+  db.get('SELECT * FROM seigneurs WHERE id=?', [id], (err, seigneur) => {
+    if (err) return handleError(res, err);
+    if (!seigneur) return res.status(404).json({ error: 'Seigneur introuvable.' });
+    const references = [
+      { table: 'seigneuries', column: 'seigneur_id', label: 'seigneurie(s)' },
+      { table: 'empires', column: 'seigneur_id', label: 'empire(s)' },
+      { table: 'kingdoms', column: 'seigneur_id', label: 'royaume(s)' },
+      { table: 'archduchies', column: 'seigneur_id', label: 'archiduché(s)' },
+      { table: 'duchies', column: 'seigneur_id', label: 'duché(s)' },
+      { table: 'marquisates', column: 'seigneur_id', label: 'marquisat(s)' },
+      { table: 'counties', column: 'seigneur_id', label: 'comté(s)' },
+      { table: 'viscounties', column: 'seigneur_id', label: 'vicomté(s)' },
+      { table: 'baronies', column: 'seigneur_id', label: 'baronnie(s)' },
+      { table: 'maritime_zones', column: 'seigneur_id', label: 'zone(s) maritimes' },
+      { table: 'seigneurs', column: 'overlord_id', label: 'vassal(aux)' }
+    ];
+    Promise.all(references.map(ref => new Promise((resolve, reject) => {
+      db.get(`SELECT COUNT(*) as count FROM ${ref.table} WHERE ${ref.column}=?`, [id], (err2, row) => {
+        if (err2) return reject(err2);
+        resolve({ ...ref, count: row?.count || 0 });
+      });
+    })))
+      .then(results => {
+        const blocking = results.filter(r => r.count > 0);
+        if (blocking.length) {
+          const details = blocking.map(r => `${r.count} ${r.label}`).join(', ');
+          return res.status(400).json({
+            error: `Suppression impossible : ce seigneur est encore référencé par ${details}.`
+          });
+        }
+        db.run('DELETE FROM seigneurs WHERE id=?', [id], function (err3) {
+          if (err3) return handleError(res, err3);
+          if (this.changes > 0) {
+            recordChange(req, { table: 'seigneurs', action: 'delete', before: seigneur, after: null });
+          }
+          res.json({ changes: this.changes });
+        });
+      })
+      .catch(error => handleError(res, error));
+  });
+});
 app.use('/api/seigneurs', crudRoutes('seigneurs',['name','religion_id','overlord_id','user_id','player','bishop']));
 app.use('/api/inventaire', crudRoutes('inventaire', inventaireFields));
 
@@ -1724,34 +1770,18 @@ app.get('/api/my_seigneurie', (req, res) => {
     } else {
       db.get('SELECT * FROM seigneurs WHERE user_id=?', [userId], (err, seigneur) => {
         if (err) return handleError(res, err);
-        function ensureSeigneur(cb) {
-          if (seigneur) return cb(seigneur);
-          const name = `Seigneur ${req.session.user.first_name}`;
-          db.run('INSERT INTO seigneurs(name,user_id) VALUES (?,?)', [name, userId], function(err){
-            if (err) return handleError(res, err);
-            cb({ id: this.lastID, name, user_id: userId });
-          });
+        if (!seigneur) {
+          return res.json({ seigneur: null, seigneurie: null });
         }
-        ensureSeigneur(seig => {
-          db.get('SELECT s.id, s.name, s.religion_id, r.name as religion_name, o.name as overlord_name FROM seigneurs s LEFT JOIN religions r ON s.religion_id=r.id LEFT JOIN seigneurs o ON s.overlord_id=o.id WHERE s.id=?', [seig.id], (err2, seigRow) => {
-            if (err2) return handleError(res, err2);
-            const fullSeig = seigRow || seig;
-            db.get('SELECT * FROM seigneuries WHERE seigneur_id=?', [seig.id], (err, seigneurie) => {
-              if (err) return handleError(res, err);
-            function ensureSeigneurie(cb) {
-              if (seigneurie) return cb(seigneurie);
-              db.run('INSERT INTO inventaire DEFAULT VALUES', function(err){
-                if (err) return handleError(res, err);
-                const invId = this.lastID;
-                db.run('INSERT INTO seigneuries (baronnie_id,seigneur_id,population,inventaire_id,buildings,infrastructures) VALUES (NULL,?,?,?,?,?)',
-                  [seig.id, 0, invId, '{}', '{}'], function(err){
-                    if (err) return handleError(res, err);
-                    cb({ id: this.lastID, baronnie_id: null, seigneur_id: seig.id, population: 0, inventaire_id: invId, buildings: '{}', infrastructures: '{}', tax_rate: 5 });
-                  });
-              });
+        db.get('SELECT s.id, s.name, s.religion_id, r.name as religion_name, o.name as overlord_name FROM seigneurs s LEFT JOIN religions r ON s.religion_id=r.id LEFT JOIN seigneurs o ON s.overlord_id=o.id WHERE s.id=?', [seigneur.id], (err2, seigRow) => {
+          if (err2) return handleError(res, err2);
+          const fullSeig = seigRow || seigneur;
+          db.get('SELECT * FROM seigneuries WHERE seigneur_id=?', [seigneur.id], (err3, seigneurie) => {
+            if (err3) return handleError(res, err3);
+            if (!seigneurie) {
+              return res.json({ seigneur: fullSeig, seigneurie: null });
             }
-            ensureSeigneurie(s => respond(fullSeig, s));
-          });
+            respond(fullSeig, seigneurie);
           });
         });
       });

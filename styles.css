@@ -533,6 +533,14 @@ main {
 .admin-table button:hover {
   background-color: #3d6db2;
 }
+.empty-state {
+  padding: 10px 12px;
+  border: 1px solid #e0b4b4;
+  background-color: #fff1f1;
+  color: #7a1a1a;
+  border-radius: 4px;
+  font-weight: 600;
+}
 .log-controls {
   display: flex;
   flex-direction: column;
