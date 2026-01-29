@@ -2110,6 +2110,8 @@ function renderTable(container, rows, opts){
     key: col.key || `extra_${index}`,
     label: col.label || `Colonne ${index + 1}`
   }));
+  const deleteConfig = opts.deleteConfig || null;
+  const hasDelete = Boolean(deleteConfig);
   const tableKey = opts.tableKey || opts.endpoint || container.id || '';
   let hiddenColumns = new Set(getHiddenColumns(tableKey));
   const allowAdd = opts.allowAdd !== false;
@@ -2191,6 +2193,11 @@ function renderTable(container, rows, opts){
   });
   actionsHeader.appendChild(columnToggleBtn);
   headRow.appendChild(actionsHeader);
+  if (hasDelete) {
+    const deleteHeader = document.createElement('th');
+    deleteHeader.textContent = deleteConfig.label || 'Supprimer';
+    headRow.appendChild(deleteHeader);
+  }
   thead.appendChild(headRow);
   const updateHeaders = () => {
     Array.from(headRow.children).forEach(th => {
@@ -2520,6 +2527,37 @@ function renderTable(container, rows, opts){
     });
     td.appendChild(btn);
     tr.appendChild(td);
+    if (hasDelete) {
+      const deleteTd = document.createElement('td');
+      const deleteBtn = document.createElement('button');
+      deleteBtn.textContent = deleteConfig.buttonLabel || 'Supprimer';
+      deleteBtn.className = deleteConfig.className || 'danger';
+      deleteBtn.addEventListener('click', async () => {
+        const confirmation = deleteConfig.confirmMessage
+          ? deleteConfig.confirmMessage(item)
+          : `Confirmer la suppression définitive de l'entrée #${item.id} ?`;
+        if (!window.confirm(confirmation)) return;
+        try {
+          const resp = await fetch(`/api/${opts.endpoint}/${item.id}`, { method: 'DELETE' });
+          if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            alert(err.error || 'Suppression impossible.');
+            return;
+          }
+          showSaveIndicator(deleteTd);
+          const idx = rows.findIndex(r => r.id === item.id);
+          if (idx !== -1) {
+            notifyRelationChanges(captureRelationValues(item), null);
+            rows.splice(idx, 1);
+          }
+          renderBody();
+        } catch {
+          alert('Suppression impossible.');
+        }
+      });
+      deleteTd.appendChild(deleteBtn);
+      tr.appendChild(deleteTd);
+    }
     return tr;
   };
 
@@ -2578,6 +2616,10 @@ function renderTable(container, rows, opts){
       });
       addTd.appendChild(addBtn);
       addRow.appendChild(addTd);
+      if (hasDelete) {
+        const deleteTd = document.createElement('td');
+        addRow.appendChild(deleteTd);
+      }
       tbody.appendChild(addRow);
     };
 
@@ -2683,6 +2725,11 @@ async function loadSeigneurs(){
     labels:{name:'Nom', user_id:'Utilisateur', religion_id:'Religion', overlord_id:'Suzerain', player:'Joueur', bishop:'Évêque'},
     booleanFields:['player','bishop'],
     relationWatch:['overlord_id'],
+    deleteConfig:{
+      label:'Supprimer',
+      className:'danger',
+      confirmMessage:(item)=>`⚠️ Suppression définitive\n\nVous allez supprimer le seigneur "${item.name || 'Sans nom'}" (ID ${item.id}).\nCette action est irréversible et sera refusée si ce seigneur est encore lié à des titres, baronnies, seigneuries ou vassaux.\n\nConfirmer la suppression ?`
+    },
     extraColumns:[{
       label:'Vassaux',
       render:item => createRelationCell(item, seigneursById, {
