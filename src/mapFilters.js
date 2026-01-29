@@ -130,8 +130,12 @@
       } else if (rankKey === 'county') {
         if (info.defacto_marquisate_id) overrides.push({ rankKey: 'marquisate', id: info.defacto_marquisate_id });
         if (info.defacto_duchy_id) overrides.push({ rankKey: 'duchy', id: info.defacto_duchy_id });
+      } else if (rankKey === 'marquisate') {
+        if (info.defacto_duchy_id) overrides.push({ rankKey: 'duchy', id: info.defacto_duchy_id });
       } else if (rankKey === 'duchy') {
         if (info.defacto_archduchy_id) overrides.push({ rankKey: 'archduchy', id: info.defacto_archduchy_id });
+        if (info.defacto_kingdom_id) overrides.push({ rankKey: 'kingdom', id: info.defacto_kingdom_id });
+      } else if (rankKey === 'archduchy') {
         if (info.defacto_kingdom_id) overrides.push({ rankKey: 'kingdom', id: info.defacto_kingdom_id });
       } else if (rankKey === 'kingdom') {
         if (info.defacto_empire_id) overrides.push({ rankKey: 'empire', id: info.defacto_empire_id });
