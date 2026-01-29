@@ -138,6 +138,7 @@ CREATE TABLE IF NOT EXISTS viscounties (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT UNIQUE,
   seigneur_id INTEGER,
+  defacto_county_id INTEGER,
   color TEXT,
   FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id)
 );
@@ -640,8 +641,13 @@ db.serialize(() => {
     }
   });
   db.all("PRAGMA table_info(viscounties)", (err, rows) => {
-    if (!err && rows && !rows.some(r => r.name === 'color')) {
-      db.run('ALTER TABLE viscounties ADD COLUMN color TEXT');
+    if (!err && rows) {
+      if (!rows.some(r => r.name === 'defacto_county_id')) {
+        db.run('ALTER TABLE viscounties ADD COLUMN defacto_county_id INTEGER');
+      }
+      if (!rows.some(r => r.name === 'color')) {
+        db.run('ALTER TABLE viscounties ADD COLUMN color TEXT');
+      }
     }
   });
   db.all("PRAGMA table_info(seigneuries)", (err, rows) => {
@@ -1268,7 +1274,7 @@ app.use('/api/archduchies', crudRoutes('archduchies',['name','seigneur_id','defa
 app.use('/api/duchies', crudRoutes('duchies',['name','seigneur_id','kingdom_id','archduchy_id','defacto_kingdom_id','defacto_archduchy_id','color']));
 app.use('/api/marquisates', crudRoutes('marquisates',['name','seigneur_id','defacto_duchy_id','color']));
 app.use('/api/counties', crudRoutes('counties',['name','seigneur_id','duchy_id','marquisate_id','defacto_duchy_id','defacto_marquisate_id','color']));
-app.use('/api/viscounties', crudRoutes('viscounties',['name','seigneur_id','color']));
+app.use('/api/viscounties', crudRoutes('viscounties',['name','seigneur_id','defacto_county_id','color']));
 app.use('/api/religions', crudRoutes('religions',['name','color']));
 app.use('/api/cultures', crudRoutes('cultures',['name','color']));
 app.delete('/api/seigneurs/:id', requireAdmin, (req, res) => {
