@@ -132,6 +132,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   const navButtons = [];
+  const hasSeigneur = user && !!user.character_name;
 
   if (authArea && current !== 'index.html') {
     const mapBtn = document.createElement('button');
@@ -161,7 +162,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       adminBtn.onclick = () => location.href = 'admin.html';
       navButtons.push(adminBtn);
     }
-    if (current !== 'gestion.html') {
+    if ((hasSeigneur || adminActive) && current !== 'gestion.html') {
       const gestionBtn = document.createElement('button');
       gestionBtn.className = 'control-btn';
       gestionBtn.textContent = 'Gestion';

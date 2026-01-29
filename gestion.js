@@ -150,6 +150,40 @@ async function init() {
   });
 }
 
+function setTabVisibility(hasSeigneurie) {
+  const buttons = document.querySelectorAll('.tab-btn');
+  buttons.forEach(btn => {
+    if (btn.dataset.defaultDisplay === undefined) {
+      btn.dataset.defaultDisplay = btn.style.display || '';
+    }
+    if (!hasSeigneurie && btn.dataset.tab !== 'sommaire') {
+      btn.style.display = 'none';
+    } else {
+      btn.style.display = btn.dataset.defaultDisplay || '';
+    }
+  });
+}
+
+function clearGestionSections() {
+  const ids = [
+    'summary',
+    'productionInfra',
+    'civilInfra',
+    'militaryInfra',
+    'commercialInfra',
+    'tradeRoutes',
+    'baronyProps',
+    'spellInfo',
+    'spellList'
+  ];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = '';
+  });
+  const tradeLimits = document.getElementById('tradeLimitsTable');
+  if (tradeLimits) tradeLimits.innerHTML = '';
+}
+
 async function loadAndRender(seigneurieId) {
   currentSeigneurieId = seigneurieId || null;
   try {
@@ -161,6 +195,21 @@ async function loadAndRender(seigneurieId) {
     ]);
     if (!res.ok) throw new Error('Erreur');
     const data = await res.json();
+    const isAdmin = currentUser && currentUser.is_admin && currentUser.act_as_admin !== false;
+    if (!data.seigneurie) {
+      currentSeigneurieId = null;
+      setTabVisibility(false);
+      clearGestionSections();
+      const summary = document.getElementById('summary');
+      if (summary) {
+        const hint = isAdmin
+          ? 'Sélectionnez une seigneurie via le sélecteur administrateur pour continuer.'
+          : 'Contactez un administrateur pour être affecté à une seigneurie.';
+        summary.innerHTML = `<div class="empty-state">Aucune seigneurie n’est associée à votre compte. ${hint}</div>`;
+      }
+      return;
+    }
+    setTabVisibility(true);
     const allBuildingProps = bRes.ok ? await bRes.json() : [];
     const allInfraProps = iRes.ok ? await iRes.json() : [];
     const tags = tRes.ok ? await tRes.json() : [];
@@ -170,7 +219,6 @@ async function loadAndRender(seigneurieId) {
     const inv = data.inventaire || {};
     const barony = data.barony || {};
     const seigneur = data.seigneur || {};
-    const isAdmin = currentUser && currentUser.is_admin && currentUser.act_as_admin !== false;
     const idh = data.idh || 0;
     const idhDetails = data.idhDetails || [];
     let idhClass = '';
