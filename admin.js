@@ -2759,20 +2759,22 @@ async function loadKingdoms(){
 }
 
 async function loadArchduchies(){
-  const [archduchies,seigneurs,duchies] = await Promise.all([
+  const [archduchies,seigneurs,duchies,kingdoms] = await Promise.all([
     getData('archduchies','/api/archduchies'),
     getData('seigneurs','/api/seigneurs'),
     getData('duchies','/api/duchies'),
+    getData('kingdoms','/api/kingdoms'),
   ]);
   const seigneursSelect = sortByName(seigneurs);
+  const kingdomsSelect = sortByName(kingdoms);
   const archduchiesById = archduchies.slice().sort((a,b)=>a.id - b.id);
   const duchiesByName = sortByName(duchies);
   const duchyFields = ['name','seigneur_id','kingdom_id','archduchy_id','defacto_kingdom_id','defacto_archduchy_id','color'];
   renderTable(document.getElementById('tableArchduchies'), archduchiesById, {
     endpoint:'archduchies',
-    fields:['name','seigneur_id','color'],
-    selects:{seigneur_id:seigneursSelect},
-    labels:{name:'Nom', seigneur_id:'Détenteur du titre', color:'Couleur'},
+    fields:['name','seigneur_id','defacto_kingdom_id','color'],
+    selects:{seigneur_id:seigneursSelect, defacto_kingdom_id:kingdomsSelect},
+    labels:{name:'Nom', seigneur_id:'Détenteur du titre', defacto_kingdom_id:'Royaume de facto', color:'Couleur'},
     colorFields:['color'],
     extraColumns:[{
       label:'Duchés de jure',
@@ -2822,20 +2824,22 @@ async function loadDuchies(){
 }
 
 async function loadMarquisates(){
-  const [marquisates,seigneurs,counties] = await Promise.all([
+  const [marquisates,seigneurs,counties,duchies] = await Promise.all([
     getData('marquisates','/api/marquisates'),
     getData('seigneurs','/api/seigneurs'),
     getData('counties','/api/counties'),
+    getData('duchies','/api/duchies'),
   ]);
   const seigneursSelect = sortByName(seigneurs);
+  const duchiesSelect = sortByName(duchies);
   const marquisatesById = marquisates.slice().sort((a,b)=>a.id - b.id);
   const countiesByName = sortByName(counties);
   const countyFields = ['name','seigneur_id','duchy_id','marquisate_id','defacto_duchy_id','defacto_marquisate_id','color'];
   renderTable(document.getElementById('tableMarquisates'), marquisatesById, {
     endpoint:'marquisates',
-    fields:['name','seigneur_id','color'],
-    selects:{seigneur_id:seigneursSelect},
-    labels:{name:'Nom', seigneur_id:'Détenteur du titre', color:'Couleur'},
+    fields:['name','seigneur_id','defacto_duchy_id','color'],
+    selects:{seigneur_id:seigneursSelect, defacto_duchy_id:duchiesSelect},
+    labels:{name:'Nom', seigneur_id:'Détenteur du titre', defacto_duchy_id:'Duché de facto', color:'Couleur'},
     colorFields:['color'],
     extraColumns:[{
       label:'Comtés de jure',

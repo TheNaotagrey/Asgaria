@@ -96,6 +96,7 @@ CREATE TABLE IF NOT EXISTS archduchies (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT UNIQUE,
   seigneur_id INTEGER,
+  defacto_kingdom_id INTEGER,
   color TEXT,
   FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id)
 );
@@ -116,6 +117,7 @@ CREATE TABLE IF NOT EXISTS marquisates (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT UNIQUE,
   seigneur_id INTEGER,
+  defacto_duchy_id INTEGER,
   color TEXT,
   FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id)
 );
@@ -760,6 +762,26 @@ db.serialize(() => {
       }
     }
   });
+  db.all("PRAGMA table_info(marquisates)", (err, rows) => {
+    if (!err && rows) {
+      if (!rows.some(r => r.name === 'defacto_duchy_id')) {
+        db.run('ALTER TABLE marquisates ADD COLUMN defacto_duchy_id INTEGER');
+      }
+      if (!rows.some(r => r.name === 'seigneur_id')) {
+        db.run('ALTER TABLE marquisates ADD COLUMN seigneur_id INTEGER REFERENCES seigneurs(id)');
+      }
+    }
+  });
+  db.all("PRAGMA table_info(archduchies)", (err, rows) => {
+    if (!err && rows) {
+      if (!rows.some(r => r.name === 'defacto_kingdom_id')) {
+        db.run('ALTER TABLE archduchies ADD COLUMN defacto_kingdom_id INTEGER');
+      }
+      if (!rows.some(r => r.name === 'seigneur_id')) {
+        db.run('ALTER TABLE archduchies ADD COLUMN seigneur_id INTEGER REFERENCES seigneurs(id)');
+      }
+    }
+  });
   db.all("PRAGMA table_info(kingdoms)", (err, rows) => {
     if (!err && rows) {
       if (!rows.some(r => r.name === 'empire_id')) {
@@ -1241,11 +1263,11 @@ app.post('/api/profile', (req, res) => {
 });
 
 app.use('/api/empires', crudRoutes('empires',['name','seigneur_id','color']));
-app.use('/api/kingdoms', crudRoutes('kingdoms',['name','seigneur_id','empire_id','color']));
-app.use('/api/archduchies', crudRoutes('archduchies',['name','seigneur_id','color']));
-app.use('/api/duchies', crudRoutes('duchies',['name','seigneur_id','kingdom_id','archduchy_id','color']));
-app.use('/api/marquisates', crudRoutes('marquisates',['name','seigneur_id','color']));
-app.use('/api/counties', crudRoutes('counties',['name','seigneur_id','duchy_id','marquisate_id','color']));
+app.use('/api/kingdoms', crudRoutes('kingdoms',['name','seigneur_id','empire_id','defacto_empire_id','color']));
+app.use('/api/archduchies', crudRoutes('archduchies',['name','seigneur_id','defacto_kingdom_id','color']));
+app.use('/api/duchies', crudRoutes('duchies',['name','seigneur_id','kingdom_id','archduchy_id','defacto_kingdom_id','defacto_archduchy_id','color']));
+app.use('/api/marquisates', crudRoutes('marquisates',['name','seigneur_id','defacto_duchy_id','color']));
+app.use('/api/counties', crudRoutes('counties',['name','seigneur_id','duchy_id','marquisate_id','defacto_duchy_id','defacto_marquisate_id','color']));
 app.use('/api/viscounties', crudRoutes('viscounties',['name','seigneur_id','color']));
 app.use('/api/religions', crudRoutes('religions',['name','color']));
 app.use('/api/cultures', crudRoutes('cultures',['name','color']));
