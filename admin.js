@@ -2937,12 +2937,14 @@ async function loadCounties(){
 }
 
 async function loadViscounties(){
-  const [viscounties,seigneurs,baronies] = await Promise.all([
+  const [viscounties,seigneurs,baronies,counties] = await Promise.all([
     getData('viscounties','/api/viscounties'),
     getData('seigneurs','/api/seigneurs'),
     getData('baronies','/api/baronies'),
+    getData('counties','/api/counties'),
   ]);
   const seigneursSelect = sortByName(seigneurs);
+  const countiesSelect = sortByName(counties);
   const viscountiesById = viscounties.slice().sort((a,b)=>a.id - b.id);
   const baroniesByName = baronies
     .slice()
@@ -2950,9 +2952,10 @@ async function loadViscounties(){
   const baronyFieldList = baronyFields;
   renderTable(document.getElementById('tableViscounties'), viscountiesById, {
     endpoint:'viscounties',
-    fields:['name','seigneur_id','color'],
-    selects:{seigneur_id:seigneursSelect},
-    labels:{name:'Nom', seigneur_id:'Détenteur du titre', color:'Couleur'},
+    fields:['name','seigneur_id','defacto_county_id','color'],
+    selects:{seigneur_id:seigneursSelect, defacto_county_id:countiesSelect},
+    labels:{name:'Nom', seigneur_id:'Détenteur du titre', defacto_county_id:'Comté de facto', color:'Couleur'},
+    nullLabels:{ defacto_county_id:'Aucun' },
     colorFields:['color'],
     extraColumns:[{
       label:'Baronnies de jure',
