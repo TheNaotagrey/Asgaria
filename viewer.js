@@ -508,6 +508,8 @@
     if (rankKey === 'barony') {
       if (info.defacto_viscounty_id) overrides.push({ rankKey: 'viscounty', id: info.defacto_viscounty_id });
       if (info.defacto_county_id) overrides.push({ rankKey: 'county', id: info.defacto_county_id });
+    } else if (rankKey === 'viscounty') {
+      if (info.defacto_county_id) overrides.push({ rankKey: 'county', id: info.defacto_county_id });
     } else if (rankKey === 'county') {
       if (info.defacto_marquisate_id) overrides.push({ rankKey: 'marquisate', id: info.defacto_marquisate_id });
       if (info.defacto_duchy_id) overrides.push({ rankKey: 'duchy', id: info.defacto_duchy_id });
