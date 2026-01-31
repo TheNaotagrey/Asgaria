@@ -1928,7 +1928,8 @@ app.post('/api/transactions', requireAdmin, (req,res)=>{
 
 const baronyFields = [
   'name','seigneur_id','religion_pop_id','county_id','viscounty_id','culture_id',
-  'priory_religion_id','church_religion_id','cathedral_religion_id','vacant','color'
+  'defacto_county_id','defacto_viscounty_id','priory_religion_id','church_religion_id',
+  'cathedral_religion_id','vacant','color'
 ];
 
 app.get('/api/baronies', (req, res) => {
