@@ -137,7 +137,8 @@ function buildMaps(data) {
       const titleName = row.name || '';
       const seigneurName = state.seigneursById.get(row.seigneur_id)?.name || 'Seigneur inconnu';
       if (titleName) {
-        const display = `${titleLabel} ${titleName}`.trim();
+        const baronySuffix = key === 'barony' && row.id ? ` (#${row.id})` : '';
+        const display = `${titleLabel} ${titleName}${baronySuffix}`.trim();
         state.searchEntries.push({
           id: `${table}-${row.id}`,
           seigneurId: row.seigneur_id,
@@ -148,6 +149,7 @@ function buildMaps(data) {
       }
       const titles = state.titlesBySeigneur.get(row.seigneur_id) || [];
       titles.push({
+        id: row.id,
         key,
         label: titleStyleByKey[key]?.label || 'Titre',
         name: row.name,
@@ -548,13 +550,14 @@ function formatTitleName(title) {
     barony: 'Baron de'
   };
   const prefix = prefixMap[title.key];
+  const baronySuffix = title.key === 'barony' && title.id ? ` (#${title.id})` : '';
   if (prefix && title.name) {
-    return `${prefix} ${title.name}`;
+    return `${prefix} ${title.name}${baronySuffix}`;
   }
   if (title.name) {
-    return `${title.label} ${title.name}`;
+    return `${title.label} ${title.name}${baronySuffix}`;
   }
-  return title.label;
+  return `${title.label}${baronySuffix}`;
 }
 
 function setLabeledLine(elem, label, value) {
