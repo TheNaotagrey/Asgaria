@@ -75,11 +75,15 @@
   const seigneurVassalsSection = document.getElementById('seigneurVassalsSection');
   const seigneurVassalList = document.getElementById('seigneurVassalList');
   const legendDiv = document.getElementById('legend');
+  const mapSearchOverlay = document.getElementById('mapSearchOverlay');
   const filterSelect = document.getElementById('filterSelect');
   const randomBtn = document.getElementById('randomBtn');
   const pixelLoading = document.getElementById('pixelLoading');
   const tradeRouteInfoDialog = document.getElementById('tradeRouteInfoDialog');
   const tradeRouteInfoContent = document.getElementById('tradeRouteInfoContent');
+  let searchEntries = [];
+  let searchController = null;
+  let searchInput = null;
 
   function setLine(elem, text) {
     if (!elem) return;
@@ -234,6 +238,72 @@
 
   function hideSeigneurInfo() {
     if (seigneurInfoPanel) seigneurInfoPanel.style.display = 'none';
+  }
+
+  function attachSearchBar() {
+    if (!window.SeigneurSearch || !mapSearchOverlay) return;
+    const { wrapper, input, results } = window.SeigneurSearch.createSearchElements({
+      inputId: 'mapSearchInput',
+      resultsId: 'mapSearchResults',
+      placeholder: 'Rechercher',
+      ariaLabel: 'Rechercher',
+      resultsAriaLabel: 'Résultats de recherche des seigneurs et titres'
+    });
+    searchInput = input;
+
+    mapSearchOverlay.appendChild(wrapper);
+
+    searchController = window.SeigneurSearch.attachSearch({
+      input,
+      results,
+      getEntries: () => searchEntries,
+      emptyMessage: 'Aucun seigneur ou titre trouvé.',
+      onSelect: (match) => {
+        const targetId = match.seigneurId || match.id;
+        if (targetId) showSeigneurInfo(targetId);
+      }
+    });
+  }
+
+  function updateSearchEntries() {
+    if (!window.SeigneurSearch) return;
+    const entries = Object.values(seigneurMap).map((seigneur) => ({
+      id: seigneur.id,
+      seigneurId: seigneur.id,
+      name: seigneur.name || '',
+      displayName: seigneur.name || '',
+      sortName: seigneur.name || ''
+    }));
+
+    const titleConfigs = [
+      { key: 'empire', label: 'Empire', map: empireMap },
+      { key: 'kingdom', label: 'Royaume', map: kingdomMap },
+      { key: 'archduchy', label: 'Archiduché', map: archduchyMap },
+      { key: 'duchy', label: 'Duché', map: duchyMap },
+      { key: 'marquisate', label: 'Marquisat', map: marquisateMap },
+      { key: 'county', label: 'Comté', map: countyMap },
+      { key: 'viscounty', label: 'Vicomté', map: viscountyMap }
+    ];
+
+    titleConfigs.forEach(({ key, label, map }) => {
+      Object.values(map).forEach((title) => {
+        if (!title.seigneur_id || !title.name) return;
+        const seigneurName = seigneurMap[title.seigneur_id]?.name || 'Seigneur inconnu';
+        const display = `${label} ${title.name}`.trim();
+        entries.push({
+          id: `${key}-${title.id}`,
+          seigneurId: title.seigneur_id,
+          name: display,
+          displayName: `${display} — ${seigneurName}`,
+          sortName: display
+        });
+      });
+    });
+
+    searchEntries = window.SeigneurSearch.prepareEntries(entries);
+    if (searchController && typeof searchController.renderResults === 'function') {
+      searchController.renderResults(searchInput ? searchInput.value : '');
+    }
   }
 
   function setList(section, list, items) {
@@ -1061,6 +1131,7 @@
         mapHeight,
         mapMode
       };
+      updateSearchEntries();
       return mapData;
     }
     const [baronies, seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires, canonicalLands, sanctuaries, connections, routes] = await Promise.all([
@@ -1179,10 +1250,12 @@
       mapHeight,
       mapMode
     };
+    updateSearchEntries();
     return mapData;
   }
 
   document.addEventListener('DOMContentLoaded', () => {
+    attachSearchBar();
     const baseMapLoaded = baseMap.complete ? Promise.resolve() : new Promise(res => (baseMap.onload = res));
     baseMapLoaded.then(() => {
       mapWidth = baseMap.naturalWidth;

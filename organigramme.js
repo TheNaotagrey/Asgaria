@@ -36,7 +36,7 @@ const state = {
   highestTitleBySeigneur: new Map(),
   vassalsByOverlord: new Map(),
   nodePositions: new Map(),
-  searchIndex: [],
+  searchEntries: [],
   graphBounds: { minX: 0, maxX: 0, minY: 0, maxY: 0 },
   transform: { scale: 1, x: 30, y: 30 }
 };
@@ -107,7 +107,7 @@ function buildMaps(data) {
   state.highestTitleBySeigneur.clear();
   state.vassalsByOverlord.clear();
   state.nodePositions.clear();
-  state.searchIndex = [];
+  state.searchEntries = [];
 
   data.seigneurs.forEach((seigneur) => {
     state.seigneursById.set(seigneur.id, seigneur);
@@ -120,10 +120,12 @@ function buildMaps(data) {
       }
       state.vassalsByOverlord.get(seigneur.overlord_id).push(seigneur.id);
     }
-    state.searchIndex.push({
+    state.searchEntries.push({
       id: seigneur.id,
+      seigneurId: seigneur.id,
       name: seigneur.name || '',
-      normalizedName: normalizeText(seigneur.name || '')
+      displayName: seigneur.name || '',
+      sortName: seigneur.name || ''
     });
   });
 
@@ -131,6 +133,19 @@ function buildMaps(data) {
     const key = TITLE_TABLE_MAP[table];
     rows.forEach((row) => {
       if (!row.seigneur_id) return;
+      const titleLabel = titleStyleByKey[key]?.label || 'Titre';
+      const titleName = row.name || '';
+      const seigneurName = state.seigneursById.get(row.seigneur_id)?.name || 'Seigneur inconnu';
+      if (titleName) {
+        const display = `${titleLabel} ${titleName}`.trim();
+        state.searchEntries.push({
+          id: `${table}-${row.id}`,
+          seigneurId: row.seigneur_id,
+          name: display,
+          displayName: `${display} — ${seigneurName}`,
+          sortName: display
+        });
+      }
       const titles = state.titlesBySeigneur.get(row.seigneur_id) || [];
       titles.push({
         key,
@@ -146,48 +161,10 @@ function buildMaps(data) {
     const highest = TITLE_STYLES.find((style) => titles.some((title) => title.key === style.key));
     state.highestTitleBySeigneur.set(seigneurId, highest || titleStyleByKey.seigneur);
   });
-}
 
-function normalizeText(value) {
-  return value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
-}
-
-function isSubsequence(needle, haystack) {
-  let index = 0;
-  for (const char of needle) {
-    index = haystack.indexOf(char, index);
-    if (index === -1) return false;
-    index += 1;
+  if (window.SeigneurSearch) {
+    state.searchEntries = window.SeigneurSearch.prepareEntries(state.searchEntries);
   }
-  return true;
-}
-
-function getFuzzyScore(query, candidate) {
-  const terms = query.split(/\s+/).filter(Boolean);
-  if (!terms.length) return null;
-  let score = 0;
-  for (const term of terms) {
-    const index = candidate.indexOf(term);
-    if (index !== -1) {
-      score += 100 - index;
-      continue;
-    }
-    if (isSubsequence(term, candidate)) {
-      score += 10;
-      continue;
-    }
-    return null;
-  }
-  return score;
-}
-
-function hideSearchResults() {
-  if (!elements.searchResults) return;
-  elements.searchResults.style.display = 'none';
-  elements.searchResults.innerHTML = '';
 }
 
 function findRootSeigneurId(seigneurId) {
@@ -219,78 +196,17 @@ function selectSeigneur(seigneurId) {
   centerOnSeigneur(id);
 }
 
-function updateSearchResults(query) {
-  if (!elements.searchResults) return;
-  const normalizedQuery = normalizeText(query.trim());
-  if (!normalizedQuery) {
-    hideSearchResults();
-    return;
-  }
-  const matches = state.searchIndex
-    .map((entry) => {
-      const score = getFuzzyScore(normalizedQuery, entry.normalizedName);
-      if (score === null) return null;
-      return { ...entry, score };
-    })
-    .filter(Boolean)
-    .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, 'fr'))
-    .slice(0, 8);
-
-  elements.searchResults.innerHTML = '';
-  if (!matches.length) {
-    const empty = document.createElement('div');
-    empty.className = 'seigneur-search-empty';
-    empty.textContent = 'Aucun seigneur trouvé.';
-    elements.searchResults.appendChild(empty);
-    elements.searchResults.style.display = 'block';
-    return;
-  }
-
-  matches.forEach((match) => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.setAttribute('role', 'option');
-    button.textContent = match.name;
-    button.addEventListener('click', () => {
-      if (elements.searchInput) {
-        elements.searchInput.value = '';
-      }
-      hideSearchResults();
-      selectSeigneur(match.id);
-    });
-    elements.searchResults.appendChild(button);
-  });
-  elements.searchResults.style.display = 'block';
-}
-
 function setupSearch() {
-  if (!elements.searchInput || !elements.searchResults) return;
-  elements.searchInput.addEventListener('input', (event) => {
-    updateSearchResults(event.target.value);
-  });
-  elements.searchInput.addEventListener('focus', (event) => {
-    updateSearchResults(event.target.value);
-  });
-  elements.searchInput.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      const firstResult = elements.searchResults.querySelector('button');
-      if (firstResult) firstResult.click();
+  if (!elements.searchInput || !elements.searchResults || !window.SeigneurSearch) return;
+  window.SeigneurSearch.attachSearch({
+    input: elements.searchInput,
+    results: elements.searchResults,
+    getEntries: () => state.searchEntries,
+    emptyMessage: 'Aucun seigneur ou titre trouvé.',
+    onSelect: (match) => {
+      const targetId = match.seigneurId || match.id;
+      if (targetId) selectSeigneur(targetId);
     }
-    if (event.key === 'Escape') {
-      hideSearchResults();
-      elements.searchInput.blur();
-    }
-  });
-  document.addEventListener('click', (event) => {
-    if (!elements.searchResults || !elements.searchInput) return;
-    if (
-      elements.searchResults.contains(event.target) ||
-      elements.searchInput.contains(event.target)
-    ) {
-      return;
-    }
-    hideSearchResults();
   });
 }
 

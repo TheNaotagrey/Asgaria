@@ -22,6 +22,7 @@
   </header>
   <main>
     <div id="mapContainer" class="map-container">
+      <div id="mapSearchOverlay" class="organigramme-search-overlay"></div>
       <div id="panZoomGroup" class="panzoom-group">
         <img id="baseMap" src="Asgaria.png" alt="Carte d’Asgaria" class="base-map">
         <canvas id="pixelCanvas" class="pixel-canvas"></canvas>
@@ -90,6 +91,7 @@
   <script src="src/mapCore.js"></script>
   <script src="src/bfs.js"></script>
   <script src="src/mapFilters.js"></script>
+  <script src="src/seigneurSearch.js"></script>
   <script src="viewer.js"></script>
   <dialog id="authDialog">
     <form id="loginForm" method="dialog">
