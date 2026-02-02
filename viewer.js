@@ -259,6 +259,10 @@
       getEntries: () => searchEntries,
       emptyMessage: 'Aucun seigneur ou titre trouvé.',
       onSelect: (match) => {
+        if (match.baronyId) {
+          showBaronyDetails(match.baronyId);
+          return;
+        }
         const targetId = match.seigneurId || match.id;
         if (targetId) showSeigneurInfo(targetId);
       }
@@ -297,6 +301,20 @@
           displayName: `${display} — ${seigneurName}`,
           sortName: display
         });
+      });
+    });
+
+    Object.values(baronyLookup).forEach((barony) => {
+      if (!barony || !barony.id || !barony.name) return;
+      const seigneurName = barony.seigneur_id ? (seigneurMap[barony.seigneur_id]?.name || '') : '';
+      const label = `Baronnie de ${barony.name} (#${barony.id})`;
+      const displayName = seigneurName ? `${label} — ${seigneurName}` : label;
+      entries.push({
+        id: `barony-${barony.id}`,
+        baronyId: barony.id,
+        name: label,
+        displayName,
+        sortName: label
       });
     });
 
