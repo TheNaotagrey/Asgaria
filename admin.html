@@ -26,6 +26,7 @@
         <button class="tab-btn" data-tab="viscounties">Vicomtés</button>
         <button class="tab-btn" data-tab="baronies">Baronnies</button>
         <button class="tab-btn" data-tab="trade-routes">Routes commerciales</button>
+        <button class="tab-btn" data-tab="trade-lines">Lignes commerciales</button>
         <button class="tab-btn" data-tab="maritime">Zones maritimes</button>
         <button class="tab-btn" data-tab="seigneuries">Seigneuries</button>
         <button class="tab-btn" data-tab="batiments">Bâtiments</button>
@@ -83,6 +84,10 @@
         <div id="tab-trade-routes" class="tab-panel">
           <div class="tab-loading" style="display:none">Chargement...</div>
           <div id="tradeRoutesPanel"></div>
+        </div>
+        <div id="tab-trade-lines" class="tab-panel">
+          <div class="tab-loading" style="display:none">Chargement...</div>
+          <div id="tradeLinesPanel"></div>
         </div>
         <div id="tab-maritime" class="tab-panel">
           <div class="tab-loading" style="display:none">Chargement...</div>
@@ -203,6 +208,29 @@
       <div class="dialog-buttons">
         <button type="button" id="tradeRouteCancel">Annuler</button>
         <button type="submit" id="tradeRouteSave">Enregistrer</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="tradeLineDialog" class="confirm-dialog trade-route-dialog">
+    <form id="tradeLineForm" method="dialog">
+      <h3 id="tradeLineDialogTitle">Ligne commerciale</h3>
+      <div class="trade-route-form">
+        <div class="trade-route-fields">
+          <label for="tradeLineBarony1">Baronnie 1</label>
+          <select id="tradeLineBarony1"></select>
+          <label for="tradeLineBarony2">Baronnie 2</label>
+          <select id="tradeLineBarony2"></select>
+        </div>
+        <div class="trade-route-path">
+          <div class="trade-route-endpoint" id="tradeLineStartLabel"></div>
+          <div id="tradeLineSteps" class="trade-route-steps"></div>
+          <div class="trade-route-endpoint" id="tradeLineEndLabel"></div>
+        </div>
+        <div id="tradeLineHint" class="trade-route-hint"></div>
+      </div>
+      <div class="dialog-buttons">
+        <button type="button" id="tradeLineCancel">Annuler</button>
+        <button type="submit" id="tradeLineSave">Enregistrer</button>
       </div>
     </form>
   </dialog>
