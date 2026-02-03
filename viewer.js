@@ -304,7 +304,11 @@
       });
     });
 
-    Object.values(baronyLookup).forEach((barony) => {
+    const baronyEntries = Object.values(baronyLookup);
+    const fallbackBaronies = mapMode === 'land' && baronyEntries.length === 0
+      ? Object.values(baronyMeta)
+      : [];
+    [...baronyEntries, ...fallbackBaronies].forEach((barony) => {
       if (!barony || !barony.id || !barony.name) return;
       const seigneurName = barony.seigneur_id ? (seigneurMap[barony.seigneur_id]?.name || '') : '';
       const label = `Baronnie de ${barony.name} (#${barony.id})`;
@@ -312,7 +316,7 @@
       entries.push({
         id: `barony-${barony.id}`,
         baronyId: barony.id,
-        name: label,
+        name: `${barony.name} ${label}`,
         displayName,
         sortName: label
       });
@@ -1152,7 +1156,7 @@
       updateSearchEntries();
       return mapData;
     }
-    const [baronies, seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires, canonicalLands, sanctuaries, connections, routes] = await Promise.all([
+    let [baronies, seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires, canonicalLands, sanctuaries, connections, routes] = await Promise.all([
       fetch(API_BASE + '/api/baronies').then(r => r.json()),
       fetch(API_BASE + '/api/seigneurs').then(r => r.json()),
       fetch(API_BASE + '/api/religions').then(r => r.json()),
@@ -1169,6 +1173,17 @@
       fetch(API_BASE + '/api/barony_connections').then(r => r.json()),
       fetch(API_BASE + '/api/trade_routes').then(r => r.json())
     ]);
+    if (!Array.isArray(baronies) || baronies.length === 0) {
+      try {
+        const organigrammes = await fetch(API_BASE + '/api/organigrammes').then(r => r.json());
+        const fallbackBaronies = organigrammes?.titles?.baronies;
+        if (Array.isArray(fallbackBaronies) && fallbackBaronies.length > 0) {
+          baronies = fallbackBaronies;
+        }
+      } catch (err) {
+        console.warn('Impossible de récupérer les baronnies depuis l’organigramme.', err);
+      }
+    }
     baronyMeta = {};
     baronyLookup = {};
     baronies.forEach(b => { baronyMeta[b.id] = b; baronyLookup[b.id] = b; });
