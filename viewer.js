@@ -87,9 +87,9 @@
   const filterSelect = document.getElementById('filterSelect');
   const randomBtn = document.getElementById('randomBtn');
   const pixelLoading = document.getElementById('pixelLoading');
-  const tradeRouteInfoDialog = document.getElementById('tradeRouteInfoDialog');
-  const tradeRouteInfoContent = document.getElementById('tradeRouteInfoContent');
-  const tradeRouteInfoTitle = document.getElementById('tradeRouteInfoTitle');
+  let tradeRouteInfoDialog = null;
+  let tradeRouteInfoContent = null;
+  let tradeRouteInfoTitle = null;
   let searchEntries = [];
   let searchController = null;
   let searchInput = null;
@@ -187,8 +187,9 @@
   function createDialogBaronyButton(baronyId) {
     const btn = createBaronyButton(baronyId);
     btn.addEventListener('click', () => {
-      if (tradeRouteInfoDialog && typeof tradeRouteInfoDialog.close === 'function') {
-        tradeRouteInfoDialog.close();
+      const dialog = ensureTradeRouteDialogRefs().dialog;
+      if (dialog && typeof dialog.close === 'function') {
+        dialog.close();
       }
     });
     return btn;
@@ -453,12 +454,13 @@
     const rows = routeIds.map(routeId => {
       const route = tradeRouteById[routeId];
       const otherId = route.barony_id_1 === baronyId ? route.barony_id_2 : route.barony_id_1;
-      const otherName = baronyMeta[otherId]?.name || baronyLookup[otherId]?.name || `Baronnie #${otherId}`;
+      const otherName = baronyMeta[otherId]?.name || baronyLookup[otherId]?.name;
+      const otherLabel = otherName ? `${otherName} (#${otherId})` : `Baronnie #${otherId}`;
       const pathLength = route.path ? route.path.length : 0;
       return `
         <tr>
           <td><button class="control-btn trade-route-btn" data-id="${routeId}">#${routeId}</button></td>
-          <td>${otherName}</td>
+          <td>${otherLabel}</td>
           <td>${pathLength}</td>
         </tr>
       `;
@@ -480,12 +482,13 @@
     const rows = lineIds.map(lineId => {
       const line = tradeLineById[lineId];
       const otherId = line.barony_id_1 === baronyId ? line.barony_id_2 : line.barony_id_1;
-      const otherName = baronyMeta[otherId]?.name || baronyLookup[otherId]?.name || `Baronnie #${otherId}`;
+      const otherName = baronyMeta[otherId]?.name || baronyLookup[otherId]?.name;
+      const otherLabel = otherName ? `${otherName} (#${otherId})` : `Baronnie #${otherId}`;
       const pathLength = line.path ? line.path.length : 0;
       return `
         <tr>
           <td><button class="control-btn trade-line-btn" data-id="${lineId}">#${lineId}</button></td>
-          <td>${otherName}</td>
+          <td>${otherLabel}</td>
           <td>${pathLength}</td>
         </tr>
       `;
@@ -496,16 +499,34 @@
     });
   }
 
+  function ensureTradeRouteDialogRefs() {
+    if (!tradeRouteInfoDialog) {
+      tradeRouteInfoDialog = document.getElementById('tradeRouteInfoDialog');
+    }
+    if (!tradeRouteInfoContent) {
+      tradeRouteInfoContent = document.getElementById('tradeRouteInfoContent');
+    }
+    if (!tradeRouteInfoTitle) {
+      tradeRouteInfoTitle = document.getElementById('tradeRouteInfoTitle');
+    }
+    return {
+      dialog: tradeRouteInfoDialog,
+      content: tradeRouteInfoContent,
+      title: tradeRouteInfoTitle
+    };
+  }
+
   function openTradeRouteInfo(routeId) {
-    if (!routeId || !tradeRouteInfoDialog || !tradeRouteInfoContent) return;
+    const { dialog, content, title } = ensureTradeRouteDialogRefs();
+    if (!routeId || !dialog || !content) return;
     const route = tradeRouteById[routeId];
     if (!route) return;
-    if (tradeRouteInfoTitle) tradeRouteInfoTitle.textContent = 'Détails de la route commerciale';
-    tradeRouteInfoContent.innerHTML = '';
+    if (title) title.textContent = 'Détails de la route commerciale';
+    content.innerHTML = '';
     const startHeader = document.createElement('div');
     startHeader.className = 'trade-route-info-header';
     startHeader.appendChild(createDialogBaronyButton(route.barony_id_1));
-    tradeRouteInfoContent.appendChild(startHeader);
+    content.appendChild(startHeader);
     const pathList = document.createElement('ul');
     pathList.className = 'trade-route-info-path';
     const intermediates = (route.path || []).slice(1, -1);
@@ -513,19 +534,19 @@
       const empty = document.createElement('div');
       empty.className = 'trade-route-empty';
       empty.textContent = 'Trajet direct.';
-      tradeRouteInfoContent.appendChild(empty);
+      content.appendChild(empty);
     } else {
       intermediates.forEach(id => {
         const li = document.createElement('li');
         li.appendChild(createDialogBaronyButton(id));
         pathList.appendChild(li);
       });
-      tradeRouteInfoContent.appendChild(pathList);
+      content.appendChild(pathList);
     }
     const endHeader = document.createElement('div');
     endHeader.className = 'trade-route-info-header';
     endHeader.appendChild(createDialogBaronyButton(route.barony_id_2));
-    tradeRouteInfoContent.appendChild(endHeader);
+    content.appendChild(endHeader);
     selectedTradeRouteId = routeId;
     selectedTradeLineId = null;
     if (filterManager && typeof filterManager.setTradeRouteSelection === 'function') {
@@ -534,10 +555,10 @@
     if (filterManager && typeof filterManager.setTradeLineSelection === 'function') {
       filterManager.setTradeLineSelection(null);
     }
-    if (tradeRouteInfoDialog.showModal) {
-      tradeRouteInfoDialog.showModal();
+    if (dialog.showModal) {
+      dialog.showModal();
     } else {
-      tradeRouteInfoDialog.setAttribute('open', 'open');
+      dialog.setAttribute('open', 'open');
     }
   }
 
@@ -562,15 +583,16 @@
   }
 
   function openTradeLineInfo(lineId) {
-    if (!lineId || !tradeRouteInfoDialog || !tradeRouteInfoContent) return;
+    const { dialog, content, title } = ensureTradeRouteDialogRefs();
+    if (!lineId || !dialog || !content) return;
     const line = tradeLineById[lineId];
     if (!line) return;
-    if (tradeRouteInfoTitle) tradeRouteInfoTitle.textContent = 'Détails de la ligne commerciale';
-    tradeRouteInfoContent.innerHTML = '';
+    if (title) title.textContent = 'Détails de la ligne commerciale';
+    content.innerHTML = '';
     const startHeader = document.createElement('div');
     startHeader.className = 'trade-route-info-header';
     startHeader.appendChild(createDialogBaronyButton(line.barony_id_1));
-    tradeRouteInfoContent.appendChild(startHeader);
+    content.appendChild(startHeader);
     const pathList = document.createElement('ul');
     pathList.className = 'trade-route-info-path';
     const intermediates = (line.path || []).slice();
@@ -578,19 +600,19 @@
       const empty = document.createElement('div');
       empty.className = 'trade-route-empty';
       empty.textContent = 'Trajet direct.';
-      tradeRouteInfoContent.appendChild(empty);
+      content.appendChild(empty);
     } else {
       intermediates.forEach(id => {
         const li = document.createElement('li');
         li.textContent = createZoneLabel(id);
         pathList.appendChild(li);
       });
-      tradeRouteInfoContent.appendChild(pathList);
+      content.appendChild(pathList);
     }
     const endHeader = document.createElement('div');
     endHeader.className = 'trade-route-info-header';
     endHeader.appendChild(createDialogBaronyButton(line.barony_id_2));
-    tradeRouteInfoContent.appendChild(endHeader);
+    content.appendChild(endHeader);
     selectedTradeLineId = lineId;
     selectedTradeRouteId = null;
     if (filterManager && typeof filterManager.setTradeRouteSelection === 'function') {
@@ -602,10 +624,10 @@
     ensureMaritimeZonePixels(line.path || []).then(() => {
       if (core && typeof core.drawAll === 'function') core.drawAll();
     });
-    if (tradeRouteInfoDialog.showModal) {
-      tradeRouteInfoDialog.showModal();
+    if (dialog.showModal) {
+      dialog.showModal();
     } else {
-      tradeRouteInfoDialog.setAttribute('open', 'open');
+      dialog.setAttribute('open', 'open');
     }
   }
 
@@ -1492,6 +1514,7 @@
   }
 
   document.addEventListener('DOMContentLoaded', () => {
+    ensureTradeRouteDialogRefs();
     attachSearchBar();
     const baseMapLoaded = baseMap.complete ? Promise.resolve() : new Promise(res => (baseMap.onload = res));
     baseMapLoaded.then(() => {
