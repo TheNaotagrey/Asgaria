@@ -7,12 +7,14 @@
     const npcSeigneurColor = [195, 195, 195];
     const npcBishopColor = [127, 127, 127];
     const tradeRoutePrimaryColor = [36, 163, 33];
-    const tradeRouteSecondaryColor = [255, 106, 6];
-    const tradeRoutePathColor = [195, 195, 195];
+    const tradeRouteLandColor = [255, 106, 6];
+    const tradeRouteSeaColor = [52, 152, 219];
+    const tradeRoutePathColor = [255, 159, 67];
     let currentFilter = '';
     let canonicalPatterns = {};
     let colorMap = {};
     let tradeRouteSelection = null;
+    let tradeLineSelection = null;
 
     function isVacantBarony(info) {
       return !!(info && (info.vacant === 1 || info.vacant === '1' || info.vacant === true));
@@ -54,6 +56,15 @@
 
     function setTradeRouteSelection(routeId) {
       tradeRouteSelection = routeId || null;
+      tradeLineSelection = null;
+      if (currentFilter === 'trade_routes') {
+        applyFilter('trade_routes');
+      }
+    }
+
+    function setTradeLineSelection(lineId) {
+      tradeLineSelection = lineId || null;
+      tradeRouteSelection = null;
       if (currentFilter === 'trade_routes') {
         applyFilter('trade_routes');
       }
@@ -313,7 +324,9 @@
           return;
         }
         const routeMap = data.tradeRouteById || {};
+        const lineMap = data.tradeLineById || {};
         const route = tradeRouteSelection ? routeMap[tradeRouteSelection] : null;
+        const line = tradeLineSelection ? lineMap[tradeLineSelection] : null;
         if (route && Array.isArray(route.path) && route.path.length) {
           route.path.forEach(id => {
             if (!id) return;
@@ -321,16 +334,40 @@
           });
           colorMap[route.barony_id_1] = [...tradeRoutePrimaryColor, 180];
           colorMap[route.barony_id_2] = [...tradeRoutePrimaryColor, 180];
-        } else {
-          colorMap[selectedId] = [...tradeRoutePrimaryColor, 180];
-          const connected = (data.tradeRouteConnections && data.tradeRouteConnections[selectedId]) || [];
-          connected.forEach(id => {
-            if (!id) return;
-            colorMap[id] = [...tradeRouteSecondaryColor, 100];
-          });
+          updateLegend(null);
+          core.setCanonicalPatterns({});
+          core.setColorMap(colorMap);
+          return;
         }
-        updateLegend(null);
-        core.setCanonicalPatterns({});
+        if (line && Array.isArray(line.path) && line.path.length) {
+          colorMap[line.barony_id_1] = [...tradeRoutePrimaryColor, 180];
+          colorMap[line.barony_id_2] = [...tradeRoutePrimaryColor, 180];
+          updateLegend(null);
+          core.setCanonicalPatterns({});
+          core.setColorMap(colorMap);
+          return;
+        }
+        colorMap[selectedId] = [...tradeRoutePrimaryColor, 180];
+        const landConnected = new Set((data.tradeRouteConnections && data.tradeRouteConnections[selectedId]) || []);
+        const seaConnected = new Set((data.tradeLineConnections && data.tradeLineConnections[selectedId]) || []);
+        landConnected.forEach(id => {
+          if (!id) return;
+          if (seaConnected.has(id)) {
+            canonicalPatterns[id] = [tradeRouteLandColor, tradeRouteSeaColor];
+            colorMap[id] = [...tradeRouteLandColor, 100];
+            return;
+          }
+          colorMap[id] = [...tradeRouteLandColor, 100];
+        });
+        seaConnected.forEach(id => {
+          if (!id || landConnected.has(id)) return;
+          colorMap[id] = [...tradeRouteSeaColor, 100];
+        }
+        updateLegend({
+          land: { color: tradeRouteLandColor, name: 'Route (terre)' },
+          sea: { color: tradeRouteSeaColor, name: 'Ligne (mer)' }
+        });
+        core.setCanonicalPatterns(canonicalPatterns);
         core.setColorMap(colorMap);
         return;
       }
@@ -569,7 +606,13 @@
     }
 
     initColorMap();
-    return { applyFilter, randomizeColors, setTradeRouteSelection, get currentFilter() { return currentFilter; } };
+    return {
+      applyFilter,
+      randomizeColors,
+      setTradeRouteSelection,
+      setTradeLineSelection,
+      get currentFilter() { return currentFilter; }
+    };
   }
   global.mapFilters = { init };
 })(typeof window !== 'undefined' ? window : global);

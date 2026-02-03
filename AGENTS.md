@@ -32,6 +32,7 @@ Ce dépôt propose un serveur Express/Node.js avec une base SQLite et plusieurs 
 - Les scripts client communiquent avec l'API du serveur via `fetch`.
 - La base de données contient également une table `trade_transactions` (origine, destination, ressources, type, état, raison, décision, retour) pour enregistrer les échanges entre seigneuries. L'origine et la destination y sont stockées via les identifiants de seigneurie, les noms des seigneurs ou baronnies étant résolus dynamiquement. Les effets `land_transaction_max_per_month` et `naval_transaction_max_per_month` permettent d'augmenter les limites mensuelles de transactions.
 - La table `trade_routes` inclut désormais un identifiant propre et un chemin (liste ordonnée d'identifiants de baronnies) pour définir la route commerciale.
+- La table `trade_lines` stocke les lignes commerciales maritimes (baronnies d'origine et de destination, chemin composé de zones maritimes).
 - La table `admin_change_logs` trace les modifications effectuées via l'administration/`mapEditor` (table, entrée, utilisateur, description, données structurées et timestamp) et est consultable depuis l'onglet "Logs" d'`admin.html`.
 - La table `user_table_preferences` stocke les préférences de visibilité de colonnes de l'administration par utilisateur.
 

@@ -37,7 +37,14 @@
   let tradeRouteConnections = {};
   let tradeRouteById = {};
   let tradeRoutesByBarony = {};
+  let tradeLines = [];
+  let tradeLineConnections = {};
+  let tradeLineById = {};
+  let tradeLinesByBarony = {};
   let selectedTradeRouteId = null;
+  let selectedTradeLineId = null;
+  let maritimeZoneMap = {};
+  let maritimeZonePixels = {};
 
   let filterManager = null;
   let core = null;
@@ -53,6 +60,7 @@
   const infoCultureLine = document.getElementById('infoCultureLine');
   const tradeRoutesSection = document.getElementById('tradeRoutesSection');
   const tradeRoutesList = document.getElementById('tradeRoutesList');
+  const tradeLinesList = document.getElementById('tradeLinesList');
   const feudalSection = document.getElementById('feudalSection');
   const infoFeudalBody = document.getElementById('infoFeudalBody');
   const religiousSection = document.getElementById('religiousBuildingsSection');
@@ -81,6 +89,7 @@
   const pixelLoading = document.getElementById('pixelLoading');
   const tradeRouteInfoDialog = document.getElementById('tradeRouteInfoDialog');
   const tradeRouteInfoContent = document.getElementById('tradeRouteInfoContent');
+  const tradeRouteInfoTitle = document.getElementById('tradeRouteInfoTitle');
   let searchEntries = [];
   let searchController = null;
   let searchInput = null;
@@ -172,6 +181,16 @@
     const label = baronyMeta[baronyId]?.name || baronyLookup[baronyId]?.name || `Baronnie #${baronyId}`;
     btn.textContent = `${label} (#${baronyId})`;
     btn.addEventListener('click', () => showBaronyDetails(baronyId));
+    return btn;
+  }
+
+  function createDialogBaronyButton(baronyId) {
+    const btn = createBaronyButton(baronyId);
+    btn.addEventListener('click', () => {
+      if (tradeRouteInfoDialog && typeof tradeRouteInfoDialog.close === 'function') {
+        tradeRouteInfoDialog.close();
+      }
+    });
     return btn;
   }
 
@@ -396,6 +415,33 @@
     });
   }
 
+  function buildTradeLineMaps(lines) {
+    tradeLineConnections = {};
+    tradeLineById = {};
+    tradeLinesByBarony = {};
+    const connectionSets = {};
+    lines.forEach(line => {
+      const id = parseInt(line.id, 10);
+      const barony1 = parseInt(line.barony_id_1, 10);
+      const barony2 = parseInt(line.barony_id_2, 10);
+      if (!id || !barony1 || !barony2) return;
+      const path = parseTradeRoutePath(line.path);
+      const normalized = { ...line, id, barony_id_1: barony1, barony_id_2: barony2, path };
+      tradeLineById[id] = normalized;
+      if (!tradeLinesByBarony[barony1]) tradeLinesByBarony[barony1] = [];
+      if (!tradeLinesByBarony[barony2]) tradeLinesByBarony[barony2] = [];
+      tradeLinesByBarony[barony1].push(id);
+      tradeLinesByBarony[barony2].push(id);
+      if (!connectionSets[barony1]) connectionSets[barony1] = new Set();
+      if (!connectionSets[barony2]) connectionSets[barony2] = new Set();
+      connectionSets[barony1].add(barony2);
+      connectionSets[barony2].add(barony1);
+    });
+    Object.keys(connectionSets).forEach(id => {
+      tradeLineConnections[id] = Array.from(connectionSets[id]);
+    });
+  }
+
   function renderTradeRoutesList(baronyId) {
     if (!tradeRoutesList || !tradeRoutesSection) return;
     tradeRoutesList.innerHTML = '';
@@ -423,14 +469,42 @@
     });
   }
 
+  function renderTradeLinesList(baronyId) {
+    if (!tradeLinesList || !tradeRoutesSection) return;
+    tradeLinesList.innerHTML = '';
+    const lineIds = tradeLinesByBarony[baronyId] || [];
+    if (!lineIds.length) {
+      tradeLinesList.textContent = 'Aucune ligne commerciale';
+      return;
+    }
+    const rows = lineIds.map(lineId => {
+      const line = tradeLineById[lineId];
+      const otherId = line.barony_id_1 === baronyId ? line.barony_id_2 : line.barony_id_1;
+      const otherName = baronyMeta[otherId]?.name || baronyLookup[otherId]?.name || `Baronnie #${otherId}`;
+      const pathLength = line.path ? line.path.length : 0;
+      return `
+        <tr>
+          <td><button class="control-btn trade-line-btn" data-id="${lineId}">#${lineId}</button></td>
+          <td>${otherName}</td>
+          <td>${pathLength}</td>
+        </tr>
+      `;
+    }).join('');
+    tradeLinesList.innerHTML = `<table class="admin-table"><tr><th>ID</th><th>Destination</th><th>Chemin (zones)</th></tr>${rows}</table>`;
+    tradeLinesList.querySelectorAll('.trade-line-btn').forEach(btn => {
+      btn.addEventListener('click', () => openTradeLineInfo(parseInt(btn.dataset.id, 10)));
+    });
+  }
+
   function openTradeRouteInfo(routeId) {
     if (!routeId || !tradeRouteInfoDialog || !tradeRouteInfoContent) return;
     const route = tradeRouteById[routeId];
     if (!route) return;
+    if (tradeRouteInfoTitle) tradeRouteInfoTitle.textContent = 'Détails de la route commerciale';
     tradeRouteInfoContent.innerHTML = '';
     const startHeader = document.createElement('div');
     startHeader.className = 'trade-route-info-header';
-    startHeader.appendChild(createBaronyButton(route.barony_id_1));
+    startHeader.appendChild(createDialogBaronyButton(route.barony_id_1));
     tradeRouteInfoContent.appendChild(startHeader);
     const pathList = document.createElement('ul');
     pathList.className = 'trade-route-info-path';
@@ -443,19 +517,91 @@
     } else {
       intermediates.forEach(id => {
         const li = document.createElement('li');
-        li.appendChild(createBaronyButton(id));
+        li.appendChild(createDialogBaronyButton(id));
         pathList.appendChild(li);
       });
       tradeRouteInfoContent.appendChild(pathList);
     }
     const endHeader = document.createElement('div');
     endHeader.className = 'trade-route-info-header';
-    endHeader.appendChild(createBaronyButton(route.barony_id_2));
+    endHeader.appendChild(createDialogBaronyButton(route.barony_id_2));
     tradeRouteInfoContent.appendChild(endHeader);
     selectedTradeRouteId = routeId;
+    selectedTradeLineId = null;
     if (filterManager && typeof filterManager.setTradeRouteSelection === 'function') {
       filterManager.setTradeRouteSelection(routeId);
     }
+    if (filterManager && typeof filterManager.setTradeLineSelection === 'function') {
+      filterManager.setTradeLineSelection(null);
+    }
+    if (tradeRouteInfoDialog.showModal) {
+      tradeRouteInfoDialog.showModal();
+    } else {
+      tradeRouteInfoDialog.setAttribute('open', 'open');
+    }
+  }
+
+  function createZoneLabel(zoneId) {
+    const zone = maritimeZoneMap[zoneId];
+    const name = zone?.name || `Zone #${zoneId}`;
+    return `${name} (#${zoneId})`;
+  }
+
+  async function ensureMaritimeZonePixels(zoneIds) {
+    const missing = zoneIds.filter(id => id && !maritimeZonePixels[id]);
+    if (!missing.length) return;
+    await Promise.all(missing.map(async id => {
+      try {
+        const data = await fetch(`${API_BASE}/api/maritime_zone_pixels?id=${id}`).then(r => r.json());
+        maritimeZonePixels[id] = Array.isArray(data) ? data : [];
+      } catch (err) {
+        console.warn(`Impossible de charger les pixels de la zone maritime ${id}`, err);
+        maritimeZonePixels[id] = [];
+      }
+    }));
+  }
+
+  function openTradeLineInfo(lineId) {
+    if (!lineId || !tradeRouteInfoDialog || !tradeRouteInfoContent) return;
+    const line = tradeLineById[lineId];
+    if (!line) return;
+    if (tradeRouteInfoTitle) tradeRouteInfoTitle.textContent = 'Détails de la ligne commerciale';
+    tradeRouteInfoContent.innerHTML = '';
+    const startHeader = document.createElement('div');
+    startHeader.className = 'trade-route-info-header';
+    startHeader.appendChild(createDialogBaronyButton(line.barony_id_1));
+    tradeRouteInfoContent.appendChild(startHeader);
+    const pathList = document.createElement('ul');
+    pathList.className = 'trade-route-info-path';
+    const intermediates = (line.path || []).slice();
+    if (!intermediates.length) {
+      const empty = document.createElement('div');
+      empty.className = 'trade-route-empty';
+      empty.textContent = 'Trajet direct.';
+      tradeRouteInfoContent.appendChild(empty);
+    } else {
+      intermediates.forEach(id => {
+        const li = document.createElement('li');
+        li.textContent = createZoneLabel(id);
+        pathList.appendChild(li);
+      });
+      tradeRouteInfoContent.appendChild(pathList);
+    }
+    const endHeader = document.createElement('div');
+    endHeader.className = 'trade-route-info-header';
+    endHeader.appendChild(createDialogBaronyButton(line.barony_id_2));
+    tradeRouteInfoContent.appendChild(endHeader);
+    selectedTradeLineId = lineId;
+    selectedTradeRouteId = null;
+    if (filterManager && typeof filterManager.setTradeRouteSelection === 'function') {
+      filterManager.setTradeRouteSelection(null);
+    }
+    if (filterManager && typeof filterManager.setTradeLineSelection === 'function') {
+      filterManager.setTradeLineSelection(lineId);
+    }
+    ensureMaritimeZonePixels(line.path || []).then(() => {
+      if (core && typeof core.drawAll === 'function') core.drawAll();
+    });
     if (tradeRouteInfoDialog.showModal) {
       tradeRouteInfoDialog.showModal();
     } else {
@@ -853,8 +999,12 @@
       filterSelect.value = '';
       if (previous === 'trade_routes') {
         selectedTradeRouteId = null;
+        selectedTradeLineId = null;
         if (filterManager && typeof filterManager.setTradeRouteSelection === 'function') {
           filterManager.setTradeRouteSelection(null);
+        }
+        if (filterManager && typeof filterManager.setTradeLineSelection === 'function') {
+          filterManager.setTradeLineSelection(null);
         }
         setTradeRouteInfoMode(false);
       }
@@ -887,14 +1037,23 @@
   }
 
   function drawOverlay(ctx) {
-    if (mapMode !== 'sea') return;
-    if (!filterSelect || filterSelect.value !== 'baronies') return;
-    const zoneId = core?.currentSelectedId;
-    if (!zoneId) return;
-    ctx.fillStyle = 'rgba(0,0,255,0.4)';
-    (maritimeZoneBaronies[zoneId] || []).forEach(bid => {
-      (baronyPixels[bid] || []).forEach(([x, y]) => ctx.fillRect(x, y, 1, 1));
-    });
+    if (mapMode === 'sea') {
+      if (!filterSelect || filterSelect.value !== 'baronies') return;
+      const zoneId = core?.currentSelectedId;
+      if (!zoneId) return;
+      ctx.fillStyle = 'rgba(0,0,255,0.4)';
+      (maritimeZoneBaronies[zoneId] || []).forEach(bid => {
+        (baronyPixels[bid] || []).forEach(([x, y]) => ctx.fillRect(x, y, 1, 1));
+      });
+      return;
+    }
+    if (selectedTradeLineId && tradeLineById[selectedTradeLineId]) {
+      ctx.fillStyle = 'rgba(255, 159, 67, 0.45)';
+      const path = tradeLineById[selectedTradeLineId].path || [];
+      path.forEach(zoneId => {
+        (maritimeZonePixels[zoneId] || []).forEach(([x, y]) => ctx.fillRect(x, y, 1, 1));
+      });
+    }
   }
 
   function updatePixelLoading(loaded, total, show = true) {
@@ -1039,11 +1198,16 @@
     const isTradeRouteFilter = filterSelect && filterSelect.value === 'trade_routes';
     if (isTradeRouteFilter) {
       selectedTradeRouteId = null;
+      selectedTradeLineId = null;
       if (filterManager && typeof filterManager.setTradeRouteSelection === 'function') {
         filterManager.setTradeRouteSelection(null);
       }
+      if (filterManager && typeof filterManager.setTradeLineSelection === 'function') {
+        filterManager.setTradeLineSelection(null);
+      }
       setTradeRouteInfoMode(true);
       renderTradeRoutesList(info.id);
+      renderTradeLinesList(info.id);
       if (filterManager) filterManager.applyFilter('trade_routes');
       return;
     }
@@ -1186,7 +1350,7 @@
       updateSearchEntries();
       return mapData;
     }
-    let [baronies, seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires, canonicalLands, sanctuaries, connections, routes] = await Promise.all([
+    let [baronies, seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires, canonicalLands, sanctuaries, connections, routes, lines, maritimeZones] = await Promise.all([
       fetch(API_BASE + '/api/baronies').then(r => r.json()),
       fetch(API_BASE + '/api/seigneurs').then(r => r.json()),
       fetch(API_BASE + '/api/religions').then(r => r.json()),
@@ -1201,7 +1365,9 @@
       fetch(API_BASE + '/api/canonical_lands').then(r => r.json()),
       fetch(API_BASE + '/api/sanctuaries').then(r => r.json()),
       fetch(API_BASE + '/api/barony_connections').then(r => r.json()),
-      fetch(API_BASE + '/api/trade_routes').then(r => r.json())
+      fetch(API_BASE + '/api/trade_routes').then(r => r.json()),
+      fetch(API_BASE + '/api/trade_lines').then(r => r.json()),
+      fetch(API_BASE + '/api/maritime_zones').then(r => r.json())
     ]);
     if (!Array.isArray(baronies) || baronies.length === 0) {
       try {
@@ -1279,6 +1445,12 @@
     });
     tradeRoutes = Array.isArray(routes) ? routes : [];
     buildTradeRouteMaps(tradeRoutes);
+    tradeLines = Array.isArray(lines) ? lines : [];
+    buildTradeLineMaps(tradeLines);
+    maritimeZoneMap = {};
+    (maritimeZones || []).forEach(zone => {
+      maritimeZoneMap[zone.id] = zone;
+    });
     const baronyIds = baronies.map(b => b.id);
     baronyPixels = pixelData;
     fetchBaronyPixelsInChunks(baronyIds, pixelData).catch(err => console.error(err));
@@ -1301,6 +1473,8 @@
       baronyAdjacency,
       tradeRouteConnections,
       tradeRouteById,
+      tradeLineConnections,
+      tradeLineById,
       baronyLookup,
       seigneurToViscounty,
       seigneurToCounty,
@@ -1342,13 +1516,18 @@
           handleFilterChange = () => {
             if (filterSelect.value !== 'trade_routes') {
               selectedTradeRouteId = null;
+              selectedTradeLineId = null;
               if (filterManager && typeof filterManager.setTradeRouteSelection === 'function') {
                 filterManager.setTradeRouteSelection(null);
+              }
+              if (filterManager && typeof filterManager.setTradeLineSelection === 'function') {
+                filterManager.setTradeLineSelection(null);
               }
               setTradeRouteInfoMode(false);
             } else if (core.currentSelectedId) {
               setTradeRouteInfoMode(true);
               renderTradeRoutesList(core.currentSelectedId);
+              renderTradeLinesList(core.currentSelectedId);
             }
             filterManager.applyFilter(filterSelect.value);
           };

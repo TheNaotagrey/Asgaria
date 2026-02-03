@@ -174,9 +174,23 @@ let tradeRoutesState = {
   adjacency: {},
   routes: []
 };
+let tradeLinesState = {
+  baronies: [],
+  baronyMap: {},
+  zones: [],
+  zoneMap: {},
+  adjacency: {},
+  baronyZones: {},
+  lines: []
+};
 const tradeRouteDialogState = {
   mode: 'create',
   routeId: null,
+  selections: []
+};
+const tradeLineDialogState = {
+  mode: 'create',
+  lineId: null,
   selections: []
 };
 
@@ -215,11 +229,25 @@ function parseTradeRoutePath(raw) {
   return [];
 }
 
-function buildAdjacencyMap(connections) {
+function parseTradeLinePath(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.map(val => parseInt(val, 10)).filter(Number.isFinite);
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.map(val => parseInt(val, 10)).filter(Number.isFinite);
+    } catch (err) {
+      return [];
+    }
+  }
+  return [];
+}
+
+function buildAdjacencyMap(connections, key1 = 'barony_id_1', key2 = 'barony_id_2') {
   const adj = {};
   connections.forEach(c => {
-    const id1 = parseInt(c.barony_id_1, 10);
-    const id2 = parseInt(c.barony_id_2, 10);
+    const id1 = parseInt(c[key1], 10);
+    const id2 = parseInt(c[key2], 10);
     if (!id1 || !id2) return;
     const dist = parseInt(c.distance, 10) || 1;
     if (!adj[id1]) adj[id1] = [];
@@ -3087,6 +3115,12 @@ function formatBaronyLabel(barony) {
   return `${name} (#${barony.id})`;
 }
 
+function formatZoneLabel(zone) {
+  if (!zone) return 'Zone maritime inconnue';
+  const name = zone.name || 'Sans nom';
+  return `${name} (#${zone.id})`;
+}
+
 function populateTradeRouteBaronySelect(select, baronies) {
   if (!select) return;
   select.innerHTML = '';
@@ -3401,6 +3435,302 @@ async function loadTradeRoutes() {
   renderTradeRoutesPanel();
 }
 
+function getTradeLineDialogElements() {
+  return {
+    dialog: document.getElementById('tradeLineDialog'),
+    form: document.getElementById('tradeLineForm'),
+    title: document.getElementById('tradeLineDialogTitle'),
+    barony1: document.getElementById('tradeLineBarony1'),
+    barony2: document.getElementById('tradeLineBarony2'),
+    startLabel: document.getElementById('tradeLineStartLabel'),
+    endLabel: document.getElementById('tradeLineEndLabel'),
+    steps: document.getElementById('tradeLineSteps'),
+    hint: document.getElementById('tradeLineHint'),
+    cancel: document.getElementById('tradeLineCancel'),
+    save: document.getElementById('tradeLineSave')
+  };
+}
+
+function updateTradeLineLabels(startId, endId) {
+  const { startLabel, endLabel } = getTradeLineDialogElements();
+  const startBarony = tradeLinesState.baronyMap[startId];
+  const endBarony = tradeLinesState.baronyMap[endId];
+  if (startLabel) {
+    startLabel.textContent = startBarony ? `Baronnie 1 : ${formatBaronyLabel(startBarony)}` : 'Baronnie 1 :';
+  }
+  if (endLabel) {
+    endLabel.textContent = endBarony ? `Baronnie 2 : ${formatBaronyLabel(endBarony)}` : 'Baronnie 2 :';
+  }
+}
+
+function isTradeLinePathComplete(startId, endId, selections) {
+  if (!startId || !endId) return false;
+  if (!selections || selections.length === 0) return false;
+  if (selections.some(step => !step)) return false;
+  const startZones = tradeLinesState.baronyZones[startId] || [];
+  const endZones = tradeLinesState.baronyZones[endId] || [];
+  if (!startZones.includes(selections[0])) return false;
+  return endZones.includes(selections[selections.length - 1]);
+}
+
+function renderTradeLineSteps() {
+  const { barony1, barony2, steps } = getTradeLineDialogElements();
+  if (!steps || !barony1 || !barony2) return;
+  steps.innerHTML = '';
+  const startId = parseInt(barony1.value, 10);
+  const endId = parseInt(barony2.value, 10);
+  if (!startId || !endId) return;
+  const selections = tradeLineDialogState.selections || [];
+  const stepsList = selections.slice();
+  const last = stepsList[stepsList.length - 1];
+  const endZones = tradeLinesState.baronyZones[endId] || [];
+  if (!last || !endZones.includes(last)) {
+    if (stepsList.length === 0 || stepsList[stepsList.length - 1]) {
+      stepsList.push(null);
+    }
+  }
+  const used = new Set();
+  stepsList.forEach((selected, index) => {
+    let options = [];
+    if (index === 0) {
+      options = (tradeLinesState.baronyZones[startId] || []).slice();
+    } else {
+      const prevId = stepsList[index - 1];
+      if (prevId) {
+        options = (tradeLinesState.adjacency[prevId] || []).map(n => n.id);
+      }
+    }
+    options = options.filter(id => !used.has(id));
+    const select = document.createElement('select');
+    select.dataset.index = String(index);
+    const blank = document.createElement('option');
+    blank.value = '';
+    blank.textContent = '';
+    select.appendChild(blank);
+    options.forEach(id => {
+      const option = document.createElement('option');
+      option.value = id;
+      option.textContent = formatZoneLabel(tradeLinesState.zoneMap[id] || { id, name: `Zone ${id}` });
+      select.appendChild(option);
+    });
+    if (selected) select.value = String(selected);
+    select.addEventListener('change', (event) => {
+      const idx = parseInt(event.target.dataset.index, 10);
+      const value = parseInt(event.target.value, 10);
+      const nextSelections = tradeLineDialogState.selections.slice(0, idx);
+      if (value) {
+        nextSelections[idx] = value;
+      }
+      tradeLineDialogState.selections = nextSelections;
+      renderTradeLineSteps();
+      updateTradeLineHint();
+    });
+    steps.appendChild(select);
+    if (selected) used.add(selected);
+  });
+}
+
+function updateTradeLineHint(message) {
+  const { barony1, barony2, hint, save } = getTradeLineDialogElements();
+  if (!hint || !save || !barony1 || !barony2) return;
+  const startId = parseInt(barony1.value, 10);
+  const endId = parseInt(barony2.value, 10);
+  let text = message || '';
+  if (!startId || !endId) {
+    text = 'Sélectionnez deux baronnies pour définir un chemin maritime.';
+    save.disabled = true;
+  } else if (!isTradeLinePathComplete(startId, endId, tradeLineDialogState.selections)) {
+    text = text || 'Le chemin doit commencer par une zone reliée à la baronnie 1 et finir sur une zone reliée à la baronnie 2.';
+    save.disabled = true;
+  } else {
+    text = '';
+    save.disabled = false;
+  }
+  hint.textContent = text;
+}
+
+function handleTradeLineBaronyChange() {
+  const { barony1, barony2 } = getTradeLineDialogElements();
+  if (!barony1 || !barony2) return;
+  const startId = parseInt(barony1.value, 10);
+  const endId = parseInt(barony2.value, 10);
+  updateTradeLineLabels(startId, endId);
+  tradeLineDialogState.selections = [];
+  renderTradeLineSteps();
+  updateTradeLineHint();
+}
+
+function openTradeLineDialog(line) {
+  const elements = getTradeLineDialogElements();
+  if (!elements.dialog) return;
+  ensureTradeLineDialog();
+  tradeLineDialogState.mode = line ? 'edit' : 'create';
+  tradeLineDialogState.lineId = line ? line.id : null;
+  tradeLineDialogState.selections = [];
+  if (elements.title) {
+    elements.title.textContent = line ? 'Modifier la ligne commerciale' : 'Nouvelle ligne commerciale';
+  }
+  populateTradeRouteBaronySelect(elements.barony1, tradeLinesState.baronies);
+  populateTradeRouteBaronySelect(elements.barony2, tradeLinesState.baronies);
+  if (line) {
+    elements.barony1.value = String(line.barony_id_1);
+    elements.barony2.value = String(line.barony_id_2);
+    const path = parseTradeLinePath(line.path);
+    tradeLineDialogState.selections = path.slice();
+  }
+  updateTradeLineLabels(
+    parseInt(elements.barony1.value, 10),
+    parseInt(elements.barony2.value, 10)
+  );
+  renderTradeLineSteps();
+  updateTradeLineHint();
+  if (elements.dialog.showModal) {
+    elements.dialog.showModal();
+  } else {
+    elements.dialog.setAttribute('open', 'open');
+  }
+}
+
+function ensureTradeLineDialog() {
+  const elements = getTradeLineDialogElements();
+  if (!elements.dialog || elements.dialog.dataset.ready) return;
+  if (elements.cancel) {
+    elements.cancel.addEventListener('click', () => elements.dialog.close());
+  }
+  if (elements.barony1) {
+    elements.barony1.addEventListener('change', handleTradeLineBaronyChange);
+  }
+  if (elements.barony2) {
+    elements.barony2.addEventListener('change', handleTradeLineBaronyChange);
+  }
+  if (elements.form) {
+    elements.form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const startId = parseInt(elements.barony1.value, 10);
+      const endId = parseInt(elements.barony2.value, 10);
+      if (!startId || !endId) {
+        updateTradeLineHint('Sélectionnez deux baronnies avant de sauvegarder.');
+        return;
+      }
+      if (!isTradeLinePathComplete(startId, endId, tradeLineDialogState.selections)) {
+        updateTradeLineHint('Le chemin maritime doit être complet pour être enregistré.');
+        return;
+      }
+      const path = tradeLineDialogState.selections.slice();
+      const payload = { barony_id_1: startId, barony_id_2: endId, path };
+      const isEdit = tradeLineDialogState.mode === 'edit' && tradeLineDialogState.lineId;
+      const endpoint = isEdit ? `/api/trade_lines/${tradeLineDialogState.lineId}` : '/api/trade_lines';
+      const method = isEdit ? 'PUT' : 'POST';
+      const resp = await fetchJSON(endpoint, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (resp && resp.error) {
+        alert(`Erreur : ${resp.error}`);
+        return;
+      }
+      elements.dialog.close();
+      await loadTradeLines();
+    });
+  }
+  elements.dialog.dataset.ready = 'true';
+}
+
+function renderTradeLinesPanel() {
+  const panel = document.getElementById('tradeLinesPanel');
+  if (!panel) return;
+  panel.innerHTML = '';
+  const header = document.createElement('div');
+  header.className = 'table-actions';
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.className = 'control-btn';
+  addBtn.textContent = 'Nouvelle ligne commerciale';
+  addBtn.addEventListener('click', () => openTradeLineDialog());
+  header.appendChild(addBtn);
+  panel.appendChild(header);
+  if (!tradeLinesState.lines.length) {
+    const empty = document.createElement('div');
+    empty.className = 'trade-route-empty';
+    empty.textContent = 'Aucune ligne commerciale enregistrée.';
+    panel.appendChild(empty);
+    return;
+  }
+  const table = document.createElement('table');
+  table.className = 'admin-table';
+  table.innerHTML = '<tr><th>ID</th><th>Baronnie 1</th><th>Baronnie 2</th><th>Chemin (zones)</th><th>Actions</th></tr>';
+  tradeLinesState.lines
+    .slice()
+    .sort((a, b) => a.id - b.id)
+    .forEach(line => {
+      const row = document.createElement('tr');
+      const path = parseTradeLinePath(line.path);
+      const barony1 = tradeLinesState.baronyMap[line.barony_id_1] || { id: line.barony_id_1, name: `Baronnie ${line.barony_id_1}` };
+      const barony2 = tradeLinesState.baronyMap[line.barony_id_2] || { id: line.barony_id_2, name: `Baronnie ${line.barony_id_2}` };
+      row.innerHTML = `
+        <td>${line.id}</td>
+        <td>${formatBaronyLabel(barony1)}</td>
+        <td>${formatBaronyLabel(barony2)}</td>
+        <td>${path.length || 0}</td>
+        <td></td>
+      `;
+      const actionsCell = row.querySelector('td:last-child');
+      const editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.className = 'control-btn';
+      editBtn.textContent = 'Chemin';
+      editBtn.addEventListener('click', () => openTradeLineDialog(line));
+      const deleteBtn = document.createElement('button');
+      deleteBtn.type = 'button';
+      deleteBtn.className = 'danger';
+      deleteBtn.textContent = 'Supprimer';
+      deleteBtn.addEventListener('click', async () => {
+        if (!confirm('Supprimer cette ligne commerciale ?')) return;
+        const resp = await fetchJSON(`/api/trade_lines/${line.id}`, { method: 'DELETE' });
+        if (resp && resp.error) {
+          alert(`Erreur : ${resp.error}`);
+          return;
+        }
+        await loadTradeLines();
+      });
+      actionsCell.appendChild(editBtn);
+      actionsCell.appendChild(deleteBtn);
+      table.appendChild(row);
+    });
+  panel.appendChild(table);
+}
+
+async function loadTradeLines() {
+  const [lines, baronies, zones, connections, zoneBaronies] = await Promise.all([
+    fetchJSON('/api/trade_lines'),
+    getData('baronies', '/api/baronies'),
+    getData('maritime_zones', '/api/maritime_zones'),
+    getData('maritime_zone_connections', '/api/maritime_zone_connections'),
+    getData('maritime_zone_baronies', '/api/maritime_zone_baronies')
+  ]);
+  const sortedBaronies = sortByName(baronies);
+  const sortedZones = sortByName(zones);
+  const baronyZones = {};
+  (zoneBaronies || []).forEach(link => {
+    const baronyId = parseInt(link.barony_id, 10);
+    const zoneId = parseInt(link.zone_id, 10);
+    if (!baronyId || !zoneId) return;
+    if (!baronyZones[baronyId]) baronyZones[baronyId] = [];
+    baronyZones[baronyId].push(zoneId);
+  });
+  tradeLinesState = {
+    baronies: sortedBaronies,
+    baronyMap: Object.fromEntries(sortedBaronies.map(b => [b.id, b])),
+    zones: sortedZones,
+    zoneMap: Object.fromEntries(sortedZones.map(z => [z.id, z])),
+    adjacency: buildAdjacencyMap(connections, 'zone_id_1', 'zone_id_2'),
+    baronyZones,
+    lines: lines || []
+  };
+  renderTradeLinesPanel();
+}
+
 async function ensureTags(){
   const tags = await getData('tags','/api/tags');
   tagsSelect = tags.slice().sort(compareByField('label')).map(t=>({ id:t.id, name:t.label }));
@@ -3506,6 +3836,7 @@ const tabLoaders = {
   seigneuries: loadSeigneuries,
   baronies: loadBaronies,
   'trade-routes': loadTradeRoutes,
+  'trade-lines': loadTradeLines,
   batiments: loadBatiments,
   spells: loadSpells,
   tags: loadTags,

@@ -27,7 +27,7 @@ const VALID_TABLES = new Set([
   'users','religions','cultures','seigneurs','empires','kingdoms','archduchies',
   'duchies','marquisates','counties','viscounties','baronies','barony_pixels',
   'canonical_lands','inventaire','seigneuries','transactions','trade_transactions','barony_properties',
-  'building_properties','infrastructure_properties','barony_connections','trade_routes','tags','spells',
+  'building_properties','infrastructure_properties','barony_connections','trade_routes','trade_lines','tags','spells',
   'sanctuaries','maritime_zones','maritime_zone_pixels','maritime_zone_connections','maritime_zone_baronies','notifications'
 ]);
 
@@ -191,6 +191,14 @@ CREATE TABLE IF NOT EXISTS barony_connections (
   FOREIGN KEY(barony_id_2) REFERENCES baronies(id)
 );
 CREATE TABLE IF NOT EXISTS trade_routes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  barony_id_1 INTEGER NOT NULL,
+  barony_id_2 INTEGER NOT NULL,
+  path TEXT NOT NULL,
+  FOREIGN KEY(barony_id_1) REFERENCES baronies(id),
+  FOREIGN KEY(barony_id_2) REFERENCES baronies(id)
+);
+CREATE TABLE IF NOT EXISTS trade_lines (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   barony_id_1 INTEGER NOT NULL,
   barony_id_2 INTEGER NOT NULL,
@@ -403,6 +411,22 @@ function parseTradeRoutePath(raw) {
   return [];
 }
 
+function parseTradeLinePath(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.map(val => parseInt(val, 10)).filter(Number.isFinite);
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.map(val => parseInt(val, 10)).filter(Number.isFinite);
+      }
+    } catch (err) {
+      return [];
+    }
+  }
+  return [];
+}
+
 function buildAdjacency(rows, idKey1 = 'barony_id_1', idKey2 = 'barony_id_2') {
   const adj = {};
   rows.forEach(row => {
@@ -493,6 +517,28 @@ function getTradeAdjacency(callback) {
   });
 }
 
+function getTradeLineAdjacency(callback) {
+  db.all('SELECT zone_id_1, zone_id_2, distance FROM maritime_zone_connections', [], (err, rows) => {
+    if (err) return callback(err);
+    callback(null, buildAdjacency(rows, 'zone_id_1', 'zone_id_2'));
+  });
+}
+
+function getBaronyMaritimeZones(callback) {
+  db.all('SELECT zone_id, barony_id FROM maritime_zone_baronies', [], (err, rows) => {
+    if (err) return callback(err);
+    const map = {};
+    (rows || []).forEach(row => {
+      const zoneId = parseInt(row.zone_id, 10);
+      const baronyId = parseInt(row.barony_id, 10);
+      if (!zoneId || !baronyId) return;
+      if (!map[baronyId]) map[baronyId] = [];
+      map[baronyId].push(zoneId);
+    });
+    callback(null, map);
+  });
+}
+
 function migrateTradeRoutesTable() {
   db.serialize(() => {
     db.run('ALTER TABLE trade_routes RENAME TO trade_routes_old');
@@ -554,6 +600,39 @@ function ensureTradeRoutePaths() {
       });
     });
   });
+}
+
+function validateTradeLinePath(path, startId, endId, adjacency, baronyZones) {
+  if (!Array.isArray(path) || path.length < 1) {
+    return 'Le chemin doit contenir au moins une zone maritime.';
+  }
+  const startZones = baronyZones[startId] || [];
+  const endZones = baronyZones[endId] || [];
+  if (!startZones.includes(path[0])) {
+    return 'La première zone maritime doit toucher la baronnie 1.';
+  }
+  if (!endZones.includes(path[path.length - 1])) {
+    return 'La dernière zone maritime doit toucher la baronnie 2.';
+  }
+  const visited = new Set();
+  for (let i = 0; i < path.length; i += 1) {
+    const node = path[i];
+    if (!node) {
+      return 'Le chemin contient une zone maritime invalide.';
+    }
+    if (visited.has(node)) {
+      return 'Le chemin ne peut pas repasser par la même zone maritime.';
+    }
+    visited.add(node);
+    if (i === path.length - 1) continue;
+    const next = path[i + 1];
+    const neighbors = adjacency[node] || [];
+    const isAdjacent = neighbors.some(n => parseInt(n.id, 10) === next);
+    if (!isAdjacent) {
+      return 'Le chemin contient des zones maritimes non adjacentes.';
+    }
+  }
+  return '';
 }
 
 const DEFAULT_ADMIN_RETRY_DELAY_MS = 300;
@@ -3543,6 +3622,102 @@ app.delete('/api/trade_routes/:id', requireAdmin, (req, res) => {
   });
 });
 
+// Trade lines API
+app.get('/api/trade_lines', (req, res) => {
+  const baronyId = parseInt(req.query.barony_id, 10);
+  const where = baronyId ? ' WHERE barony_id_1=? OR barony_id_2=?' : '';
+  const params = baronyId ? [baronyId, baronyId] : [];
+  db.all(`SELECT * FROM trade_lines${where}`, params, (err, rows) => {
+    if (err) return handleError(res, err);
+    const lines = (rows || []).map(line => ({
+      ...line,
+      path: parseTradeLinePath(line.path)
+    }));
+    res.json(lines);
+  });
+});
+app.post('/api/trade_lines', requireAdmin, (req, res) => {
+  let { barony_id_1, barony_id_2, path } = req.body;
+  barony_id_1 = parseInt(barony_id_1, 10);
+  barony_id_2 = parseInt(barony_id_2, 10);
+  if (!barony_id_1 || !barony_id_2 || barony_id_1 === barony_id_2) {
+    return res.status(400).json({ error: 'Baronnies invalides' });
+  }
+  const normalizedPath = parseTradeLinePath(path);
+  if (!normalizedPath.length) {
+    return res.status(400).json({ error: 'Le chemin maritime est requis' });
+  }
+  getTradeLineAdjacency((errAdj, adjacency) => {
+    if (errAdj) return handleError(res, errAdj);
+    getBaronyMaritimeZones((errZones, baronyZones) => {
+      if (errZones) return handleError(res, errZones);
+      const error = validateTradeLinePath(normalizedPath, barony_id_1, barony_id_2, adjacency, baronyZones);
+      if (error) return res.status(400).json({ error });
+      const payload = {
+        barony_id_1,
+        barony_id_2,
+        path: JSON.stringify(normalizedPath)
+      };
+      db.run('INSERT INTO trade_lines (barony_id_1, barony_id_2, path) VALUES (?,?,?)', [payload.barony_id_1, payload.barony_id_2, payload.path], function(err2) {
+        if (err2) return handleError(res, err2);
+        const created = { id: this.lastID, barony_id_1, barony_id_2, path: normalizedPath };
+        recordChange(req, { table: 'trade_lines', action: 'create', before: null, after: created, key: String(this.lastID) });
+        res.json(created);
+      });
+    });
+  });
+});
+app.put('/api/trade_lines/:id', requireAdmin, (req, res) => {
+  const lineId = parseInt(req.params.id, 10);
+  if (!lineId) return res.status(400).json({ error: 'ID invalide' });
+  db.get('SELECT * FROM trade_lines WHERE id=?', [lineId], (err, line) => {
+    if (err) return handleError(res, err);
+    if (!line) return res.status(404).json({ error: 'Ligne introuvable' });
+    let { barony_id_1, barony_id_2, path } = req.body;
+    barony_id_1 = parseInt(barony_id_1 ?? line.barony_id_1, 10);
+    barony_id_2 = parseInt(barony_id_2 ?? line.barony_id_2, 10);
+    if (!barony_id_1 || !barony_id_2 || barony_id_1 === barony_id_2) {
+      return res.status(400).json({ error: 'Baronnies invalides' });
+    }
+    const normalizedPath = parseTradeLinePath(path).length ? parseTradeLinePath(path) : parseTradeLinePath(line.path);
+    if (!normalizedPath.length) {
+      return res.status(400).json({ error: 'Le chemin maritime est requis' });
+    }
+    getTradeLineAdjacency((errAdj, adjacency) => {
+      if (errAdj) return handleError(res, errAdj);
+      getBaronyMaritimeZones((errZones, baronyZones) => {
+        if (errZones) return handleError(res, errZones);
+        const error = validateTradeLinePath(normalizedPath, barony_id_1, barony_id_2, adjacency, baronyZones);
+        if (error) return res.status(400).json({ error });
+        const payload = {
+          barony_id_1,
+          barony_id_2,
+          path: JSON.stringify(normalizedPath)
+        };
+        db.run('UPDATE trade_lines SET barony_id_1=?, barony_id_2=?, path=? WHERE id=?', [payload.barony_id_1, payload.barony_id_2, payload.path, lineId], function(err2) {
+          if (err2) return handleError(res, err2);
+          const updated = { id: lineId, barony_id_1, barony_id_2, path: normalizedPath };
+          recordChange(req, { table: 'trade_lines', action: 'update', before: { ...line, path: parseTradeLinePath(line.path) }, after: updated, key: String(lineId) });
+          res.json(updated);
+        });
+      });
+    });
+  });
+});
+app.delete('/api/trade_lines/:id', requireAdmin, (req, res) => {
+  const lineId = parseInt(req.params.id, 10);
+  if (!lineId) return res.status(400).json({ error: 'ID invalide' });
+  db.get('SELECT * FROM trade_lines WHERE id=?', [lineId], (err, line) => {
+    if (err) return handleError(res, err);
+    if (!line) return res.status(404).json({ error: 'Ligne introuvable' });
+    db.run('DELETE FROM trade_lines WHERE id=?', [lineId], function(err2) {
+      if (err2) return handleError(res, err2);
+      recordChange(req, { table: 'trade_lines', action: 'delete', before: { ...line, path: parseTradeLinePath(line.path) }, after: null, key: String(lineId) });
+      res.json({ deleted: this.changes });
+    });
+  });
+});
+
 app.post('/api/trade_routes/build', (req, res) => {
   if (!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
   const targetId = parseInt(req.body.barony_id, 10);
@@ -3681,10 +3856,12 @@ app.get('/api/trade_partners', (req, res) => {
       SELECT CASE WHEN barony_id_1=? THEN barony_id_2 ELSE barony_id_1 END FROM barony_connections WHERE barony_id_1=? OR barony_id_2=?
       UNION
       SELECT CASE WHEN barony_id_1=? THEN barony_id_2 ELSE barony_id_1 END FROM trade_routes WHERE barony_id_1=? OR barony_id_2=?
+      UNION
+      SELECT CASE WHEN barony_id_1=? THEN barony_id_2 ELSE barony_id_1 END FROM trade_lines WHERE barony_id_1=? OR barony_id_2=?
     )
     ORDER BY b.id
   `;
-  db.all(sql, [baronyId, baronyId, baronyId, baronyId, baronyId, baronyId], (err, rows) => {
+  db.all(sql, [baronyId, baronyId, baronyId, baronyId, baronyId, baronyId, baronyId, baronyId, baronyId], (err, rows) => {
     if (err) return handleError(res, err);
     res.json(rows || []);
   });
