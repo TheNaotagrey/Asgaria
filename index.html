@@ -87,6 +87,17 @@
         <ul id="seigneurVassalList"></ul>
       </section>
     </aside>
+    <aside id="tradeRoutePanel" class="info-panel" style="display:none;">
+      <h2 id="tradeRoutePanelTitle"></h2>
+      <section class="info-group" id="tradeRouteConnectedSection">
+        <h3>Baronnies connectées</h3>
+        <ul id="tradeRouteConnectedList"></ul>
+      </section>
+      <section class="info-group" id="tradeRoutePathSection">
+        <h3>Chemin</h3>
+        <ul id="tradeRoutePathList"></ul>
+      </section>
+    </aside>
     <div id="legend" class="legend" style="display:none;"></div>
   </main>
   <script src="pixelData.js"></script>
@@ -117,14 +128,5 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/timeago.js/4.0.2/timeago.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/timeago.js/4.0.2/locale/fr.min.js"></script>
   <script src="auth.js"></script>
-  <dialog id="tradeRouteInfoDialog" class="confirm-dialog trade-route-info-dialog">
-    <form id="tradeRouteInfoForm" method="dialog">
-      <h3 id="tradeRouteInfoTitle">Détails de la route commerciale</h3>
-      <div id="tradeRouteInfoContent" class="trade-route-info-content"></div>
-      <div class="dialog-buttons">
-        <button type="submit" class="control-btn">Fermer</button>
-      </div>
-    </form>
-  </dialog>
   </body>
 </html>

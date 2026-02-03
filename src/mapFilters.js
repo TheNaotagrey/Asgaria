@@ -316,22 +316,21 @@
       }
       if (type === 'trade_routes') {
         colorMap = {};
-        const selectedId = core.currentSelectedId;
-        if (!selectedId) {
-          updateLegend(null);
-          core.setCanonicalPatterns({});
-          core.setColorMap(colorMap);
-          return;
-        }
         const routeMap = data.tradeRouteById || {};
         const lineMap = data.tradeLineById || {};
         const route = tradeRouteSelection ? routeMap[tradeRouteSelection] : null;
         const line = tradeLineSelection ? lineMap[tradeLineSelection] : null;
-        if (route && Array.isArray(route.path) && route.path.length) {
-          route.path.forEach(id => {
-            if (!id) return;
-            colorMap[id] = [...tradeRoutePathColor, 100];
-          });
+        if (route) {
+          const path = Array.isArray(route.path) ? route.path : [];
+          if (path.length) {
+            const startsMatch = path[0] === route.barony_id_1 && path[path.length - 1] === route.barony_id_2;
+            const endsMatch = path[0] === route.barony_id_2 && path[path.length - 1] === route.barony_id_1;
+            const intermediatePath = (startsMatch || endsMatch) ? path.slice(1, -1) : path;
+            intermediatePath.forEach(id => {
+              if (!id) return;
+              colorMap[id] = [...tradeRoutePathColor, 100];
+            });
+          }
           colorMap[route.barony_id_1] = [...tradeRoutePrimaryColor, 180];
           colorMap[route.barony_id_2] = [...tradeRoutePrimaryColor, 180];
           updateLegend(null);
@@ -339,9 +338,16 @@
           core.setColorMap(colorMap);
           return;
         }
-        if (line && Array.isArray(line.path) && line.path.length) {
+        if (line) {
           colorMap[line.barony_id_1] = [...tradeRoutePrimaryColor, 180];
           colorMap[line.barony_id_2] = [...tradeRoutePrimaryColor, 180];
+          updateLegend(null);
+          core.setCanonicalPatterns({});
+          core.setColorMap(colorMap);
+          return;
+        }
+        const selectedId = core.currentSelectedId;
+        if (!selectedId) {
           updateLegend(null);
           core.setCanonicalPatterns({});
           core.setColorMap(colorMap);
