@@ -938,6 +938,11 @@ function isAdminActive(user){
   return adminUser && adminUser.is_admin && adminUser.act_as_admin !== false;
 }
 
+function isAdminUser(user) {
+  const adminUser = applyAdminOverride(user);
+  return adminUser && adminUser.is_admin;
+}
+
 app.use((req,res,next)=>{
   const adminPages = ['/admin.html','/mapEditor.html'];
   if (adminPages.includes(req.path) && !isAdminActive(req.session.user)) {
@@ -1142,6 +1147,18 @@ app.post('/api/admin_mode', (req,res) => {
     return res.status(403).json({ error: 'Forbidden' });
   }
   req.session.user = applyAdminOverride({ ...req.session.user, act_as_admin: !!req.body.admin_mode });
+  res.json({ ok: true });
+});
+
+app.get('/api/test_mode', (req, res) => {
+  res.json({ enabled: !!req.session.test_mode });
+});
+
+app.post('/api/test_mode', (req, res) => {
+  if (!isAdminUser(req.session.user)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  req.session.test_mode = !!req.body.test_mode;
   res.json({ ok: true });
 });
 

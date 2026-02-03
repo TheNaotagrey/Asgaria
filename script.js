@@ -30,6 +30,9 @@
   let canonicalDependents = {};
   let sanctuaryMap = {};
   let baronyAdjacency = {};
+  let tradeRoutes = [];
+  let tradeRouteConnections = {};
+  let tradeRouteById = {};
   let mapData = {};
 
   let baronyLinkMode = false;
@@ -45,7 +48,7 @@
   const randomBtn = document.getElementById('randomBtn');
   const pixelLoading = document.getElementById('pixelLoading');
   const legendDiv = document.getElementById('legend');
-  const landFilters = [
+  const landFiltersBase = [
     { value: '', label: 'Aucun' },
     { value: 'religion', label: 'Religion de la Population' },
     { value: 'seigneur_religion', label: 'Religion du seigneur' },
@@ -68,7 +71,9 @@
     { value: 'kingdom', label: 'Royaume de jure' },
     { value: 'kingdom_defacto', label: 'Royaume de facto' },
     { value: 'empire', label: 'Empire de jure' },
-    { value: 'empire_defacto', label: 'Empire de facto' },
+    { value: 'empire_defacto', label: 'Empire de facto' }
+  ];
+  const landFiltersTail = [
     { value: 'distance', label: 'Distance' },
     { value: 'vacant', label: 'Vacance' },
     { value: 'occupation', label: 'Occupation' }
@@ -78,9 +83,16 @@
     { value: 'distance', label: 'Distance' },
     { value: 'baronies', label: 'Baronnies liées' }
   ];
+  function getLandFilters() {
+    const filters = [...landFiltersBase];
+    if (window.isTestMode) {
+      filters.push({ value: 'trade_routes', label: 'Routes commerciales' });
+    }
+    return filters.concat(landFiltersTail);
+  }
   function populateFilters() {
     if (!filterSelect) return;
-    const filters = mapMode === 'sea' ? seaFilters : landFilters;
+    const filters = mapMode === 'sea' ? seaFilters : getLandFilters();
     filterSelect.innerHTML = '';
     filters.forEach(f => {
       const opt = document.createElement('option');
@@ -90,6 +102,55 @@
     });
   }
   populateFilters();
+  function updateFilterOptionsFromTestMode() {
+    if (!filterSelect || mapMode === 'sea') return;
+    const previous = filterSelect.value;
+    populateFilters();
+    const hasPrevious = previous && Array.from(filterSelect.options).some(opt => opt.value === previous);
+    filterSelect.value = hasPrevious ? previous : '';
+    if (!hasPrevious && previous === 'trade_routes' && filterManager) {
+      filterManager.applyFilter('');
+    }
+  }
+  window.addEventListener('testmode:ready', updateFilterOptionsFromTestMode);
+
+  function parseTradeRoutePath(raw) {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw.map(val => parseInt(val, 10)).filter(Number.isFinite);
+    if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          return parsed.map(val => parseInt(val, 10)).filter(Number.isFinite);
+        }
+      } catch (err) {
+        return [];
+      }
+    }
+    return [];
+  }
+
+  function buildTradeRouteMaps(routes) {
+    tradeRouteConnections = {};
+    tradeRouteById = {};
+    const connectionSets = {};
+    routes.forEach(route => {
+      const id = parseInt(route.id, 10);
+      const barony1 = parseInt(route.barony_id_1, 10);
+      const barony2 = parseInt(route.barony_id_2, 10);
+      if (!id || !barony1 || !barony2) return;
+      const path = parseTradeRoutePath(route.path);
+      const normalized = { ...route, id, barony_id_1: barony1, barony_id_2: barony2, path };
+      tradeRouteById[id] = normalized;
+      if (!connectionSets[barony1]) connectionSets[barony1] = new Set();
+      if (!connectionSets[barony2]) connectionSets[barony2] = new Set();
+      connectionSets[barony1].add(barony2);
+      connectionSets[barony2].add(barony1);
+    });
+    Object.keys(connectionSets).forEach(id => {
+      tradeRouteConnections[id] = Array.from(connectionSets[id]);
+    });
+  }
 
   function addSeigneurTitle(map, seigneurId, titleId) {
     if (!seigneurId || !titleId) return;
@@ -837,7 +898,7 @@
     baronyMeta = {};
     entities.forEach(e => { baronyMeta[e.id] = e; });
     if (mapMode !== 'sea') {
-      const [seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires, canonicalLands, sanctuaries, connections] = await Promise.all([
+      const [seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires, canonicalLands, sanctuaries, connections, routes] = await Promise.all([
         fetch(API_BASE + '/api/seigneurs').then(r => r.json()),
         fetch(API_BASE + '/api/religions').then(r => r.json()),
         fetch(API_BASE + '/api/cultures').then(r => r.json()),
@@ -850,7 +911,8 @@
         fetch(API_BASE + '/api/empires').then(r => r.json()),
         fetch(API_BASE + '/api/canonical_lands').then(r => r.json()),
         fetch(API_BASE + '/api/sanctuaries').then(r => r.json()),
-        fetch(API_BASE + '/api/barony_connections').then(r => r.json())
+        fetch(API_BASE + '/api/barony_connections').then(r => r.json()),
+        fetch(API_BASE + '/api/trade_routes').then(r => r.json())
       ]);
       seigneurMap = {};
       seigneurs.forEach(s => { seigneurMap[s.id] = s; });
@@ -914,6 +976,8 @@
         baronyAdjacency[c.barony_id_1].push({ id: c.barony_id_2, distance: dist });
         baronyAdjacency[c.barony_id_2].push({ id: c.barony_id_1, distance: dist });
       });
+      tradeRoutes = Array.isArray(routes) ? routes : [];
+      buildTradeRouteMaps(tradeRoutes);
       const baronyIds = entities.map(e => e.id);
       baronyPixelData = pixelData;
       fetchBaronyPixelsInChunks(baronyIds, pixelData, true).catch(err => console.error(err));
@@ -923,6 +987,9 @@
         fetch(API_BASE + '/api/maritime_zone_connections').then(r => r.json()),
         fetch(API_BASE + '/api/maritime_zone_baronies').then(r => r.json())
       ]);
+      tradeRoutes = [];
+      tradeRouteConnections = {};
+      tradeRouteById = {};
       seigneurMap = {};
       seigneurs.forEach(s => { seigneurMap[s.id] = s; });
       populateSelect(seaEditSeigneurSelect, seigneurMap, 'Aucun');
@@ -961,6 +1028,8 @@
       canonicalDependents,
       sanctuaryMap,
       baronyAdjacency,
+      tradeRouteConnections,
+      tradeRouteById,
       baronyPixels: baronyPixelData,
       maritimeZoneBaronies,
       seigneurToCounty,
