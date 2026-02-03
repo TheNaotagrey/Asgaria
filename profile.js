@@ -26,6 +26,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   if(user.is_admin){
     const container = document.getElementById('adminModeContainer');
     const checkbox = document.getElementById('adminMode');
+    const testContainer = document.getElementById('testModeContainer');
+    const testCheckbox = document.getElementById('testMode');
     container.style.display = 'block';
     checkbox.checked = user.act_as_admin !== false;
     checkbox.addEventListener('change', async () => {
@@ -36,6 +38,24 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
       location.reload();
     });
+    if (testContainer && testCheckbox) {
+      testContainer.style.display = 'block';
+      try {
+        const testRes = await fetch('/api/test_mode');
+        if (testRes.ok) {
+          const testData = await testRes.json();
+          testCheckbox.checked = !!testData.enabled;
+        }
+      } catch {}
+      testCheckbox.addEventListener('change', async () => {
+        await fetch('/api/test_mode', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ test_mode: testCheckbox.checked })
+        });
+        location.reload();
+      });
+    }
   }
   form.addEventListener('submit', async e => {
     e.preventDefault();

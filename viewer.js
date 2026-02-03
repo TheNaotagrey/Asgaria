@@ -788,7 +788,7 @@
     });
   }
 
-  const landFilters = [
+  const landFiltersBase = [
     { value: '', label: 'Aucun' },
     { value: 'religion', label: 'Religion de la Population' },
     { value: 'seigneur_religion', label: 'Religion du seigneur' },
@@ -811,7 +811,9 @@
     { value: 'kingdom', label: 'Royaume de jure' },
     { value: 'kingdom_defacto', label: 'Royaume de facto' },
     { value: 'empire', label: 'Empire de jure' },
-    { value: 'empire_defacto', label: 'Empire de facto' },
+    { value: 'empire_defacto', label: 'Empire de facto' }
+  ];
+  const landFiltersTail = [
     { value: 'distance', label: 'Distance' },
     { value: 'occupation', label: 'Occupation' }
   ];
@@ -820,9 +822,17 @@
     { value: 'distance', label: 'Distance' },
     { value: 'baronies', label: 'Baronnies liées' }
   ];
+  let handleFilterChange = null;
+  function getLandFilters() {
+    const filters = [...landFiltersBase];
+    if (window.isTestMode) {
+      filters.push({ value: 'trade_routes', label: 'Routes commerciales' });
+    }
+    return filters.concat(landFiltersTail);
+  }
   function populateFilters() {
     if (!filterSelect) return;
-    const filters = mapMode === 'sea' ? seaFilters : landFilters;
+    const filters = mapMode === 'sea' ? seaFilters : getLandFilters();
     filterSelect.innerHTML = '';
     filters.forEach(f => {
       const opt = document.createElement('option');
@@ -832,6 +842,26 @@
     });
   }
   populateFilters();
+  function updateFilterOptionsFromTestMode() {
+    if (!filterSelect || mapMode === 'sea') return;
+    const previous = filterSelect.value;
+    populateFilters();
+    const hasPrevious = previous && Array.from(filterSelect.options).some(opt => opt.value === previous);
+    if (hasPrevious) {
+      filterSelect.value = previous;
+    } else {
+      filterSelect.value = '';
+      if (previous === 'trade_routes') {
+        selectedTradeRouteId = null;
+        if (filterManager && typeof filterManager.setTradeRouteSelection === 'function') {
+          filterManager.setTradeRouteSelection(null);
+        }
+        setTradeRouteInfoMode(false);
+      }
+    }
+    if (handleFilterChange) handleFilterChange();
+  }
+  window.addEventListener('testmode:ready', updateFilterOptionsFromTestMode);
 
   function updateLegend(groups) {
     if (!legendDiv) return;
@@ -1309,7 +1339,7 @@
       core.ready.then(() => {
         filterManager = mapFilters.init(core, mapData, { updateLegend });
         if (filterSelect) {
-          const handleFilterChange = () => {
+          handleFilterChange = () => {
             if (filterSelect.value !== 'trade_routes') {
               selectedTradeRouteId = null;
               if (filterManager && typeof filterManager.setTradeRouteSelection === 'function') {
