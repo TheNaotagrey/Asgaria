@@ -362,7 +362,7 @@
         seaConnected.forEach(id => {
           if (!id || landConnected.has(id)) return;
           colorMap[id] = [...tradeRouteSeaColor, 100];
-        }
+        });
         updateLegend({
           land: { color: tradeRouteLandColor, name: 'Route (terre)' },
           sea: { color: tradeRouteSeaColor, name: 'Ligne (mer)' }
