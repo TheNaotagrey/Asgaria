@@ -33,6 +33,9 @@
   let tradeRoutes = [];
   let tradeRouteConnections = {};
   let tradeRouteById = {};
+  let tradeLines = [];
+  let tradeLineConnections = {};
+  let tradeLineById = {};
   let mapData = {};
 
   let baronyLinkMode = false;
@@ -149,6 +152,28 @@
     });
     Object.keys(connectionSets).forEach(id => {
       tradeRouteConnections[id] = Array.from(connectionSets[id]);
+    });
+  }
+
+  function buildTradeLineMaps(lines) {
+    tradeLineConnections = {};
+    tradeLineById = {};
+    const connectionSets = {};
+    lines.forEach(line => {
+      const id = parseInt(line.id, 10);
+      const barony1 = parseInt(line.barony_id_1, 10);
+      const barony2 = parseInt(line.barony_id_2, 10);
+      if (!id || !barony1 || !barony2) return;
+      const path = parseTradeRoutePath(line.path);
+      const normalized = { ...line, id, barony_id_1: barony1, barony_id_2: barony2, path };
+      tradeLineById[id] = normalized;
+      if (!connectionSets[barony1]) connectionSets[barony1] = new Set();
+      if (!connectionSets[barony2]) connectionSets[barony2] = new Set();
+      connectionSets[barony1].add(barony2);
+      connectionSets[barony2].add(barony1);
+    });
+    Object.keys(connectionSets).forEach(id => {
+      tradeLineConnections[id] = Array.from(connectionSets[id]);
     });
   }
 
@@ -898,7 +923,7 @@
     baronyMeta = {};
     entities.forEach(e => { baronyMeta[e.id] = e; });
     if (mapMode !== 'sea') {
-      const [seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires, canonicalLands, sanctuaries, connections, routes] = await Promise.all([
+      const [seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires, canonicalLands, sanctuaries, connections, routes, lines] = await Promise.all([
         fetch(API_BASE + '/api/seigneurs').then(r => r.json()),
         fetch(API_BASE + '/api/religions').then(r => r.json()),
         fetch(API_BASE + '/api/cultures').then(r => r.json()),
@@ -912,7 +937,8 @@
         fetch(API_BASE + '/api/canonical_lands').then(r => r.json()),
         fetch(API_BASE + '/api/sanctuaries').then(r => r.json()),
         fetch(API_BASE + '/api/barony_connections').then(r => r.json()),
-        fetch(API_BASE + '/api/trade_routes').then(r => r.json())
+        fetch(API_BASE + '/api/trade_routes').then(r => r.json()),
+        fetch(API_BASE + '/api/trade_lines').then(r => r.json())
       ]);
       seigneurMap = {};
       seigneurs.forEach(s => { seigneurMap[s.id] = s; });
@@ -978,6 +1004,8 @@
       });
       tradeRoutes = Array.isArray(routes) ? routes : [];
       buildTradeRouteMaps(tradeRoutes);
+      tradeLines = Array.isArray(lines) ? lines : [];
+      buildTradeLineMaps(tradeLines);
       const baronyIds = entities.map(e => e.id);
       baronyPixelData = pixelData;
       fetchBaronyPixelsInChunks(baronyIds, pixelData, true).catch(err => console.error(err));
@@ -990,6 +1018,9 @@
       tradeRoutes = [];
       tradeRouteConnections = {};
       tradeRouteById = {};
+      tradeLines = [];
+      tradeLineConnections = {};
+      tradeLineById = {};
       seigneurMap = {};
       seigneurs.forEach(s => { seigneurMap[s.id] = s; });
       populateSelect(seaEditSeigneurSelect, seigneurMap, 'Aucun');
@@ -1030,6 +1061,8 @@
       baronyAdjacency,
       tradeRouteConnections,
       tradeRouteById,
+      tradeLineConnections,
+      tradeLineById,
       baronyPixels: baronyPixelData,
       maritimeZoneBaronies,
       seigneurToCounty,
