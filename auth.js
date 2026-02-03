@@ -7,6 +7,32 @@ async function getCurrentUser() {
   }
 }
 
+function initTestModeState() {
+  if (window.testModeReady) return window.testModeReady;
+  window.isTestMode = false;
+  window.testModeSource = 'none';
+  window.testModeReady = (async () => {
+    const params = new URLSearchParams(window.location.search);
+    const urlTestMode = params.has('test');
+    let profileTestMode = false;
+    try {
+      const res = await fetch('/api/test_mode');
+      if (res.ok) {
+        const data = await res.json();
+        profileTestMode = !!data.enabled;
+      }
+    } catch {}
+    const enabled = urlTestMode || profileTestMode;
+    window.isTestMode = enabled;
+    window.testModeSource = urlTestMode ? 'url' : (profileTestMode ? 'profil' : 'none');
+    window.dispatchEvent(new CustomEvent('testmode:ready', { detail: { enabled, source: window.testModeSource } }));
+    return enabled;
+  })();
+  return window.testModeReady;
+}
+
+initTestModeState();
+
 // Register French locale for timeago in case the CDN locale file fails to load
 if (typeof timeago !== 'undefined' && timeago.register) {
   timeago.register('fr', (number, index) => [
