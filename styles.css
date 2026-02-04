@@ -838,6 +838,14 @@ th.multi-col {
   background: #f8f8f8;
 }
 
+.admin-table .trade-route-path {
+  display: table-cell;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
 .trade-route-steps {
   display: flex;
   flex-direction: column;
