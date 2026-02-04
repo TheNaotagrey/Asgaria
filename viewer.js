@@ -188,6 +188,17 @@
     return btn;
   }
 
+  function createBaronyLabel(baronyId) {
+    const name = baronyMeta[baronyId]?.name || baronyLookup[baronyId]?.name;
+    return name ? `${name} (#${baronyId})` : `Baronnie #${baronyId}`;
+  }
+
+  function buildPathTooltip(items, formatter, emptyLabel) {
+    const list = (items || []).filter(Boolean);
+    if (!list.length) return emptyLabel || '';
+    return list.map(formatter).join(' → ');
+  }
+
   function setSeigneurList(section, list, ids) {
     if (!section || !list) return;
     list.innerHTML = '';
@@ -459,11 +470,16 @@
         <tr>
           <td><button class="control-btn trade-route-btn" data-id="${routeId}">#${routeId}</button></td>
           <td>${otherLabel}</td>
-          <td>${pathLength}</td>
+          <td class="trade-route-path" data-route-id="${routeId}">${pathLength}</td>
         </tr>
       `;
     }).join('');
     tradeRoutesList.innerHTML = `<table class="admin-table"><tr><th>ID</th><th>Destination</th><th>Chemin (nœuds)</th></tr>${rows}</table>`;
+    tradeRoutesList.querySelectorAll('.trade-route-path').forEach(cell => {
+      const routeId = parseInt(cell.dataset.routeId, 10);
+      const route = tradeRouteById[routeId];
+      cell.title = buildPathTooltip(route?.path, createBaronyLabel, 'Trajet direct.');
+    });
     tradeRoutesList.querySelectorAll('.trade-route-btn').forEach(btn => {
       btn.addEventListener('click', () => openTradeRouteInfo(parseInt(btn.dataset.id, 10)));
     });
@@ -487,11 +503,16 @@
         <tr>
           <td><button class="control-btn trade-line-btn" data-id="${lineId}">#${lineId}</button></td>
           <td>${otherLabel}</td>
-          <td>${pathLength}</td>
+          <td class="trade-line-path" data-line-id="${lineId}">${pathLength}</td>
         </tr>
       `;
     }).join('');
     tradeLinesList.innerHTML = `<table class="admin-table"><tr><th>ID</th><th>Destination</th><th>Chemin (zones)</th></tr>${rows}</table>`;
+    tradeLinesList.querySelectorAll('.trade-line-path').forEach(cell => {
+      const lineId = parseInt(cell.dataset.lineId, 10);
+      const line = tradeLineById[lineId];
+      cell.title = buildPathTooltip(line?.path, createZoneLabel, 'Trajet direct.');
+    });
     tradeLinesList.querySelectorAll('.trade-line-btn').forEach(btn => {
       btn.addEventListener('click', () => openTradeLineInfo(parseInt(btn.dataset.id, 10)));
     });

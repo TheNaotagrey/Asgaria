@@ -40,6 +40,22 @@
       return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : null;
     }
 
+    function normalizeTradePath(raw) {
+      if (!raw) return [];
+      if (Array.isArray(raw)) return raw.map(val => parseInt(val, 10)).filter(Number.isFinite);
+      if (typeof raw === 'string') {
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            return parsed.map(val => parseInt(val, 10)).filter(Number.isFinite);
+          }
+        } catch (err) {
+          return [];
+        }
+      }
+      return [];
+    }
+
     function initColorMap() {
       colorMap = {};
       Object.keys(data.baronyMeta || {}).forEach(id => {
@@ -321,18 +337,15 @@
         const route = tradeRouteSelection ? routeMap[tradeRouteSelection] : null;
         const line = tradeLineSelection ? lineMap[tradeLineSelection] : null;
         if (route) {
-          const path = Array.isArray(route.path) ? route.path : [];
-          if (path.length) {
-            const startsMatch = path[0] === route.barony_id_1 && path[path.length - 1] === route.barony_id_2;
-            const endsMatch = path[0] === route.barony_id_2 && path[path.length - 1] === route.barony_id_1;
-            const intermediatePath = (startsMatch || endsMatch) ? path.slice(1, -1) : path;
-            intermediatePath.forEach(id => {
-              if (!id) return;
-              colorMap[id] = [...tradeRoutePathColor, 100];
-            });
-          }
-          colorMap[route.barony_id_1] = [...tradeRoutePrimaryColor, 180];
-          colorMap[route.barony_id_2] = [...tradeRoutePrimaryColor, 180];
+          const path = normalizeTradePath(route.path);
+          const startId = route.barony_id_1;
+          const endId = route.barony_id_2;
+          const pathNodes = path.filter(id => id && id !== startId && id !== endId);
+          pathNodes.forEach(id => {
+            colorMap[id] = [...tradeRoutePathColor, 100];
+          });
+          if (startId) colorMap[startId] = [...tradeRoutePrimaryColor, 180];
+          if (endId) colorMap[endId] = [...tradeRoutePrimaryColor, 180];
           updateLegend(null);
           core.setCanonicalPatterns({});
           core.setColorMap(colorMap);
