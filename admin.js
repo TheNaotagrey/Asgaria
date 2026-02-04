@@ -3377,7 +3377,7 @@ function renderTradeRoutesPanel() {
   }
   const table = document.createElement('table');
   table.className = 'admin-table';
-  table.innerHTML = '<tr><th>ID</th><th>Baronnie 1</th><th>Baronnie 2</th><th>Chemin (nœuds)</th><th>Actions</th></tr>';
+  table.innerHTML = '<tr><th>ID</th><th>Baronnie 1</th><th>Baronnie 2</th><th>Chemin</th><th>Actions</th></tr>';
   tradeRoutesState.routes
     .slice()
     .sort((a, b) => a.id - b.id)
@@ -3659,7 +3659,7 @@ function renderTradeLinesPanel() {
   }
   const table = document.createElement('table');
   table.className = 'admin-table';
-  table.innerHTML = '<tr><th>ID</th><th>Baronnie 1</th><th>Baronnie 2</th><th>Chemin (zones)</th><th>Actions</th></tr>';
+  table.innerHTML = '<tr><th>ID</th><th>Baronnie 1</th><th>Baronnie 2</th><th>Chemin</th><th>Actions</th></tr>';
   tradeLinesState.lines
     .slice()
     .sort((a, b) => a.id - b.id)
