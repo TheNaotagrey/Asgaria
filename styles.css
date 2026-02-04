@@ -506,6 +506,28 @@ main {
   border-collapse: collapse;
   margin-bottom: 20px;
 }
+.trade-table {
+  width: 100%;
+  font-size: 0.85rem;
+  margin-bottom: 8px;
+}
+.trade-table th,
+.trade-table td {
+  padding: 3px 4px;
+}
+#tradeRoutesList,
+#tradeLinesList {
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 4px;
+  background-color: #fafafa;
+}
+#tradeRoutesList .admin-table,
+#tradeLinesList .admin-table {
+  margin-bottom: 0;
+}
 .admin-table th,
 .admin-table td {
   border: 1px solid #ccc;
