@@ -3171,6 +3171,23 @@ function isTradeRoutePathComplete(startId, endId, selections) {
   return selections[selections.length - 1] === endId;
 }
 
+function buildTradeRouteSelections(startId, endId, path) {
+  if (!startId || !endId) return [];
+  const rawPath = Array.isArray(path) ? path.slice() : [];
+  const cleanedPath = rawPath.filter(Number.isFinite);
+  if (!cleanedPath.length) return [endId];
+  const first = cleanedPath[0];
+  const last = cleanedPath[cleanedPath.length - 1];
+  let intermediates = cleanedPath;
+  if (first === startId && last === endId) {
+    intermediates = cleanedPath.slice(1, -1);
+  } else if (first === endId && last === startId) {
+    intermediates = cleanedPath.slice(1, -1).reverse();
+  }
+  intermediates = intermediates.filter(id => id !== startId && id !== endId);
+  return [...intermediates, endId];
+}
+
 function renderTradeRouteSteps() {
   const { barony1, barony2, steps } = getTradeRouteDialogElements();
   if (!steps || !barony1 || !barony2) return;
@@ -3241,9 +3258,12 @@ function updateTradeRouteHint(message) {
   hint.textContent = text;
 }
 
-function buildTradeRoutePath(startId, selections) {
-  const path = [startId, ...(selections || [])];
-  return path.filter(Boolean);
+function buildTradeRoutePath(selections) {
+  const path = (selections || []).slice();
+  if (!path.length) return [];
+  const last = path[path.length - 1];
+  if (!last) return [];
+  return path.slice(0, -1);
 }
 
 function autoPopulateTradeRoutePath(startId, endId) {
@@ -3290,11 +3310,7 @@ function openTradeRouteDialog(route) {
     elements.barony1.value = String(route.barony_id_1);
     elements.barony2.value = String(route.barony_id_2);
     const path = parseTradeRoutePath(route.path);
-    if (path.length && path[0] === route.barony_id_1 && path[path.length - 1] === route.barony_id_2) {
-      tradeRouteDialogState.selections = path.slice(1);
-    } else if (path.length && path[0] === route.barony_id_2 && path[path.length - 1] === route.barony_id_1) {
-      tradeRouteDialogState.selections = path.slice(1).reverse();
-    }
+    tradeRouteDialogState.selections = buildTradeRouteSelections(route.barony_id_1, route.barony_id_2, path);
   }
   updateTradeRouteLabels(
     parseInt(elements.barony1.value, 10),
@@ -3334,7 +3350,7 @@ function ensureTradeRouteDialog() {
         updateTradeRouteHint('Le chemin doit être complet pour être enregistré.');
         return;
       }
-      const path = buildTradeRoutePath(startId, tradeRouteDialogState.selections);
+      const path = buildTradeRoutePath(tradeRouteDialogState.selections);
       const payload = { barony_id_1: startId, barony_id_2: endId, path };
       const isEdit = tradeRouteDialogState.mode === 'edit' && tradeRouteDialogState.routeId;
       const endpoint = isEdit ? `/api/trade_routes/${tradeRouteDialogState.routeId}` : '/api/trade_routes';

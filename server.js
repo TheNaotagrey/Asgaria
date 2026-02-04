@@ -485,6 +485,24 @@ function computeShortestPath(startId, endId, adjacency) {
   return { path, distance: dist[endId] };
 }
 
+function normalizeTradeRoutePathInput(rawPath, startId, endId) {
+  let parsed = parseTradeRoutePath(rawPath);
+  if (!parsed.length) return { fullPath: [], storedPath: [] };
+  const first = parsed[0];
+  const last = parsed[parsed.length - 1];
+  let fullPath = parsed.slice();
+  if (first === endId && last === startId) {
+    fullPath = parsed.slice().reverse();
+  } else if (first !== startId || last !== endId) {
+    if (parsed.includes(startId) || parsed.includes(endId)) {
+      return { error: 'Le chemin ne doit pas inclure les baronnies 1 et 2.' };
+    }
+    fullPath = [startId, ...parsed, endId];
+  }
+  const storedPath = fullPath.slice(1, -1);
+  return { fullPath, storedPath };
+}
+
 function validateTradeRoutePath(path, startId, endId, adjacency) {
   if (!Array.isArray(path) || path.length < 2) {
     return 'Le chemin doit contenir au moins deux baronnies.';
@@ -567,8 +585,8 @@ function migrateTradeRoutesTable() {
           const endId = parseInt(route.barony_id_2, 10);
           const computed = adjacency ? computeShortestPath(startId, endId, adjacency) : null;
           const path = (computed && computed.path && computed.path.length)
-            ? computed.path
-            : [startId, endId];
+            ? computed.path.slice(1, -1)
+            : [];
           stmt.run(startId, endId, JSON.stringify(path));
         });
         stmt.finalize(() => {
@@ -589,13 +607,21 @@ function ensureTradeRoutePaths() {
       }
       routes.forEach(route => {
         const existing = parseTradeRoutePath(route.path);
-        if (existing.length) return;
         const startId = parseInt(route.barony_id_1, 10);
         const endId = parseInt(route.barony_id_2, 10);
+        if (existing.length) {
+          const normalized = normalizeTradeRoutePathInput(existing, startId, endId);
+          if (normalized.error) return;
+          const storedPath = normalized.fullPath.length ? normalized.storedPath : [];
+          if (JSON.stringify(existing) !== JSON.stringify(storedPath)) {
+            db.run('UPDATE trade_routes SET path=? WHERE id=?', [JSON.stringify(storedPath), route.id]);
+          }
+          return;
+        }
         const computed = computeShortestPath(startId, endId, adjacency);
         const path = (computed && computed.path && computed.path.length)
-          ? computed.path
-          : [startId, endId];
+          ? computed.path.slice(1, -1)
+          : [];
         db.run('UPDATE trade_routes SET path=? WHERE id=?', [JSON.stringify(path), route.id]);
       });
     });
@@ -3546,19 +3572,20 @@ app.post('/api/trade_routes', requireAdmin, (req, res) => {
       }
       normalizedPath = computed.path;
     }
-    if (normalizedPath[0] === barony_id_2 && normalizedPath[normalizedPath.length - 1] === barony_id_1) {
-      normalizedPath = normalizedPath.slice().reverse();
-    }
-    const error = validateTradeRoutePath(normalizedPath, barony_id_1, barony_id_2, adjacency);
+    const normalized = normalizeTradeRoutePathInput(normalizedPath, barony_id_1, barony_id_2);
+    if (normalized.error) return res.status(400).json({ error: normalized.error });
+    const fullPath = normalized.fullPath.length ? normalized.fullPath : normalizedPath;
+    const storedPath = normalized.fullPath.length ? normalized.storedPath : normalizedPath.slice(1, -1);
+    const error = validateTradeRoutePath(fullPath, barony_id_1, barony_id_2, adjacency);
     if (error) return res.status(400).json({ error });
     const payload = {
       barony_id_1,
       barony_id_2,
-      path: JSON.stringify(normalizedPath)
+      path: JSON.stringify(storedPath)
     };
     db.run('INSERT INTO trade_routes (barony_id_1, barony_id_2, path) VALUES (?,?,?)', [payload.barony_id_1, payload.barony_id_2, payload.path], function(err2) {
       if (err2) return handleError(res, err2);
-      const created = { id: this.lastID, barony_id_1, barony_id_2, path: normalizedPath };
+      const created = { id: this.lastID, barony_id_1, barony_id_2, path: storedPath };
       recordChange(req, { table: 'trade_routes', action: 'create', before: null, after: created, key: String(this.lastID) });
       res.json(created);
     });
@@ -3589,19 +3616,20 @@ app.put('/api/trade_routes/:id', requireAdmin, (req, res) => {
         }
         normalizedPath = computed.path;
       }
-      if (normalizedPath[0] === barony_id_2 && normalizedPath[normalizedPath.length - 1] === barony_id_1) {
-        normalizedPath = normalizedPath.slice().reverse();
-      }
-      const error = validateTradeRoutePath(normalizedPath, barony_id_1, barony_id_2, adjacency);
+      const normalized = normalizeTradeRoutePathInput(normalizedPath, barony_id_1, barony_id_2);
+      if (normalized.error) return res.status(400).json({ error: normalized.error });
+      const fullPath = normalized.fullPath.length ? normalized.fullPath : normalizedPath;
+      const storedPath = normalized.fullPath.length ? normalized.storedPath : normalizedPath.slice(1, -1);
+      const error = validateTradeRoutePath(fullPath, barony_id_1, barony_id_2, adjacency);
       if (error) return res.status(400).json({ error });
       const payload = {
         barony_id_1,
         barony_id_2,
-        path: JSON.stringify(normalizedPath)
+        path: JSON.stringify(storedPath)
       };
       db.run('UPDATE trade_routes SET barony_id_1=?, barony_id_2=?, path=? WHERE id=?', [payload.barony_id_1, payload.barony_id_2, payload.path, routeId], function(err2) {
         if (err2) return handleError(res, err2);
-        const updated = { id: routeId, barony_id_1, barony_id_2, path: normalizedPath };
+        const updated = { id: routeId, barony_id_1, barony_id_2, path: storedPath };
         recordChange(req, { table: 'trade_routes', action: 'update', before: { ...route, path: parseTradeRoutePath(route.path) }, after: updated, key: String(routeId) });
         res.json(updated);
       });
@@ -3743,7 +3771,7 @@ app.post('/api/trade_routes/build', (req, res) => {
             const payload = {
               barony_id_1: startId,
               barony_id_2: targetId,
-              path: JSON.stringify(computed.path)
+              path: JSON.stringify(computed.path.slice(1, -1))
             };
             db.run('INSERT INTO trade_routes (barony_id_1, barony_id_2, path) VALUES (?,?,?)', [payload.barony_id_1, payload.barony_id_2, payload.path], function(err6) {
               if (err6) return handleError(res, err6);
