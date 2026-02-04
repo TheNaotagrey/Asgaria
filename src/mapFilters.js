@@ -50,7 +50,8 @@
             return parsed.map(val => parseInt(val, 10)).filter(Number.isFinite);
           }
         } catch (err) {
-          return [];
+          const matches = raw.match(/-?\d+/g);
+          return matches ? matches.map(val => parseInt(val, 10)).filter(Number.isFinite) : [];
         }
       }
       return [];
