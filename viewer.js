@@ -476,7 +476,7 @@
         </tr>
       `;
     }).join('');
-    tradeRoutesList.innerHTML = `<table class="admin-table trade-table"><tr><th>ID</th><th>Destination</th><th>Chemin (nœuds)</th></tr>${rows}</table>`;
+    tradeRoutesList.innerHTML = `<table class="admin-table trade-table"><tr><th>ID</th><th>Destination</th><th>Chemin</th></tr>${rows}</table>`;
     tradeRoutesList.querySelectorAll('.trade-route-path').forEach(cell => {
       const routeId = parseInt(cell.dataset.routeId, 10);
       const route = tradeRouteById[routeId];
@@ -509,7 +509,7 @@
         </tr>
       `;
     }).join('');
-    tradeLinesList.innerHTML = `<table class="admin-table trade-table"><tr><th>ID</th><th>Destination</th><th>Chemin (zones)</th></tr>${rows}</table>`;
+    tradeLinesList.innerHTML = `<table class="admin-table trade-table"><tr><th>ID</th><th>Destination</th><th>Chemin</th></tr>${rows}</table>`;
     tradeLinesList.querySelectorAll('.trade-line-path').forEach(cell => {
       const lineId = parseInt(cell.dataset.lineId, 10);
       const line = tradeLineById[lineId];

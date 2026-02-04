@@ -507,18 +507,36 @@ main {
   margin-bottom: 20px;
 }
 .trade-table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   font-size: 0.85rem;
   margin-bottom: 8px;
+  white-space: nowrap;
 }
 .trade-table th,
 .trade-table td {
-  padding: 3px 4px;
+  padding: 2px 4px;
+  vertical-align: middle;
+}
+.trade-table th:first-child,
+.trade-table td:first-child {
+  padding: 0;
+  text-align: center;
+}
+.trade-table .control-btn {
+  padding: 2px 6px;
+  margin: 0;
+}
+.trade-table .trade-route-path,
+.trade-table .trade-line-path {
+  text-align: center;
+  cursor: help;
 }
 #tradeRoutesList,
 #tradeLinesList {
   max-height: 240px;
   overflow-y: auto;
+  overflow-x: auto;
   border: 1px solid #e0e0e0;
   border-radius: 6px;
   padding: 4px;
@@ -862,10 +880,11 @@ th.multi-col {
 
 .admin-table .trade-route-path {
   display: table-cell;
-  padding: 4px 8px;
-  border: none;
+  padding: 2px 4px;
+  border: 1px solid #ccc;
   border-radius: 0;
   background: transparent;
+  text-align: center;
 }
 
 .trade-route-steps {
