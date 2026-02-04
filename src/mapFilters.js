@@ -81,7 +81,9 @@
 
     function setTradeLineSelection(lineId) {
       tradeLineSelection = lineId || null;
-      tradeRouteSelection = null;
+      if (tradeLineSelection) {
+        tradeRouteSelection = null;
+      }
       if (currentFilter === 'trade_routes') {
         applyFilter('trade_routes');
       }

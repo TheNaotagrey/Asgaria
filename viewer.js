@@ -41,6 +41,7 @@
   let tradeLineConnections = {};
   let tradeLineById = {};
   let tradeLinesByBarony = {};
+  let pendingPixelData = null;
   let selectedTradeRouteId = null;
   let selectedTradeLineId = null;
   let suppressTradeRoutePanelHide = false;
@@ -475,7 +476,7 @@
         </tr>
       `;
     }).join('');
-    tradeRoutesList.innerHTML = `<table class="admin-table"><tr><th>ID</th><th>Destination</th><th>Chemin (nœuds)</th></tr>${rows}</table>`;
+    tradeRoutesList.innerHTML = `<table class="admin-table trade-table"><tr><th>ID</th><th>Destination</th><th>Chemin (nœuds)</th></tr>${rows}</table>`;
     tradeRoutesList.querySelectorAll('.trade-route-path').forEach(cell => {
       const routeId = parseInt(cell.dataset.routeId, 10);
       const route = tradeRouteById[routeId];
@@ -508,7 +509,7 @@
         </tr>
       `;
     }).join('');
-    tradeLinesList.innerHTML = `<table class="admin-table"><tr><th>ID</th><th>Destination</th><th>Chemin (zones)</th></tr>${rows}</table>`;
+    tradeLinesList.innerHTML = `<table class="admin-table trade-table"><tr><th>ID</th><th>Destination</th><th>Chemin (zones)</th></tr>${rows}</table>`;
     tradeLinesList.querySelectorAll('.trade-line-path').forEach(cell => {
       const lineId = parseInt(cell.dataset.lineId, 10);
       const line = tradeLineById[lineId];
@@ -1156,6 +1157,8 @@
           updatePixelLoading(loaded, total, true);
           if (applyToCore && core && typeof core.setPixelData === 'function') {
             core.setPixelData(target);
+          } else if (applyToCore && !core) {
+            pendingPixelData = target;
           } else if (core && typeof core.drawAll === 'function') {
             core.drawAll();
           }
@@ -1175,6 +1178,8 @@
           }));
           if (applyToCore && core && typeof core.setPixelData === 'function') {
             core.setPixelData(target);
+          } else if (applyToCore && !core) {
+            pendingPixelData = target;
           } else if (core && typeof core.drawAll === 'function') {
             core.drawAll();
           }
@@ -1558,6 +1563,10 @@
       });
       core.ready.then(() => {
         filterManager = mapFilters.init(core, mapData, { updateLegend });
+        if (pendingPixelData && typeof core.setPixelData === 'function') {
+          core.setPixelData(pendingPixelData);
+          pendingPixelData = null;
+        }
         if (filterSelect) {
           handleFilterChange = () => {
             if (filterSelect.value !== 'trade_routes') {
