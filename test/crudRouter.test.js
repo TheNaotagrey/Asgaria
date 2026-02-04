@@ -14,6 +14,10 @@ function setupApp() {
       if (err) return reject(err);
       app.set('db', db);
       app.set('validTables', new Set(['test']));
+      app.set('publicTables', new Set(['test']));
+      app.set('authTables', new Set());
+      app.set('adminTables', new Set());
+      app.set('isAdminActive', () => true);
       app.use('/test', crudRoutes('test', ['name']));
       resolve({ app, db });
     });
