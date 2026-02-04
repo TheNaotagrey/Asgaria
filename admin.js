@@ -243,6 +243,12 @@ function parseTradeLinePath(raw) {
   return [];
 }
 
+function buildPathTooltip(items, formatter, emptyLabel) {
+  const list = (items || []).filter(Boolean);
+  if (!list.length) return emptyLabel || '';
+  return list.map(formatter).join(' → ');
+}
+
 function buildAdjacencyMap(connections, key1 = 'barony_id_1', key2 = 'barony_id_2') {
   const adj = {};
   connections.forEach(c => {
@@ -3409,6 +3415,14 @@ function renderTradeRoutesPanel() {
         <td>${path.length || 0}</td>
         <td></td>
       `;
+      const pathCell = row.querySelector('td:nth-child(4)');
+      if (pathCell) {
+        pathCell.title = buildPathTooltip(
+          path,
+          id => formatBaronyLabel(tradeRoutesState.baronyMap[id] || { id, name: `Baronnie ${id}` }),
+          'Trajet direct.'
+        );
+      }
       const actionsCell = row.querySelector('td:last-child');
       const editBtn = document.createElement('button');
       editBtn.type = 'button';
@@ -3691,6 +3705,14 @@ function renderTradeLinesPanel() {
         <td>${path.length || 0}</td>
         <td></td>
       `;
+      const pathCell = row.querySelector('td:nth-child(4)');
+      if (pathCell) {
+        pathCell.title = buildPathTooltip(
+          path,
+          id => formatZoneLabel(tradeLinesState.zoneMap[id] || { id, name: `Zone ${id}` }),
+          'Trajet direct.'
+        );
+      }
       const actionsCell = row.querySelector('td:last-child');
       const editBtn = document.createElement('button');
       editBtn.type = 'button';
