@@ -39,6 +39,22 @@ function list(table) {
   };
 }
 
+function read(table) {
+  return (req, res) => {
+    const db = getDb(req);
+    const validTables = getValidTables(req);
+    if (validTables && !validTables.has(table)) {
+      return res.status(400).json({ error: 'Invalid table' });
+    }
+    const id = req.params.id;
+    db.get(`SELECT * FROM ${table} WHERE id=?`, [id], (err, row) => {
+      if (err) return handleError(res, err);
+      if (!row) return res.status(404).json({ error: 'Introuvable' });
+      res.json(row);
+    });
+  };
+}
+
 function create(table, fields) {
   return (req, res) => {
     const db = getDb(req);
@@ -126,10 +142,11 @@ function remove(table) {
 function crudRoutes(table, fields) {
   const router = express.Router();
   router.get('/', list(table));
+  router.get('/:id', read(table));
   router.post('/', create(table, fields));
   router.put('/:id', update(table, fields));
   router.delete('/:id', remove(table));
   return router;
 }
 
-module.exports = { crudRoutes, list, create, update, remove };
+module.exports = { crudRoutes, list, read, create, update, remove };
