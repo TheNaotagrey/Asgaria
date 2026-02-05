@@ -443,8 +443,15 @@
           groupId = owner?.religion_id;
           groupName = data.religionMap[groupId]?.name || '';
         } else if (type === 'culture') {
-          groupId = info.culture_id;
-          groupName = data.cultureMapInfo[groupId]?.name || '';
+          const cultureId = info.culture_id;
+          const cultureInfo = cultureId ? data.cultureMapInfo[cultureId] : null;
+          if (!cultureId || !cultureInfo) {
+            groupId = 'none';
+            groupName = 'Aucune';
+          } else {
+            groupId = cultureId;
+            groupName = cultureInfo.name || '';
+          }
         } else if (type === 'viscounty') {
           groupId = info.viscounty_id;
           groupName = data.viscountyMap[groupId]?.name || '';
@@ -582,7 +589,9 @@
         }
         if (!groupColors[groupId]) {
           let col;
-          if (type === 'occupation') {
+          if (type === 'culture' && groupId === 'none') {
+            col = terrainColor;
+          } else if (type === 'occupation') {
             if (groupId === 'player_seigneur') col = playerSeigneurColor;
             else if (groupId === 'player_bishop') col = playerBishopColor;
             else if (groupId === 'npc_seigneur') col = npcSeigneurColor;
