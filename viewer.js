@@ -868,6 +868,50 @@
     return rows;
   }
 
+  function clearCultureFloatingTooltips() {
+    document.querySelectorAll('.tooltip-floating').forEach(node => node.remove());
+  }
+
+  function attachCultureFloatingTooltip(trigger, rows) {
+    if (!rows.length) return;
+    const tooltipTable = document.createElement('table');
+    tooltipTable.className = 'tooltip-table tooltip-floating';
+    rows.forEach(entry => {
+      const tooltipRow = document.createElement('tr');
+      const labelCell = document.createElement('td');
+      labelCell.textContent = entry.label;
+      const pointsCell = document.createElement('td');
+      pointsCell.textContent = entry.points;
+      tooltipRow.appendChild(labelCell);
+      tooltipRow.appendChild(pointsCell);
+      tooltipTable.appendChild(tooltipRow);
+    });
+    document.body.appendChild(tooltipTable);
+
+    const positionTooltip = () => {
+      tooltipTable.style.display = 'table';
+      const triggerRect = trigger.getBoundingClientRect();
+      const tooltipRect = tooltipTable.getBoundingClientRect();
+      const padding = 8;
+      const top = triggerRect.bottom + 6;
+      let left = triggerRect.left + (triggerRect.width / 2) - (tooltipRect.width / 2);
+      left = Math.min(Math.max(left, padding), window.innerWidth - tooltipRect.width - padding);
+      const maxTop = window.innerHeight - tooltipRect.height - padding;
+      tooltipTable.style.top = `${Math.min(top, maxTop)}px`;
+      tooltipTable.style.left = `${left}px`;
+    };
+
+    const hideTooltip = () => {
+      tooltipTable.style.display = 'none';
+    };
+
+    trigger.addEventListener('mouseenter', positionTooltip);
+    trigger.addEventListener('focus', positionTooltip);
+    trigger.addEventListener('mouseleave', hideTooltip);
+    trigger.addEventListener('blur', hideTooltip);
+    window.addEventListener('scroll', hideTooltip, true);
+  }
+
   function updateCultureRankingPanel() {
     if (!cultureRankingPanel || !cultureRankingBody) return;
     const shouldShow = mapMode === 'land' && filterSelect && filterSelect.value === 'culture';
@@ -876,6 +920,7 @@
       cultureRankingBody.innerHTML = '';
       return;
     }
+    clearCultureFloatingTooltips();
     const stats = {};
     Object.values(baronyMeta).forEach(info => {
       const cultureInfo = info ? cultureMapInfo[info.culture_id] : null;
@@ -932,21 +977,7 @@
       const tooltipSpan = document.createElement('span');
       tooltipSpan.className = 'tooltip';
       tooltipSpan.textContent = formatPoints(stat.points);
-      if (stat.tooltipRows.length) {
-        const tooltipTable = document.createElement('table');
-        tooltipTable.className = 'tooltip-table';
-        stat.tooltipRows.forEach(entry => {
-          const tooltipRow = document.createElement('tr');
-          const labelCell = document.createElement('td');
-          labelCell.textContent = entry.label;
-          const pointsCell = document.createElement('td');
-          pointsCell.textContent = entry.points;
-          tooltipRow.appendChild(labelCell);
-          tooltipRow.appendChild(pointsCell);
-          tooltipTable.appendChild(tooltipRow);
-        });
-        tooltipSpan.appendChild(tooltipTable);
-      }
+      attachCultureFloatingTooltip(tooltipSpan, stat.tooltipRows);
       pointsCell.appendChild(tooltipSpan);
       row.appendChild(nameCell);
       row.appendChild(pointsCell);
