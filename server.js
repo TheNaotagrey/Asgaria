@@ -31,8 +31,25 @@ const VALID_TABLES = new Set([
   'sanctuaries','maritime_zones','maritime_zone_pixels','maritime_zone_connections','maritime_zone_baronies','notifications'
 ]);
 
+const PUBLIC_TABLES = new Set([
+  'religions','cultures','seigneurs','empires','kingdoms','archduchies','duchies','marquisates',
+  'counties','viscounties','baronies','barony_pixels','canonical_lands','barony_connections','trade_routes',
+  'trade_lines','sanctuaries','maritime_zones','maritime_zone_pixels','maritime_zone_connections','maritime_zone_baronies'
+]);
+
+const AUTH_TABLES = new Set([
+  'building_properties','infrastructure_properties','tags','spells'
+]);
+
+const ADMIN_TABLES = new Set([
+  'users','seigneuries','inventaire','transactions','trade_transactions','barony_properties','notifications'
+]);
+
 app.set('db', db);
 app.set('validTables', VALID_TABLES);
+app.set('publicTables', PUBLIC_TABLES);
+app.set('authTables', AUTH_TABLES);
+app.set('adminTables', ADMIN_TABLES);
 
 // create tables if they do not exist
 const initSql = `
@@ -1042,6 +1059,8 @@ function isAdminActive(user){
   const adminUser = applyAdminOverride(user);
   return adminUser && adminUser.is_admin && adminUser.act_as_admin !== false;
 }
+
+app.set('isAdminActive', isAdminActive);
 
 function isAdminUser(user) {
   const adminUser = applyAdminOverride(user);

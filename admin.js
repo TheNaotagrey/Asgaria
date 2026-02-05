@@ -112,6 +112,7 @@ let sanctuaryMap = {};
 const relationUpdaters = {};
 const compareByField = (field) => (a, b) => (a?.[field] || '').localeCompare(b?.[field] || '');
 const sortByName = (items) => items.slice().sort(compareByField('name'));
+const sortById = (items) => items.slice().sort((a, b) => (a?.id || 0) - (b?.id || 0));
 const maxOptions = [
   ...Array.from({length:10}, (_,i)=>({ id:String(i+1), name:String(i+1) })),
   ...baronyPropIntFields.map(f=>({ id:f, name:baronyPropLabels[f] || f })),
@@ -3455,7 +3456,7 @@ async function loadTradeRoutes() {
     getData('baronies', '/api/baronies'),
     getData('barony_connections', '/api/barony_connections')
   ]);
-  const sortedBaronies = sortByName(baronies);
+  const sortedBaronies = sortById(baronies);
   tradeRoutesState = {
     baronies: sortedBaronies,
     baronyMap: Object.fromEntries(sortedBaronies.map(b => [b.id, b])),
@@ -3747,7 +3748,7 @@ async function loadTradeLines() {
     getData('maritime_zone_connections', '/api/maritime_zone_connections'),
     getData('maritime_zone_baronies', '/api/maritime_zone_baronies')
   ]);
-  const sortedBaronies = sortByName(baronies);
+  const sortedBaronies = sortById(baronies);
   const sortedZones = sortByName(zones);
   const baronyZones = {};
   (zoneBaronies || []).forEach(link => {

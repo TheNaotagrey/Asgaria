@@ -14,6 +14,66 @@ function getValidTables(req) {
   return req.app.get('validTables');
 }
 
+function getPublicTables(req) {
+  return req.app.get('publicTables');
+}
+
+function getAuthTables(req) {
+  return req.app.get('authTables');
+}
+
+function getAdminTables(req) {
+  return req.app.get('adminTables');
+}
+
+function isAdmin(req) {
+  const check = req.app.get('isAdminActive');
+  return check ? check(req.session ? req.session.user : null) : false;
+}
+
+function ensureAccess(req, res, table) {
+  const publicTables = getPublicTables(req);
+  const authTables = getAuthTables(req);
+  const adminTables = getAdminTables(req);
+  const method = req.method;
+  const isRead = method === 'GET';
+  const admin = isAdmin(req);
+
+  if (adminTables && adminTables.has(table)) {
+    if (!admin) {
+      res.status(403).json({ error: 'Accès interdit' });
+      return false;
+    }
+    return true;
+  }
+
+  if (publicTables && publicTables.has(table)) {
+    if (!isRead && !admin) {
+      res.status(403).json({ error: 'Accès interdit' });
+      return false;
+    }
+    return true;
+  }
+
+  if (authTables && authTables.has(table)) {
+    if (!req.session || !req.session.user) {
+      res.status(401).json({ error: 'Non autorisé' });
+      return false;
+    }
+    if (!isRead && !admin) {
+      res.status(403).json({ error: 'Accès interdit' });
+      return false;
+    }
+    return true;
+  }
+
+  if (!admin) {
+    res.status(403).json({ error: 'Accès interdit' });
+    return false;
+  }
+  return true;
+}
+
 function resolveKey(row, payload, fallback) {
   if (row && row.id != null) return row.id;
   if (payload && payload.id != null) return payload.id;
@@ -32,6 +92,7 @@ function list(table) {
     if (validTables && !validTables.has(table)) {
       return res.status(400).json({ error: 'Invalid table' });
     }
+    if (!ensureAccess(req, res, table)) return;
     db.all(`SELECT * FROM ${table}`, [], (err, rows) => {
       if (err) return handleError(res, err);
       res.json(rows);
@@ -46,6 +107,7 @@ function read(table) {
     if (validTables && !validTables.has(table)) {
       return res.status(400).json({ error: 'Invalid table' });
     }
+    if (!ensureAccess(req, res, table)) return;
     const id = req.params.id;
     db.get(`SELECT * FROM ${table} WHERE id=?`, [id], (err, row) => {
       if (err) return handleError(res, err);
@@ -62,6 +124,7 @@ function create(table, fields) {
     if (validTables && !validTables.has(table)) {
       return res.status(400).json({ error: 'Invalid table' });
     }
+    if (!ensureAccess(req, res, table)) return;
     const user = req.session ? req.session.user : null;
     const values = fields.map((f) => sanitize(req.body[f]));
     const placeholders = fields.map(() => '?').join(',');
@@ -91,6 +154,7 @@ function update(table, fields) {
     if (validTables && !validTables.has(table)) {
       return res.status(400).json({ error: 'Invalid table' });
     }
+    if (!ensureAccess(req, res, table)) return;
     const user = req.session ? req.session.user : null;
     const id = req.params.id;
     const set = fields.map((f) => `${f}=?`).join(',');
@@ -124,6 +188,7 @@ function remove(table) {
     if (validTables && !validTables.has(table)) {
       return res.status(400).json({ error: 'Invalid table' });
     }
+    if (!ensureAccess(req, res, table)) return;
     const user = req.session ? req.session.user : null;
     const id = req.params.id;
     db.get(`SELECT * FROM ${table} WHERE id=?`, [id], (err, row) => {

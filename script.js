@@ -51,6 +51,8 @@
   const randomBtn = document.getElementById('randomBtn');
   const pixelLoading = document.getElementById('pixelLoading');
   const legendDiv = document.getElementById('legend');
+  const cultureRankingPanel = document.getElementById('cultureRanking');
+  const cultureRankingBody = document.getElementById('cultureRankingBody');
   const landFiltersBase = [
     { value: '', label: 'Aucun' },
     { value: 'religion', label: 'Religion de la Population' },
@@ -188,6 +190,121 @@
     Object.values(map).forEach(list => {
       list.sort((a, b) => a - b);
     });
+  }
+
+  function isVacantBarony(info) {
+    return !!(info && (info.vacant === 1 || info.vacant === '1' || info.vacant === true));
+  }
+
+  const cultureRankConfig = [
+    { key: 'barony', label: 'Baron', plural: 'Barons', points: 0.1 },
+    { key: 'viscounty', label: 'Vicomte', plural: 'Vicomtes', points: 0.15 },
+    { key: 'county', label: 'Comte', plural: 'Comtes', points: 0.2 },
+    { key: 'marquisate', label: 'Marquis', plural: 'Marquis', points: 0.3 },
+    { key: 'duchy', label: 'Duc', plural: 'Ducs', points: 0.5 },
+    { key: 'archduchy', label: 'Archiduc', plural: 'Archiducs', points: 0.7 },
+    { key: 'kingdom', label: 'Roi', plural: 'Rois', points: 0.9 },
+    { key: 'empire', label: 'Empereur', plural: 'Empereurs', points: 1.1 }
+  ];
+
+  function getSeigneurRankKey(seigneurId) {
+    const sid = String(seigneurId || '');
+    if (seigneurToEmpire[sid]?.length) return 'empire';
+    if (seigneurToKingdom[sid]?.length) return 'kingdom';
+    if (seigneurToArchduchy[sid]?.length) return 'archduchy';
+    if (seigneurToDuchy[sid]?.length) return 'duchy';
+    if (seigneurToMarquisate[sid]?.length) return 'marquisate';
+    if (seigneurToCounty[sid]?.length) return 'county';
+    if (seigneurToViscounty[sid]?.length) return 'viscounty';
+    return 'barony';
+  }
+
+  function formatPoints(value) {
+    if (Number.isInteger(value)) return `${value}`;
+    return value.toFixed(2).replace(/0$/, '').replace(/\.$/, '');
+  }
+
+  function buildCultureTooltip(stat) {
+    const lines = [];
+    const baronyLabel = stat.baronyCount > 1 ? 'baronnies' : 'baronnie';
+    lines.push(`${stat.baronyCount} ${baronyLabel} | +${formatPoints(stat.baronyCount)}`);
+    for (let i = cultureRankConfig.length - 1; i >= 0; i--) {
+      const cfg = cultureRankConfig[i];
+      const count = stat.rankCounts[cfg.key] || 0;
+      if (!count) continue;
+      const label = count > 1 ? cfg.plural : cfg.label;
+      lines.push(`${count} ${label} | +${formatPoints(count * cfg.points)}`);
+    }
+    return lines.join('\n');
+  }
+
+  function updateCultureRankingPanel() {
+    if (!cultureRankingPanel || !cultureRankingBody) return;
+    const shouldShow = mapMode === 'land' && filterSelect && filterSelect.value === 'culture';
+    if (!shouldShow) {
+      cultureRankingPanel.style.display = 'none';
+      cultureRankingBody.innerHTML = '';
+      return;
+    }
+    const stats = {};
+    Object.values(baronyMeta).forEach(info => {
+      if (!info || !info.culture_id) return;
+      const key = String(info.culture_id);
+      if (!stats[key]) {
+        stats[key] = {
+          cultureId: info.culture_id,
+          baronyCount: 0,
+          seigneurIds: new Set(),
+          rankCounts: {}
+        };
+      }
+      stats[key].baronyCount += 1;
+      if (!isVacantBarony(info) && info.seigneur_id) {
+        stats[key].seigneurIds.add(String(info.seigneur_id));
+      }
+    });
+    const rows = Object.values(stats).map(stat => {
+      stat.rankCounts = {};
+      stat.seigneurIds.forEach(seigneurId => {
+        const rankKey = getSeigneurRankKey(seigneurId);
+        stat.rankCounts[rankKey] = (stat.rankCounts[rankKey] || 0) + 1;
+      });
+      let points = stat.baronyCount;
+      cultureRankConfig.forEach(cfg => {
+        const count = stat.rankCounts[cfg.key] || 0;
+        points += count * cfg.points;
+      });
+      stat.points = points;
+      stat.name = cultureMapInfo[stat.cultureId]?.name || `Culture #${stat.cultureId}`;
+      stat.tooltip = buildCultureTooltip(stat);
+      return stat;
+    }).sort((a, b) => {
+      if (b.points !== a.points) return b.points - a.points;
+      return a.name.localeCompare(b.name, 'fr');
+    });
+    cultureRankingBody.innerHTML = '';
+    if (!rows.length) {
+      const emptyRow = document.createElement('tr');
+      const emptyCell = document.createElement('td');
+      emptyCell.colSpan = 2;
+      emptyCell.textContent = 'Aucune donnée';
+      emptyRow.appendChild(emptyCell);
+      cultureRankingBody.appendChild(emptyRow);
+      cultureRankingPanel.style.display = 'block';
+      return;
+    }
+    rows.forEach(stat => {
+      const row = document.createElement('tr');
+      const nameCell = document.createElement('td');
+      nameCell.textContent = stat.name;
+      const pointsCell = document.createElement('td');
+      pointsCell.textContent = formatPoints(stat.points);
+      pointsCell.title = stat.tooltip;
+      row.appendChild(nameCell);
+      row.appendChild(pointsCell);
+      cultureRankingBody.appendChild(row);
+    });
+    cultureRankingPanel.style.display = 'block';
   }
 
   const linkBtn = document.getElementById('linkBarony');
@@ -509,6 +626,7 @@
         baronyMeta[currentSelectedId] = { ...baronyMeta[currentSelectedId], ...fields };
         if (filterManager && filterSelect && filterSelect.value) {
           filterManager.applyFilter(filterSelect.value);
+          updateCultureRankingPanel();
         }
       }
     });
@@ -813,6 +931,7 @@
         core.setPixelData(seaPixelData);
         if (filterManager && filterSelect) {
           filterManager.applyFilter(filterSelect.value);
+          updateCultureRankingPanel();
         } else {
           core.drawAll();
         }
@@ -1100,8 +1219,12 @@
       core.ready.then(() => {
         filterManager = mapFilters.init(core, mapData, { updateLegend });
         if (filterSelect) {
-          filterSelect.addEventListener('change', () => filterManager.applyFilter(filterSelect.value));
+          filterSelect.addEventListener('change', () => {
+            filterManager.applyFilter(filterSelect.value);
+            updateCultureRankingPanel();
+          });
           filterManager.applyFilter(filterSelect.value);
+          updateCultureRankingPanel();
         }
         if (randomBtn) randomBtn.addEventListener('click', () => filterManager.randomizeColors());
       });
