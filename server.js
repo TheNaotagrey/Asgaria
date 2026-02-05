@@ -1322,6 +1322,51 @@ app.put('/api/users/:id', requireAdmin, (req, res) => {
   });
 });
 
+app.delete('/api/users/:id', requireAdmin, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: 'Identifiant utilisateur invalide.' });
+  }
+  if (id <= 3) {
+    return res.status(400).json({ error: 'Suppression impossible : utilisateur système.' });
+  }
+  if (req.session.user && req.session.user.id === id) {
+    return res.status(400).json({ error: 'Suppression impossible : utilisateur connecté.' });
+  }
+  db.get('SELECT id, email, first_name, last_name, is_admin FROM users WHERE id=?', [id], (err, user) => {
+    if (err) return handleError(res, err);
+    if (!user) return res.status(404).json({ error: 'Utilisateur introuvable.' });
+    const references = [
+      { table: 'seigneurs', column: 'user_id', label: 'seigneur(s)' },
+      { table: 'notifications', column: 'user_id', label: 'notification(s)' },
+      { table: 'user_table_preferences', column: 'user_id', label: 'préférence(s) de table' }
+    ];
+    Promise.all(references.map(ref => new Promise((resolve, reject) => {
+      db.get(`SELECT COUNT(*) as count FROM ${ref.table} WHERE ${ref.column}=?`, [id], (err2, row) => {
+        if (err2) return reject(err2);
+        resolve({ ...ref, count: row?.count || 0 });
+      });
+    })))
+      .then(results => {
+        const blocking = results.filter(r => r.count > 0);
+        if (blocking.length) {
+          const details = blocking.map(r => `${r.count} ${r.label}`).join(', ');
+          return res.status(400).json({
+            error: `Suppression impossible : cet utilisateur est encore référencé par ${details}.`
+          });
+        }
+        db.run('DELETE FROM users WHERE id=?', [id], function (err3) {
+          if (err3) return handleError(res, err3);
+          if (this.changes > 0) {
+            recordChange(req, { table: 'users', action: 'delete', before: user, after: null });
+          }
+          res.json({ changes: this.changes });
+        });
+      })
+      .catch(error => handleError(res, error));
+  });
+});
+
 app.get('/api/admin/table_preferences', requireAdmin, (req, res) => {
   const userId = req.session.user.id;
   db.all(
@@ -1557,6 +1602,74 @@ app.put('/api/seigneuries/:id', requireAdmin, (req, res) => {
         });
       });
     });
+  });
+});
+
+app.delete('/api/seigneuries/:id', requireAdmin, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: 'Identifiant de seigneurie invalide.' });
+  }
+  db.get('SELECT * FROM seigneuries WHERE id=?', [id], (err, seigneurie) => {
+    if (err) return handleError(res, err);
+    if (!seigneurie) return res.status(404).json({ error: 'Seigneurie introuvable.' });
+    const references = [
+      { table: 'transactions', column: 'seigneurie_id', label: 'transaction(s)' },
+      { table: 'trade_transactions', column: 'origin_id', label: 'échange(s) sortants' },
+      { table: 'trade_transactions', column: 'destination_id', label: 'échange(s) entrants' }
+    ];
+    Promise.all(references.map(ref => new Promise((resolve, reject) => {
+      db.get(`SELECT COUNT(*) as count FROM ${ref.table} WHERE ${ref.column}=?`, [id], (err2, row) => {
+        if (err2) return reject(err2);
+        resolve({ ...ref, count: row?.count || 0 });
+      });
+    })))
+      .then(results => {
+        const blocking = results.filter(r => r.count > 0);
+        if (blocking.length) {
+          const details = blocking.map(r => `${r.count} ${r.label}`).join(', ');
+          return res.status(400).json({
+            error: `Suppression impossible : cette seigneurie est encore référencée par ${details}.`
+          });
+        }
+        const inventaireId = seigneurie.inventaire_id;
+        db.get('SELECT * FROM inventaire WHERE id=?', [inventaireId], (errInv, inventaire) => {
+          if (errInv) return handleError(res, errInv);
+          let seigneurieChanges = 0;
+          let inventaireChanges = 0;
+          db.serialize(() => {
+            db.run('BEGIN');
+            db.run('DELETE FROM seigneuries WHERE id=?', [id], function (errDel) {
+              if (errDel) {
+                db.run('ROLLBACK');
+                return handleError(res, errDel);
+              }
+              seigneurieChanges = this.changes;
+              db.run('DELETE FROM inventaire WHERE id=?', [inventaireId], function (errInvDel) {
+                if (errInvDel) {
+                  db.run('ROLLBACK');
+                  return handleError(res, errInvDel);
+                }
+                inventaireChanges = this.changes;
+                db.run('COMMIT', (errCommit) => {
+                  if (errCommit) {
+                    db.run('ROLLBACK');
+                    return handleError(res, errCommit);
+                  }
+                  if (seigneurieChanges > 0) {
+                    recordChange(req, { table: 'seigneuries', action: 'delete', before: seigneurie, after: null });
+                  }
+                  if (inventaire && inventaireChanges > 0) {
+                    recordChange(req, { table: 'inventaire', action: 'delete', before: inventaire, after: null });
+                  }
+                  res.json({ changes: seigneurieChanges, inventaire_changes: inventaireChanges });
+                });
+              });
+            });
+          });
+        });
+      })
+      .catch(error => handleError(res, error));
   });
 });
 

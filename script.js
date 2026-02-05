@@ -224,18 +224,24 @@
     return value.toFixed(2).replace(/0$/, '').replace(/\.$/, '');
   }
 
-  function buildCultureTooltip(stat) {
-    const lines = [];
+  function buildCultureTooltipRows(stat) {
+    const rows = [];
     const baronyLabel = stat.baronyCount > 1 ? 'baronnies' : 'baronnie';
-    lines.push(`${stat.baronyCount} ${baronyLabel} | +${formatPoints(stat.baronyCount)}`);
+    rows.push({
+      label: `${stat.baronyCount} ${baronyLabel}`,
+      points: `+${formatPoints(stat.baronyCount)}`
+    });
     for (let i = cultureRankConfig.length - 1; i >= 0; i--) {
       const cfg = cultureRankConfig[i];
       const count = stat.rankCounts[cfg.key] || 0;
       if (!count) continue;
       const label = count > 1 ? cfg.plural : cfg.label;
-      lines.push(`${count} ${label} | +${formatPoints(count * cfg.points)}`);
+      rows.push({
+        label: `${count} ${label}`,
+        points: `+${formatPoints(count * cfg.points)}`
+      });
     }
-    return lines.join('\n');
+    return rows;
   }
 
   function updateCultureRankingPanel() {
@@ -276,7 +282,7 @@
       });
       stat.points = points;
       stat.name = cultureMapInfo[stat.cultureId]?.name || `Culture #${stat.cultureId}`;
-      stat.tooltip = buildCultureTooltip(stat);
+      stat.tooltipRows = buildCultureTooltipRows(stat);
       return stat;
     }).sort((a, b) => {
       if (b.points !== a.points) return b.points - a.points;
@@ -298,8 +304,25 @@
       const nameCell = document.createElement('td');
       nameCell.textContent = stat.name;
       const pointsCell = document.createElement('td');
-      pointsCell.textContent = formatPoints(stat.points);
-      pointsCell.title = stat.tooltip;
+      const tooltipSpan = document.createElement('span');
+      tooltipSpan.className = 'tooltip';
+      tooltipSpan.textContent = formatPoints(stat.points);
+      if (stat.tooltipRows.length) {
+        const tooltipTable = document.createElement('table');
+        tooltipTable.className = 'tooltip-table';
+        stat.tooltipRows.forEach(entry => {
+          const tooltipRow = document.createElement('tr');
+          const labelCell = document.createElement('td');
+          labelCell.textContent = entry.label;
+          const pointsCell = document.createElement('td');
+          pointsCell.textContent = entry.points;
+          tooltipRow.appendChild(labelCell);
+          tooltipRow.appendChild(pointsCell);
+          tooltipTable.appendChild(tooltipRow);
+        });
+        tooltipSpan.appendChild(tooltipTable);
+      }
+      pointsCell.appendChild(tooltipSpan);
       row.appendChild(nameCell);
       row.appendChild(pointsCell);
       cultureRankingBody.appendChild(row);
