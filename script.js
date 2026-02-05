@@ -254,7 +254,8 @@
     }
     const stats = {};
     Object.values(baronyMeta).forEach(info => {
-      if (!info || !info.culture_id) return;
+      const cultureInfo = info ? cultureMapInfo[info.culture_id] : null;
+      if (!info || !info.culture_id || !cultureInfo) return;
       const key = String(info.culture_id);
       if (!stats[key]) {
         stats[key] = {
