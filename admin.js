@@ -2747,6 +2747,7 @@ async function loadUsers(){
       }
     },
     allowAdd:false,
+    deleteConfig: defaultDeleteConfig("l'utilisateur", 'email'),
   });
 }
 
@@ -3055,7 +3056,8 @@ async function loadSeigneuries(){
     fields:['baronnie_id','seigneur_id','population',...inventaireFields],
     selects:{baronnie_id:baroniesSelect, seigneur_id:seigneursSelect},
     labels:{baronnie_id:'Baronnie', seigneur_id:'Seigneur', population:'Population',...inventaireLabels},
-    beforeSave:(payload,item)=>{ if(item && item.inventaire_id) payload.inventaire_id = item.inventaire_id; }
+    beforeSave:(payload,item)=>{ if(item && item.inventaire_id) payload.inventaire_id = item.inventaire_id; },
+    deleteConfig: defaultDeleteConfig('la seigneurie', 'baronnie_id')
   });
 }
 
