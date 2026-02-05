@@ -194,6 +194,16 @@ const tradeLineDialogState = {
   lineId: null,
   selections: []
 };
+const defaultDeleteConfig = (entityLabel, nameField = 'name') => ({
+  label: 'Supprimer',
+  className: 'danger',
+  confirmMessage: (item) => {
+    const rawName = item?.[nameField];
+    const name = rawName ? ` "${rawName}"` : '';
+    const id = item?.id ?? '?';
+    return `⚠️ Suppression définitive\n\nVous allez supprimer ${entityLabel}${name} (ID ${id}).\nCette action est irréversible et sera refusée si cette entrée est encore liée à d'autres données.\n\nConfirmer la suppression ?`;
+  }
+});
 
 const spellFields = ['label','type','costs','effects','description'];
 const spellLabels = {
@@ -2704,7 +2714,8 @@ async function loadReligions(){
     endpoint:'religions',
     fields:['name','color'],
     labels:{name:'Nom', color:'Couleur'},
-    colorFields:['color']
+    colorFields:['color'],
+    deleteConfig: defaultDeleteConfig('la religion')
   });
 }
 
@@ -2715,7 +2726,8 @@ async function loadCultures(){
     endpoint:'cultures',
     fields:['name','color'],
     labels:{name:'Nom', color:'Couleur'},
-    colorFields:['color']
+    colorFields:['color'],
+    deleteConfig: defaultDeleteConfig('la culture')
   });
 }
 
@@ -2735,6 +2747,7 @@ async function loadUsers(){
       }
     },
     allowAdd:false,
+    deleteConfig: defaultDeleteConfig("l'utilisateur", 'email'),
   });
 }
 
@@ -2795,6 +2808,7 @@ async function loadEmpires(){
     selects:{seigneur_id:seigneursSelect},
     labels:{name:'Nom', seigneur_id:'Détenteur du titre', color:'Couleur'},
     colorFields:['color'],
+    deleteConfig: defaultDeleteConfig("l'empire"),
     extraColumns:[{
       label:'Royaumes de jure',
       render:item => createRelationCell(item, kingdomsByName, {
@@ -2827,6 +2841,7 @@ async function loadKingdoms(){
     labels:{name:'Nom', seigneur_id:'Détenteur du titre', empire_id:'Empire', defacto_empire_id:'Empire de facto', color:'Couleur'},
     colorFields:['color'],
     relationWatch:['empire_id'],
+    deleteConfig: defaultDeleteConfig('le royaume'),
     extraColumns:[{
       label:'Duchés de jure',
       render:item => createRelationCell(item, duchiesByName, {
@@ -2858,6 +2873,7 @@ async function loadArchduchies(){
     selects:{seigneur_id:seigneursSelect, defacto_kingdom_id:kingdomsSelect},
     labels:{name:'Nom', seigneur_id:'Détenteur du titre', defacto_kingdom_id:'Royaume de facto', color:'Couleur'},
     colorFields:['color'],
+    deleteConfig: defaultDeleteConfig("l'archiduché"),
     extraColumns:[{
       label:'Duchés de jure',
       render:item => createRelationCell(item, duchiesByName, {
@@ -2892,6 +2908,7 @@ async function loadDuchies(){
     labels:{name:'Nom', seigneur_id:'Détenteur du titre', kingdom_id:'Royaume', archduchy_id:'Archiduché', defacto_kingdom_id:'Royaume de facto', defacto_archduchy_id:'Archiduché de facto', color:'Couleur'},
     colorFields:['color'],
     relationWatch:['kingdom_id','archduchy_id'],
+    deleteConfig: defaultDeleteConfig('le duché'),
     extraColumns:[{
       label:'Comtés de jure',
       render:item => createRelationCell(item, countiesByName, {
@@ -2923,6 +2940,7 @@ async function loadMarquisates(){
     selects:{seigneur_id:seigneursSelect, defacto_duchy_id:duchiesSelect},
     labels:{name:'Nom', seigneur_id:'Détenteur du titre', defacto_duchy_id:'Duché de facto', color:'Couleur'},
     colorFields:['color'],
+    deleteConfig: defaultDeleteConfig('le marquisat'),
     extraColumns:[{
       label:'Comtés de jure',
       render:item => createRelationCell(item, countiesByName, {
@@ -2958,6 +2976,7 @@ async function loadCounties(){
     labels:{name:'Nom', seigneur_id:'Détenteur du titre', duchy_id:'Duché', marquisate_id:'Marquisat', defacto_duchy_id:'Duché de facto', defacto_marquisate_id:'Marquisat de facto', color:'Couleur'},
     colorFields:['color'],
     relationWatch:['duchy_id','marquisate_id'],
+    deleteConfig: defaultDeleteConfig('le comté'),
     extraColumns:[{
       label:'Baronnies de jure',
       render:item => createRelationCell(item, baroniesByName, {
@@ -2992,6 +3011,7 @@ async function loadViscounties(){
     labels:{name:'Nom', seigneur_id:'Détenteur du titre', defacto_county_id:'Comté de facto', color:'Couleur'},
     nullLabels:{ defacto_county_id:'Aucun' },
     colorFields:['color'],
+    deleteConfig: defaultDeleteConfig('la vicomté'),
     extraColumns:[{
       label:'Baronnies de jure',
       render:item => createRelationCell(item, baroniesByName, {
@@ -3017,7 +3037,8 @@ async function loadMaritimeZones(){
     fields:['name','seigneur_id'],
     selects:{ seigneur_id: seigneursSelect },
     labels:{ name:'Nom', seigneur_id:'Seigneur maritime' },
-    nullLabels:{ seigneur_id:'Aucun' }
+    nullLabels:{ seigneur_id:'Aucun' },
+    deleteConfig: defaultDeleteConfig('la zone maritime')
   });
 }
 
@@ -3035,7 +3056,8 @@ async function loadSeigneuries(){
     fields:['baronnie_id','seigneur_id','population',...inventaireFields],
     selects:{baronnie_id:baroniesSelect, seigneur_id:seigneursSelect},
     labels:{baronnie_id:'Baronnie', seigneur_id:'Seigneur', population:'Population',...inventaireLabels},
-    beforeSave:(payload,item)=>{ if(item && item.inventaire_id) payload.inventaire_id = item.inventaire_id; }
+    beforeSave:(payload,item)=>{ if(item && item.inventaire_id) payload.inventaire_id = item.inventaire_id; },
+    deleteConfig: defaultDeleteConfig('la seigneurie', 'baronnie_id')
   });
 }
 
@@ -3103,6 +3125,7 @@ async function loadBaronies(){
     },
     colorFields:['color'],
     relationWatch:['county_id','viscounty_id'],
+    deleteConfig: defaultDeleteConfig('la baronnie'),
     extraColumns:[
       {
         label:'Sanctuaires',
@@ -3805,6 +3828,7 @@ async function loadBaronyProps(){
     selects:{barony_id:baroniesSelect, ...boolSelects},
     labels:baronyPropLabels,
     booleanFields:baronyPropBoolFields,
+    deleteConfig: defaultDeleteConfig('les propriétés de baronnie', 'barony_id'),
   });
 }
 
@@ -3820,14 +3844,16 @@ async function loadBatiments(){
     fields:buildingPropFields,
     labels:buildingPropLabels,
     selects:{produces: resourceSelect},
-    allowedEffectTypes:['tag']
+    allowedEffectTypes:['tag'],
+    deleteConfig: defaultDeleteConfig('le bâtiment', 'label')
   });
   const infraPropsById = infraProps.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableInfraProps'), infraPropsById, {
     endpoint:'infrastructure_properties',
     fields:infraPropFields,
     labels:infraPropLabels,
-    selects:{type:typeSelect}
+    selects:{type:typeSelect},
+    deleteConfig: defaultDeleteConfig("l'infrastructure", 'label')
   });
 }
 
@@ -3840,7 +3866,8 @@ async function loadSpells(){
     fields:spellFields,
     labels:spellLabels,
     selects:{ type:[{id:'base',name:'Base'},{id:'advanced',name:'Avancé'}] },
-    allowedEffectTypes:['variable_production','random_luxury']
+    allowedEffectTypes:['variable_production','random_luxury'],
+    deleteConfig: defaultDeleteConfig('le sort', 'label')
   });
 }
 
@@ -3850,7 +3877,8 @@ async function loadTags(){
   renderTable(document.getElementById('tableTags'), tagsById, {
     endpoint:'tags',
     fields:['label'],
-    labels:{label:'Nom'}
+    labels:{label:'Nom'},
+    deleteConfig: defaultDeleteConfig('le tag', 'label')
   });
 }
 
