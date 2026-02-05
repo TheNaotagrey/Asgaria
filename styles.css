@@ -824,7 +824,8 @@ th.multi-col {
   box-shadow: none;
   font-size: 0.9rem;
   max-height: 40vh;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: visible;
   min-width: 220px;
   z-index: 3;
 }
