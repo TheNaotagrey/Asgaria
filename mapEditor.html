@@ -50,6 +50,18 @@
   </header>
   <main>
     <div id="mapContainer" class="map-container">
+      <div id="cultureRanking" class="culture-ranking" style="display:none;">
+        <div class="culture-ranking-title">Classement des Cultures</div>
+        <table class="culture-ranking-table">
+          <thead>
+            <tr>
+              <th>Culture</th>
+              <th>Pointage</th>
+            </tr>
+          </thead>
+          <tbody id="cultureRankingBody"></tbody>
+        </table>
+      </div>
       <div id="panZoomGroup" class="panzoom-group">
         <img id="baseMap" src="Asgaria.png" alt="Carte d’Asgaria" class="base-map">
         <canvas id="pixelCanvas" class="pixel-canvas"></canvas>
