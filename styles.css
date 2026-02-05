@@ -817,32 +817,42 @@ th.multi-col {
   position: absolute;
   top: 10px;
   left: 10px;
-  background-color: #fff;
-  border: 1px solid #ccc;
-  padding: 8px 10px;
-  border-radius: 4px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  background-color: transparent;
+  border: none;
+  padding: 0;
+  border-radius: 0;
+  box-shadow: none;
   font-size: 0.9rem;
   max-height: 40vh;
   overflow: auto;
   min-width: 220px;
   z-index: 3;
 }
-.culture-ranking-title {
-  font-weight: 600;
-  margin-bottom: 6px;
-}
 .culture-ranking-table {
   width: 100%;
   border-collapse: collapse;
+  background-color: #fff;
+  border: 1px solid #ccc;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
 }
 .culture-ranking-table th,
 .culture-ranking-table td {
   padding: 4px 6px;
   text-align: left;
+  border: 1px solid #ddd;
 }
 .culture-ranking-table th {
-  border-bottom: 1px solid #ddd;
+  font-weight: 600;
+  background-color: #f7f7f7;
+}
+.culture-ranking-table thead th {
+  text-align: center;
+}
+.culture-ranking-table tbody td {
+  font-weight: 700;
+}
+.culture-ranking-title-row th {
+  text-align: center;
 }
 .culture-ranking-table td:last-child,
 .culture-ranking-table th:last-child {
