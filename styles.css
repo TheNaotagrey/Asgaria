@@ -1186,6 +1186,16 @@ th.multi-col {
   display: table;
 }
 
+.tooltip-floating {
+  position: fixed;
+  top: 0;
+  left: 0;
+  transform: none;
+  margin-top: 0;
+  z-index: 2000;
+  pointer-events: none;
+}
+
 /* Tables des ressources */
 .resource-tables {
   display: flex;
