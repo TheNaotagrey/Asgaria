@@ -78,6 +78,11 @@
     let panning = false;
     let panStartX = 0;
     let panStartY = 0;
+    let activePointerId = null;
+    let movedDuringPan = false;
+    let pinchState = null;
+    let selectionPointerId = null;
+    let suppressSelection = false;
 
     function applyTransform() {
       group.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${scale})`;
@@ -172,9 +177,13 @@
     function handleWheel(e) {
       e.preventDefault();
       const factor = e.deltaY < 0 ? 1.1 : 0.9;
+      zoomAtClientPoint(e.clientX, e.clientY, factor);
+    }
+
+    function zoomAtClientPoint(clientX, clientY, factor) {
       const rect = group.getBoundingClientRect();
-      const mx = (e.clientX - rect.left) / scale;
-      const my = (e.clientY - rect.top) / scale;
+      const mx = (clientX - rect.left) / scale;
+      const my = (clientY - rect.top) / scale;
       const prevScale = scale;
       scale *= factor;
       scale = Math.max(0.2, Math.min(scale, 10));
@@ -184,22 +193,70 @@
     }
 
     function handlePanStart(e) {
+      activePointerId = e.pointerId;
       panning = true;
+      movedDuringPan = false;
       panStartX = e.clientX;
       panStartY = e.clientY;
     }
+
     function handlePanMove(e) {
-      if (!panning) return;
+      if (!panning || e.pointerId !== activePointerId) return;
       const dx = e.clientX - panStartX;
       const dy = e.clientY - panStartY;
+      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) movedDuringPan = true;
       offsetX += dx;
       offsetY += dy;
       panStartX = e.clientX;
       panStartY = e.clientY;
       applyTransform();
     }
+
     function handlePanEnd() {
       panning = false;
+      activePointerId = null;
+    }
+
+    function getCanvasCoordsFromClient(clientX, clientY) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: Math.floor((clientX - rect.left) * canvas.width / rect.width),
+        y: Math.floor((clientY - rect.top) * canvas.height / rect.height)
+      };
+    }
+
+
+    function createMobileZoomControls() {
+      if (!enableZoom || !container || container.querySelector('.mobile-zoom-controls')) return;
+      if (!window.matchMedia || !window.matchMedia('(pointer: coarse)').matches) return;
+
+      const controls = document.createElement('div');
+      controls.className = 'mobile-zoom-controls';
+
+      const zoomInBtn = document.createElement('button');
+      zoomInBtn.type = 'button';
+      zoomInBtn.className = 'control-btn mobile-zoom-btn';
+      zoomInBtn.setAttribute('aria-label', 'Zoom avant');
+      zoomInBtn.textContent = '+';
+
+      const zoomOutBtn = document.createElement('button');
+      zoomOutBtn.type = 'button';
+      zoomOutBtn.className = 'control-btn mobile-zoom-btn';
+      zoomOutBtn.setAttribute('aria-label', 'Zoom arrière');
+      zoomOutBtn.textContent = '−';
+
+      zoomInBtn.addEventListener('click', () => {
+        const rect = container.getBoundingClientRect();
+        zoomAtClientPoint(rect.left + rect.width / 2, rect.top + rect.height / 2, 1.2);
+      });
+      zoomOutBtn.addEventListener('click', () => {
+        const rect = container.getBoundingClientRect();
+        zoomAtClientPoint(rect.left + rect.width / 2, rect.top + rect.height / 2, 1 / 1.2);
+      });
+
+      controls.appendChild(zoomInBtn);
+      controls.appendChild(zoomOutBtn);
+      container.appendChild(controls);
     }
 
     function fitToContainer() {
@@ -229,12 +286,115 @@
       onSelect(id);
     }
 
-    function handleCanvasClick(e) {
-      const rect = canvas.getBoundingClientRect();
-      const x = Math.floor((e.clientX - rect.left) * canvas.width / rect.width);
-      const y = Math.floor((e.clientY - rect.top) * canvas.height / rect.height);
+    function handleCanvasSelection(clientX, clientY) {
+      const { x, y } = getCanvasCoordsFromClient(clientX, clientY);
       const id = pixelMap[y] ? pixelMap[y][x] : null;
       selectBarony(id);
+    }
+
+    function handlePointerDown(e) {
+      if (e.button !== 0 && e.pointerType !== 'touch') return;
+      if (pinchState && pinchState.pointers.size >= 2) return;
+      selectionPointerId = e.pointerId;
+
+      if (e.pointerType === 'touch') {
+        if (!pinchState) pinchState = { pointers: new Map(), prevDistance: null, midpoint: null };
+        pinchState.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+        if (pinchState.pointers.size === 2) {
+          const [a, b] = [...pinchState.pointers.values()];
+          pinchState.prevDistance = Math.hypot(b.x - a.x, b.y - a.y);
+          pinchState.midpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+          panning = false;
+          activePointerId = null;
+          selectionPointerId = null;
+          suppressSelection = true;
+        } else if (enablePan) {
+          handlePanStart(e);
+        }
+      } else if (enablePan) {
+        handlePanStart(e);
+      }
+
+      if (canvas.setPointerCapture) {
+        canvas.setPointerCapture(e.pointerId);
+      }
+      e.preventDefault();
+    }
+
+    function handlePointerMove(e) {
+      if (pinchState && pinchState.pointers.has(e.pointerId)) {
+        pinchState.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (pinchState.pointers.size === 2 && enableZoom) {
+          const [a, b] = [...pinchState.pointers.values()];
+          const distance = Math.hypot(b.x - a.x, b.y - a.y);
+          const midpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+          if (pinchState.prevDistance && distance > 0) {
+            const factor = distance / pinchState.prevDistance;
+            if (Number.isFinite(factor) && factor > 0) {
+              zoomAtClientPoint(midpoint.x, midpoint.y, factor);
+            }
+          }
+          pinchState.prevDistance = distance;
+          pinchState.midpoint = midpoint;
+        } else if (pinchState.pointers.size === 1 && enablePan) {
+          handlePanMove(e);
+        }
+      } else if (enablePan) {
+        handlePanMove(e);
+      }
+    }
+
+    function handlePointerUpOrCancel(e) {
+      const wasActivePanPointer = panning && e.pointerId === activePointerId;
+
+      if (pinchState && pinchState.pointers.has(e.pointerId)) {
+        pinchState.pointers.delete(e.pointerId);
+        if (pinchState.pointers.size < 2) {
+          pinchState.prevDistance = null;
+          pinchState.midpoint = null;
+        }
+        if (pinchState.pointers.size === 1 && enablePan) {
+          const remaining = [...pinchState.pointers.entries()][0];
+          if (remaining) {
+            const [remainingId, point] = remaining;
+            activePointerId = remainingId;
+            panning = true;
+            movedDuringPan = true;
+            panStartX = point.x;
+            panStartY = point.y;
+          }
+        }
+      }
+
+      if (wasActivePanPointer) {
+        const shouldSelect = !movedDuringPan && (!pinchState || pinchState.pointers.size === 0);
+        handlePanEnd();
+        if (shouldSelect && e.type === 'pointerup') {
+          handleCanvasSelection(e.clientX, e.clientY);
+        }
+      } else if (!enablePan) {
+        const canSelectWithoutPan = (
+          e.type === 'pointerup' &&
+          e.pointerId === selectionPointerId &&
+          !suppressSelection &&
+          (!pinchState || pinchState.pointers.size === 0)
+        );
+        if (canSelectWithoutPan) {
+          handleCanvasSelection(e.clientX, e.clientY);
+        }
+      }
+
+      if (!pinchState || pinchState.pointers.size === 0) {
+        suppressSelection = false;
+      }
+      if (e.pointerId === selectionPointerId) {
+        selectionPointerId = null;
+      }
+
+      if (canvas.releasePointerCapture && canvas.hasPointerCapture && canvas.hasPointerCapture(e.pointerId)) {
+        canvas.releasePointerCapture(e.pointerId);
+      }
     }
 
 
@@ -243,12 +403,11 @@
     if (enableZoom) {
       canvas.addEventListener('wheel', handleWheel, { passive: false });
     }
-    if (enablePan) {
-      canvas.addEventListener('mousedown', handlePanStart);
-      canvas.addEventListener('mousemove', handlePanMove);
-      window.addEventListener('mouseup', handlePanEnd);
-    }
-    canvas.addEventListener('click', handleCanvasClick);
+    canvas.addEventListener('pointerdown', handlePointerDown, { passive: false });
+    canvas.addEventListener('pointermove', handlePointerMove, { passive: false });
+    canvas.addEventListener('pointerup', handlePointerUpOrCancel);
+    canvas.addEventListener('pointercancel', handlePointerUpOrCancel);
+    createMobileZoomControls();
 
     window.addEventListener('resize', () => {
       positionMap();
