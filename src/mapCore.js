@@ -81,6 +81,8 @@
     let activePointerId = null;
     let movedDuringPan = false;
     let pinchState = null;
+    let selectionPointerId = null;
+    let suppressSelection = false;
 
     function applyTransform() {
       group.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${scale})`;
@@ -293,6 +295,7 @@
     function handlePointerDown(e) {
       if (e.button !== 0 && e.pointerType !== 'touch') return;
       if (pinchState && pinchState.pointers.size >= 2) return;
+      selectionPointerId = e.pointerId;
 
       if (e.pointerType === 'touch') {
         if (!pinchState) pinchState = { pointers: new Map(), prevDistance: null, midpoint: null };
@@ -304,6 +307,8 @@
           pinchState.midpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
           panning = false;
           activePointerId = null;
+          selectionPointerId = null;
+          suppressSelection = true;
         } else if (enablePan) {
           handlePanStart(e);
         }
@@ -368,6 +373,23 @@
         if (shouldSelect && e.type === 'pointerup') {
           handleCanvasSelection(e.clientX, e.clientY);
         }
+      } else if (!enablePan) {
+        const canSelectWithoutPan = (
+          e.type === 'pointerup' &&
+          e.pointerId === selectionPointerId &&
+          !suppressSelection &&
+          (!pinchState || pinchState.pointers.size === 0)
+        );
+        if (canSelectWithoutPan) {
+          handleCanvasSelection(e.clientX, e.clientY);
+        }
+      }
+
+      if (!pinchState || pinchState.pointers.size === 0) {
+        suppressSelection = false;
+      }
+      if (e.pointerId === selectionPointerId) {
+        selectionPointerId = null;
       }
 
       if (canvas.releasePointerCapture && canvas.hasPointerCapture && canvas.hasPointerCapture(e.pointerId)) {
