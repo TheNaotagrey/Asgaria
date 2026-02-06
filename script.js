@@ -197,14 +197,14 @@
   }
 
   const cultureRankConfig = [
-    { key: 'barony', label: 'Baron', plural: 'Barons', points: 0.1 },
-    { key: 'viscounty', label: 'Vicomte', plural: 'Vicomtes', points: 0.15 },
-    { key: 'county', label: 'Comte', plural: 'Comtes', points: 0.2 },
-    { key: 'marquisate', label: 'Marquis', plural: 'Marquis', points: 0.3 },
-    { key: 'duchy', label: 'Duc', plural: 'Ducs', points: 0.5 },
-    { key: 'archduchy', label: 'Archiduc', plural: 'Archiducs', points: 0.7 },
-    { key: 'kingdom', label: 'Roi', plural: 'Rois', points: 0.9 },
-    { key: 'empire', label: 'Empereur', plural: 'Empereurs', points: 1.1 }
+    { key: 'barony', label: 'Baron', plural: 'Barons', points: 0.005 },
+    { key: 'viscounty', label: 'Vicomte', plural: 'Vicomtes', points: 0.0075 },
+    { key: 'county', label: 'Comte', plural: 'Comtes', points: 0.01 },
+    { key: 'marquisate', label: 'Marquis', plural: 'Marquis', points: 0.015 },
+    { key: 'duchy', label: 'Duc', plural: 'Ducs', points: 0.025 },
+    { key: 'archduchy', label: 'Archiduc', plural: 'Archiducs', points: 0.035 },
+    { key: 'kingdom', label: 'Roi', plural: 'Rois', points: 0.045 },
+    { key: 'empire', label: 'Empereur', plural: 'Empereurs', points: 0.055 }
   ];
 
   function getSeigneurRankKey(seigneurId) {
@@ -222,6 +222,10 @@
   function formatPoints(value) {
     if (Number.isInteger(value)) return `${value}`;
     return value.toFixed(2).replace(/0$/, '').replace(/\.$/, '');
+  }
+
+  function formatPointsNoDecimals(value) {
+    return `${Math.floor(value)}`;
   }
 
   function buildCultureTooltipRows(stat) {
@@ -352,7 +356,7 @@
       const pointsCell = document.createElement('td');
       const tooltipSpan = document.createElement('span');
       tooltipSpan.className = 'tooltip';
-      tooltipSpan.textContent = formatPoints(stat.points);
+      tooltipSpan.textContent = formatPointsNoDecimals(stat.points);
       attachCultureFloatingTooltip(tooltipSpan, stat.tooltipRows);
       pointsCell.appendChild(tooltipSpan);
       row.appendChild(nameCell);
