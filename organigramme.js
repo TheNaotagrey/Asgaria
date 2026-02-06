@@ -627,9 +627,24 @@ function setupInteractions() {
   if (!elements.svg || !elements.canvas) return;
   let isDragging = false;
   let lastPosition = { x: 0, y: 0 };
+  let activePointerId = null;
+  let pinchState = { pointers: new Map(), distance: null };
 
-  const onPointerMove = (event) => {
-    if (!isDragging) return;
+  const zoomAtPoint = (clientX, clientY, factor) => {
+    const rect = elements.canvas.getBoundingClientRect();
+    const mouseX = clientX - rect.left;
+    const mouseY = clientY - rect.top;
+    const graphX = (mouseX - state.transform.x) / state.transform.scale;
+    const graphY = (mouseY - state.transform.y) / state.transform.scale;
+    const nextScale = Math.min(2.5, Math.max(0.4, state.transform.scale * factor));
+    state.transform.scale = nextScale;
+    state.transform.x = mouseX - graphX * nextScale;
+    state.transform.y = mouseY - graphY * nextScale;
+    applyTransform();
+  };
+
+  const moveDrag = (event) => {
+    if (!isDragging || event.pointerId !== activePointerId) return;
     hideInfoPanel();
     state.transform.x += event.clientX - lastPosition.x;
     state.transform.y += event.clientY - lastPosition.y;
@@ -637,36 +652,79 @@ function setupInteractions() {
     applyTransform();
   };
 
-  elements.canvas.addEventListener('mousedown', (event) => {
-    if (event.button !== 0) return;
+  elements.canvas.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0 && event.pointerType !== 'touch') return;
     if (event.target.closest('.seigneur-search')) return;
     if (event.target.closest('.seigneur-search-results')) return;
+
+    pinchState.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pinchState.pointers.size === 2) {
+      const [a, b] = [...pinchState.pointers.values()];
+      pinchState.distance = Math.hypot(b.x - a.x, b.y - a.y);
+      isDragging = false;
+      activePointerId = null;
+    } else {
+      isDragging = true;
+      activePointerId = event.pointerId;
+      lastPosition = { x: event.clientX, y: event.clientY };
+    }
+
+    if (elements.canvas.setPointerCapture) {
+      elements.canvas.setPointerCapture(event.pointerId);
+    }
     event.preventDefault();
-    isDragging = true;
-    lastPosition = { x: event.clientX, y: event.clientY };
-  });
-  window.addEventListener('mousemove', onPointerMove);
-  window.addEventListener('mouseup', () => {
-    isDragging = false;
-  });
+  }, { passive: false });
+
+  elements.canvas.addEventListener('pointermove', (event) => {
+    if (pinchState.pointers.has(event.pointerId)) {
+      pinchState.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    }
+
+    if (pinchState.pointers.size === 2) {
+      const [a, b] = [...pinchState.pointers.values()];
+      const distance = Math.hypot(b.x - a.x, b.y - a.y);
+      if (pinchState.distance && distance > 0) {
+        const factor = distance / pinchState.distance;
+        const centerX = (a.x + b.x) / 2;
+        const centerY = (a.y + b.y) / 2;
+        hideInfoPanel();
+        zoomAtPoint(centerX, centerY, factor);
+      }
+      pinchState.distance = distance;
+      return;
+    }
+
+    moveDrag(event);
+  }, { passive: false });
+
+  const endPointer = (event) => {
+    pinchState.pointers.delete(event.pointerId);
+    if (pinchState.pointers.size < 2) {
+      pinchState.distance = null;
+    }
+
+    if (event.pointerId === activePointerId) {
+      isDragging = false;
+      activePointerId = null;
+    }
+
+    if (elements.canvas.releasePointerCapture && elements.canvas.hasPointerCapture && elements.canvas.hasPointerCapture(event.pointerId)) {
+      elements.canvas.releasePointerCapture(event.pointerId);
+    }
+  };
+
+  elements.canvas.addEventListener('pointerup', endPointer);
+  elements.canvas.addEventListener('pointercancel', endPointer);
 
   elements.canvas.addEventListener('wheel', (event) => {
     event.preventDefault();
     hideInfoPanel();
-    const rect = elements.canvas.getBoundingClientRect();
     const zoomIntensity = 0.0015;
     const delta = -event.deltaY * zoomIntensity;
-    const newScale = Math.min(2.5, Math.max(0.4, state.transform.scale + delta));
-    const mouseX = event.clientX - rect.left;
-    const mouseY = event.clientY - rect.top;
-
-    const graphX = (mouseX - state.transform.x) / state.transform.scale;
-    const graphY = (mouseY - state.transform.y) / state.transform.scale;
-
-    state.transform.scale = newScale;
-    state.transform.x = mouseX - graphX * newScale;
-    state.transform.y = mouseY - graphY * newScale;
-    applyTransform();
+    const factor = 1 + delta;
+    if (factor > 0) {
+      zoomAtPoint(event.clientX, event.clientY, factor);
+    }
   }, { passive: false });
 
   elements.graph.addEventListener('click', (event) => {
