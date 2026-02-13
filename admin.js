@@ -3412,7 +3412,13 @@ function renderTradeRoutesPanel() {
   addBtn.className = 'control-btn';
   addBtn.textContent = 'Nouvelle route commerciale';
   addBtn.addEventListener('click', () => openTradeRouteDialog());
+  const importBtn = document.createElement('button');
+  importBtn.type = 'button';
+  importBtn.className = 'control-btn';
+  importBtn.textContent = 'Importer';
+  importBtn.addEventListener('click', () => triggerTradeRoutesImport());
   header.appendChild(addBtn);
+  header.appendChild(importBtn);
   panel.appendChild(header);
   if (!tradeRoutesState.routes.length) {
     const empty = document.createElement('div');
@@ -3471,6 +3477,90 @@ function renderTradeRoutesPanel() {
       table.appendChild(row);
     });
   panel.appendChild(table);
+}
+
+function extractTradeRoutePairsFromSheetRows(rows) {
+  if (!Array.isArray(rows) || rows.length <= 1) {
+    return { pairs: [], ignoredRows: 0 };
+  }
+  const pairs = [];
+  let ignoredRows = 0;
+  rows.slice(1).forEach(row => {
+    if (!Array.isArray(row) || row.length < 2) {
+      ignoredRows += 1;
+      return;
+    }
+    const baronyId1 = parseInt(row[0], 10);
+    const baronyId2 = parseInt(row[1], 10);
+    if (!baronyId1 || !baronyId2) {
+      ignoredRows += 1;
+      return;
+    }
+    pairs.push({ barony_id_1: baronyId1, barony_id_2: baronyId2 });
+  });
+  return { pairs, ignoredRows };
+}
+
+async function importTradeRoutesFromFile(file) {
+  if (!file) return;
+  if (!window.XLSX) {
+    alert('Impossible de lire le fichier Excel : librairie de lecture absente.');
+    return;
+  }
+  const buffer = await file.arrayBuffer();
+  const workbook = window.XLSX.read(buffer, { type: 'array' });
+  const firstSheetName = workbook.SheetNames && workbook.SheetNames[0];
+  if (!firstSheetName) {
+    alert('Le fichier Excel est vide.');
+    return;
+  }
+  const sheet = workbook.Sheets[firstSheetName];
+  const rows = window.XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
+  const { pairs, ignoredRows } = extractTradeRoutePairsFromSheetRows(rows);
+  if (!pairs.length) {
+    alert('Aucune paire de baronnies valide trouvée dans le fichier (colonnes A et B).');
+    return;
+  }
+  const resp = await fetchJSON('/api/trade_routes/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pairs })
+  });
+  if (resp && resp.error) {
+    alert(`Erreur : ${resp.error}`);
+    return;
+  }
+  const details = [
+    `Import terminé : ${resp.created || 0} créée(s), ${resp.skipped_existing || 0} déjà existante(s), ${resp.skipped_duplicate || 0} doublon(s) dans le fichier, ${resp.failed || 0} en erreur.`
+  ];
+  if (ignoredRows > 0) {
+    details.push(`${ignoredRows} ligne(s) ignorée(s) car incomplètes ou invalides.`);
+  }
+  if (Array.isArray(resp.errors) && resp.errors.length) {
+    details.push('Exemples d\'erreurs :');
+    resp.errors.slice(0, 5).forEach(item => {
+      const line = item?.line ? `Ligne ${item.line}` : 'Ligne inconnue';
+      details.push(`- ${line} (${item?.barony_id_1 || '?'} / ${item?.barony_id_2 || '?'}) : ${item?.error || 'Erreur'}`);
+    });
+  }
+  alert(details.join('\n'));
+  await loadTradeRoutes();
+}
+
+function triggerTradeRoutesImport() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.xlsx,.xls';
+  input.addEventListener('change', async () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    try {
+      await importTradeRoutesFromFile(file);
+    } catch (err) {
+      alert(`Erreur lors de l'import : ${err.message || err}`);
+    }
+  });
+  input.click();
 }
 
 async function loadTradeRoutes() {
