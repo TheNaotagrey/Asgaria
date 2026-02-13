@@ -3723,6 +3723,131 @@ app.post('/api/trade_routes', requireAdmin, (req, res) => {
     });
   });
 });
+app.post('/api/trade_routes/import', requireAdmin, (req, res) => {
+  const pairs = Array.isArray(req.body?.pairs) ? req.body.pairs : [];
+  if (!pairs.length) {
+    return res.status(400).json({ error: 'Aucune paire de baronnies à importer' });
+  }
+  const normalizedPairs = [];
+  pairs.forEach((pair, index) => {
+    const barony_id_1 = parseInt(pair?.barony_id_1, 10);
+    const barony_id_2 = parseInt(pair?.barony_id_2, 10);
+    if (!barony_id_1 || !barony_id_2 || barony_id_1 === barony_id_2) {
+      return;
+    }
+    normalizedPairs.push({
+      line: index + 2,
+      barony_id_1,
+      barony_id_2
+    });
+  });
+  if (!normalizedPairs.length) {
+    return res.status(400).json({ error: 'Aucune paire valide trouvée' });
+  }
+  getTradeAdjacency((errAdj, adjacency) => {
+    if (errAdj) return handleError(res, errAdj);
+    db.all('SELECT id, barony_id_1, barony_id_2 FROM trade_routes', [], (errRoutes, existingRoutes) => {
+      if (errRoutes) return handleError(res, errRoutes);
+      const existingPairs = new Set();
+      (existingRoutes || []).forEach(route => {
+        const id1 = parseInt(route.barony_id_1, 10);
+        const id2 = parseInt(route.barony_id_2, 10);
+        if (!id1 || !id2) return;
+        const key = id1 < id2 ? `${id1}-${id2}` : `${id2}-${id1}`;
+        existingPairs.add(key);
+      });
+      const uniquePairs = [];
+      const seenInFile = new Set();
+      let skippedDuplicate = 0;
+      normalizedPairs.forEach(pair => {
+        const key = pair.barony_id_1 < pair.barony_id_2
+          ? `${pair.barony_id_1}-${pair.barony_id_2}`
+          : `${pair.barony_id_2}-${pair.barony_id_1}`;
+        if (seenInFile.has(key)) {
+          skippedDuplicate += 1;
+          return;
+        }
+        seenInFile.add(key);
+        uniquePairs.push({ ...pair, key });
+      });
+      const baronyIds = Array.from(new Set(uniquePairs.flatMap(pair => [pair.barony_id_1, pair.barony_id_2])));
+      if (!baronyIds.length) {
+        return res.status(400).json({ error: 'Aucune paire valide trouvée' });
+      }
+      const placeholders = baronyIds.map(() => '?').join(',');
+      db.all(`SELECT id FROM baronies WHERE id IN (${placeholders})`, baronyIds, (errBaronies, rows) => {
+        if (errBaronies) return handleError(res, errBaronies);
+        const validBaronies = new Set((rows || []).map(item => parseInt(item.id, 10)).filter(Number.isFinite));
+        const errors = [];
+        let created = 0;
+        let skippedExisting = 0;
+        const stmt = db.prepare('INSERT INTO trade_routes (barony_id_1, barony_id_2, path) VALUES (?,?,?)');
+        const processPair = (index) => {
+          if (index >= uniquePairs.length) {
+            return stmt.finalize((finalizeErr) => {
+              if (finalizeErr) return handleError(res, finalizeErr);
+              recordChange(req, {
+                table: 'trade_routes',
+                action: 'import',
+                before: null,
+                after: {
+                  imported: created,
+                  skipped_existing: skippedExisting,
+                  skipped_duplicate: skippedDuplicate,
+                  failed: errors.length
+                },
+                key: `bulk-${Date.now()}`
+              });
+              res.json({
+                created,
+                skipped_existing: skippedExisting,
+                skipped_duplicate: skippedDuplicate,
+                failed: errors.length,
+                errors
+              });
+            });
+          }
+          const pair = uniquePairs[index];
+          if (!validBaronies.has(pair.barony_id_1) || !validBaronies.has(pair.barony_id_2)) {
+            errors.push({ ...pair, error: 'Baronnie introuvable' });
+            return processPair(index + 1);
+          }
+          if (existingPairs.has(pair.key)) {
+            skippedExisting += 1;
+            return processPair(index + 1);
+          }
+          const computed = computeShortestPath(pair.barony_id_1, pair.barony_id_2, adjacency);
+          if (!computed || !computed.path || computed.path.length < 2) {
+            errors.push({ ...pair, error: 'Chemin introuvable' });
+            return processPair(index + 1);
+          }
+          const normalized = normalizeTradeRoutePathInput(computed.path, pair.barony_id_1, pair.barony_id_2);
+          if (normalized.error) {
+            errors.push({ ...pair, error: normalized.error });
+            return processPair(index + 1);
+          }
+          const fullPath = normalized.fullPath.length ? normalized.fullPath : computed.path;
+          const validationError = validateTradeRoutePath(fullPath, pair.barony_id_1, pair.barony_id_2, adjacency);
+          if (validationError) {
+            errors.push({ ...pair, error: validationError });
+            return processPair(index + 1);
+          }
+          const storedPath = normalized.fullPath.length ? normalized.storedPath : computed.path.slice(1, -1);
+          stmt.run([pair.barony_id_1, pair.barony_id_2, JSON.stringify(storedPath)], (insertErr) => {
+            if (insertErr) {
+              errors.push({ ...pair, error: 'Insertion échouée' });
+              return processPair(index + 1);
+            }
+            created += 1;
+            existingPairs.add(pair.key);
+            return processPair(index + 1);
+          });
+        };
+        processPair(0);
+      });
+    });
+  });
+});
 app.put('/api/trade_routes/:id', requireAdmin, (req, res) => {
   const routeId = parseInt(req.params.id, 10);
   if (!routeId) return res.status(400).json({ error: 'ID invalide' });
