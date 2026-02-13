@@ -23,6 +23,7 @@ Ce dépôt propose un serveur Express/Node.js avec une base SQLite et plusieurs 
 - La base de données inclut désormais une table `sanctuaries` (avec un statut actif/inactif), une table `canonical_lands` (relation entre deux baronnies) et les colonnes `priory_religion_id`, `church_religion_id`, `cathedral_religion_id` et `vacant` (baronnie vacante) dans la table `baronies`, `defacto_county_id` dans la table `viscounties`, ainsi que `player` et `bishop` dans la table `seigneurs`.
 - Les tables `barony_connections` et `maritime_zone_connections` incluent une colonne `distance` (par défaut 1) pour pondérer les distances entre baronnies ou zones maritimes.
 - **admin.js** : interface d'administration des empires, royaumes, duchés, etc.
+- L'onglet "Routes commerciales" d'**admin.js** inclut un import Excel (`.xlsx/.xls`) des paires de baronnies avec création en masse des routes manquantes via l'API serveur.
 - **gestion.js** : gestion des seigneuries, ressources et sorts côté joueur.
 - **profile.js** : modification du profil utilisateur.
 - **organigramme.js** : affiche la page d’organigramme féodal des seigneurs (hiérarchie vassale, interactions et navigation).
@@ -32,6 +33,7 @@ Ce dépôt propose un serveur Express/Node.js avec une base SQLite et plusieurs 
 - Les scripts client communiquent avec l'API du serveur via `fetch`.
 - La base de données contient également une table `trade_transactions` (origine, destination, ressources, type, état, raison, décision, retour) pour enregistrer les échanges entre seigneuries. L'origine et la destination y sont stockées via les identifiants de seigneurie, les noms des seigneurs ou baronnies étant résolus dynamiquement. Les effets `land_transaction_max_per_month` et `naval_transaction_max_per_month` permettent d'augmenter les limites mensuelles de transactions.
 - La table `trade_routes` inclut désormais un identifiant propre et un chemin (liste ordonnée d'identifiants de baronnies) pour définir la route commerciale.
+- L'API serveur expose aussi `POST /api/trade_routes/import` (admin) pour importer des paires de baronnies, ignorer les routes déjà existantes et créer les chemins par défaut calculés côté serveur.
 - La table `trade_lines` stocke les lignes commerciales maritimes (baronnies d'origine et de destination, chemin composé de zones maritimes).
 - La table `admin_change_logs` trace les modifications effectuées via l'administration/`mapEditor` (table, entrée, utilisateur, description, données structurées et timestamp) et est consultable depuis l'onglet "Logs" d'`admin.html`.
 - La table `user_table_preferences` stocke les préférences de visibilité de colonnes de l'administration par utilisateur.

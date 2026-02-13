@@ -8,6 +8,8 @@ Cette documentation couvre **uniquement les informations publiques accessibles e
 
 Cette documentation **n'inclut pas** l'inscription, la connexion, les sessions, ni les routes d'administration/écriture.
 
+> Note d'évolution : une route d'administration `POST /api/trade_routes/import` existe pour l'import en masse de routes commerciales terrestres depuis des paires de baronnies. Cette route est authentifiée administrateur et reste hors périmètre de cette documentation publique en lecture.
+
 > URL publique de référence : `https://www.asgaria.org`
 
 ## 2) Codes de réponse HTTP (détail)
