@@ -90,9 +90,7 @@
   ];
   function getLandFilters() {
     const filters = [...landFiltersBase];
-    if (window.isTestMode) {
-      filters.push({ value: 'trade_routes', label: 'Routes commerciales' });
-    }
+    filters.push({ value: 'trade_routes', label: 'Routes commerciales' });
     return filters.concat(landFiltersTail);
   }
   function populateFilters() {
@@ -107,18 +105,6 @@
     });
   }
   populateFilters();
-  function updateFilterOptionsFromTestMode() {
-    if (!filterSelect || mapMode === 'sea') return;
-    const previous = filterSelect.value;
-    populateFilters();
-    const hasPrevious = previous && Array.from(filterSelect.options).some(opt => opt.value === previous);
-    filterSelect.value = hasPrevious ? previous : '';
-    if (!hasPrevious && previous === 'trade_routes' && filterManager) {
-      filterManager.applyFilter('');
-    }
-  }
-  window.addEventListener('testmode:ready', updateFilterOptionsFromTestMode);
-
   function parseTradeRoutePath(raw) {
     if (!raw) return [];
     if (Array.isArray(raw)) return raw.map(val => parseInt(val, 10)).filter(Number.isFinite);
