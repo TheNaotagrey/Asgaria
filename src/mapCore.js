@@ -1,6 +1,6 @@
 (function (global) {
   const terrainColor = [239, 228, 176];
-  const selectedDesaturationFactor = 0.2;
+  const selectedTransparencyFactor = 0.55;
 
   /**
    * Initialise le rendu de la carte.
@@ -131,14 +131,10 @@
       return [r, g, b, 255];
     }
 
-    function desaturateColor(rgb, factor = selectedDesaturationFactor) {
+    function getSelectedAlpha(baseColor, factor = selectedTransparencyFactor) {
       const safeFactor = Math.max(0, Math.min(1, factor));
-      const gray = Math.round((rgb[0] + rgb[1] + rgb[2]) / 3);
-      return [
-        Math.round(gray + (rgb[0] - gray) * safeFactor),
-        Math.round(gray + (rgb[1] - gray) * safeFactor),
-        Math.round(gray + (rgb[2] - gray) * safeFactor)
-      ];
+      const baseAlpha = Number.isFinite(baseColor[3]) ? baseColor[3] : 255;
+      return Math.max(0, Math.min(255, Math.round(baseAlpha * safeFactor)));
     }
 
     function hashCoords(x, y, seed = 0) {
@@ -166,18 +162,18 @@
               const colIndex =
                 hashCoords(Math.floor(x / cellSize), Math.floor(y / cellSize), parseInt(id, 10)) % cols.length;
               const baseCol = cols[colIndex];
-              const col = isSelected ? desaturateColor(baseCol) : baseCol;
-              data[idx++] = col[0];
-              data[idx++] = col[1];
-              data[idx++] = col[2];
-              data[idx++] = 255;
+              const alpha = isSelected ? getSelectedAlpha(baseCol) : (Number.isFinite(baseCol[3]) ? baseCol[3] : 255);
+              data[idx++] = baseCol[0];
+              data[idx++] = baseCol[1];
+              data[idx++] = baseCol[2];
+              data[idx++] = alpha;
             } else {
               const baseCol = colorMap[id];
-              const col = isSelected ? desaturateColor(baseCol) : baseCol;
-              data[idx++] = col[0];
-              data[idx++] = col[1];
-              data[idx++] = col[2];
-              data[idx++] = 255;
+              const alpha = isSelected ? getSelectedAlpha(baseCol) : (Number.isFinite(baseCol[3]) ? baseCol[3] : 255);
+              data[idx++] = baseCol[0];
+              data[idx++] = baseCol[1];
+              data[idx++] = baseCol[2];
+              data[idx++] = alpha;
             }
           } else {
             data[idx++] = 0;
