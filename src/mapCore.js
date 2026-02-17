@@ -71,6 +71,7 @@
     // visual state
     let colorMap = {};
     let currentSelectedId = null;
+    let currentSelectedIds = new Set();
 
     // pan/zoom state
     let scale = 1;
@@ -156,7 +157,9 @@
         for (let x = 0; x < mapWidth; x++) {
           const id = pixelMap[y][x];
           if (id && (colorMap[id] || canonicalPatterns[id])) {
-            const isSelected = id === currentSelectedId;
+            const isSelected = currentSelectedIds.size > 0
+              ? currentSelectedIds.has(id)
+              : id === currentSelectedId;
             if (canonicalPatterns[id]) {
               const cols = canonicalPatterns[id];
               const cellSize = 6;
@@ -286,6 +289,7 @@
 
     function selectBarony(id) {
       currentSelectedId = id;
+      currentSelectedIds = id ? new Set([String(id)]) : new Set();
       if (!id) {
         drawAll();
         onSelect(id);
@@ -294,6 +298,11 @@
       if (!colorMap[id]) colorMap[id] = generateColor(id);
       drawAll();
       onSelect(id);
+    }
+
+    function setSelectedBaronies(ids = []) {
+      currentSelectedIds = new Set((ids || []).filter(Boolean).map(val => String(val)));
+      drawAll();
     }
 
     function handleCanvasSelection(clientX, clientY) {
@@ -457,6 +466,7 @@
 
     return {
       selectBarony,
+      setSelectedBaronies,
       drawAll,
       fitToContainer,
       resetView,
@@ -478,7 +488,11 @@
       get pixelMap() { return pixelMap; },
       get colorMap() { return colorMap; },
       get currentSelectedId() { return currentSelectedId; },
-      set currentSelectedId(v) { currentSelectedId = v; },
+      set currentSelectedId(v) {
+        currentSelectedId = v;
+        currentSelectedIds = v ? new Set([String(v)]) : new Set();
+      },
+      get currentSelectedIds() { return currentSelectedIds; },
       setColorMap: cm => { colorMap = cm; drawAll(); },
       setCanonicalPatterns: cp => { canonicalPatterns = cp || {}; },
       get ready() { return ready; }
