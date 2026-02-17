@@ -1588,7 +1588,6 @@
   }
 
   function handleSelect(id) {
-    selectedTitle = null;
     hideSeigneurInfo();
     if (!suppressTradeRoutePanelHide) {
       hideTradeRoutePanel();
@@ -1620,14 +1619,14 @@
     }
     const info = baronyMeta[id] || {};
     const titleFilter = getTitleFilterInfo(filterSelect?.value);
-    if (titleFilter && filterSelect) {
-      filterSelect.value = '';
-      if (typeof handleFilterChange === 'function') {
-        handleFilterChange();
-      } else if (filterManager) {
-        filterManager.applyFilter('');
+    if (titleFilter) {
+      const titleId = getBaronyTitleId(info, titleFilter.rankKey, titleFilter.mode);
+      if (titleId) {
+        showTitleInfo(titleFilter.rankKey, titleId, titleFilter.mode, { forceFilterMode: titleFilter.mode });
+        return;
       }
     }
+    selectedTitle = null;
     if (infoPanel) infoPanel.style.display = 'block';
     if (seaInfoPanel) seaInfoPanel.style.display = 'none';
     if (baronyTitle) {
