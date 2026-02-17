@@ -894,8 +894,15 @@
     const { forceFilterMode = null } = options;
     const titleInfo = getTitleMap(rankKey)[titleId];
     if (!titleInfo || !infoPanel) return;
+    const activeTitleFilter = getTitleFilterInfo(filterSelect?.value);
     const targetMode = getTargetTitleMode(forceFilterMode);
-    const targetFilterValue = getTitleFilterValue(rankKey, targetMode);
+    const keepDuchyPietyFilter =
+      activeTitleFilter?.infoMode === 'duchy_piety_ranking' &&
+      rankKey === 'duchy' &&
+      (targetMode || mode) === 'dejure';
+    const targetFilterValue = keepDuchyPietyFilter
+      ? 'duchy_piety_ranking'
+      : getTitleFilterValue(rankKey, targetMode);
     selectedTitle = { rankKey, id: titleId, mode: targetMode || mode };
     if (filterSelect && filterSelect.value !== targetFilterValue) {
       filterSelect.value = targetFilterValue;
@@ -920,8 +927,8 @@
     if (canonicalOwnedSection) canonicalOwnedSection.style.display = 'none';
     if (canonicalParentSection) canonicalParentSection.style.display = 'none';
 
-    const activeTitleFilter = getTitleFilterInfo(filterSelect?.value);
-    const isDuchyPietyPanel = activeTitleFilter?.infoMode === 'duchy_piety_ranking' && rankKey === 'duchy' && (targetMode || mode) === 'dejure';
+    const currentTitleFilter = getTitleFilterInfo(filterSelect?.value);
+    const isDuchyPietyPanel = currentTitleFilter?.infoMode === 'duchy_piety_ranking' && rankKey === 'duchy' && (targetMode || mode) === 'dejure';
     if (isDuchyPietyPanel) {
       if (titleSubtitlesSection) titleSubtitlesSection.style.display = 'none';
       renderDuchyPietyRankingPanel(titleInfo.id, titleInfo.name || '');
@@ -1214,7 +1221,7 @@
   function renderDuchyPietyRankingPanel(duchyId, duchyName) {
     if (!feudalSection || !infoFeudalTable || !infoFeudalBody) return;
     const heading = feudalSection.querySelector('h3');
-    if (heading) heading.textContent = 'Classement de Piété Ducalle';
+    if (heading) heading.textContent = 'Classement de piété ducal';
     const headers = infoFeudalTable.querySelectorAll('thead th');
     if (headers[0]) headers[0].textContent = 'Religion';
     if (headers[1]) headers[1].textContent = 'Points';
@@ -1587,7 +1594,7 @@
     { value: 'marquisate', label: 'Marquisat de jure' },
     { value: 'marquisate_defacto', label: 'Marquisat de facto' },
     { value: 'duchy', label: 'Duché de jure' },
-    { value: 'duchy_piety_ranking', label: 'Classement de Piété Ducalle' },
+    { value: 'duchy_piety_ranking', label: 'Classement de piété ducal' },
     { value: 'duchy_defacto', label: 'Duché de facto' },
     { value: 'archduchy', label: 'Archiduché de jure' },
     { value: 'archduchy_defacto', label: 'Archiduché de facto' },
