@@ -510,6 +510,11 @@ main {
   border: 1px solid #ccc;
 }
 
+.info-table.hide-dejure-column th:nth-child(2),
+.info-table.hide-dejure-column td:nth-child(2) {
+  display: none;
+}
+
 /* Table d'administration */
 .admin-table {
   border-collapse: collapse;

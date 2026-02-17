@@ -66,6 +66,7 @@
   const tradeRoutesList = document.getElementById('tradeRoutesList');
   const tradeLinesList = document.getElementById('tradeLinesList');
   const feudalSection = document.getElementById('feudalSection');
+  const infoFeudalTable = document.getElementById('infoFeudalTable');
   const infoFeudalBody = document.getElementById('infoFeudalBody');
   const religiousSection = document.getElementById('religiousBuildingsSection');
   const infoReligiousList = document.getElementById('infoReligiousList');
@@ -824,6 +825,11 @@
       rows.push({ rankKey: parentRank, dejureId, defactoId });
     }
 
+    const hasDejureData = rows.some(row => row.dejureId);
+    if (infoFeudalTable) {
+      infoFeudalTable.classList.toggle('hide-dejure-column', !hasDejureData);
+    }
+
     if (!rows.length) {
       section.style.display = 'none';
       return;
@@ -1272,6 +1278,7 @@
 
   function setFeudalTable(section, tbody, info) {
     if (!section || !tbody || !info) return;
+    if (infoFeudalTable) infoFeudalTable.classList.remove('hide-dejure-column');
     tbody.innerHTML = '';
     const viscounty = viscountyMap[info.viscounty_id];
     const county = countyMap[info.county_id];
