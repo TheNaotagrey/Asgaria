@@ -488,7 +488,10 @@
       get pixelMap() { return pixelMap; },
       get colorMap() { return colorMap; },
       get currentSelectedId() { return currentSelectedId; },
-      set currentSelectedId(v) { currentSelectedId = v; },
+      set currentSelectedId(v) {
+        currentSelectedId = v;
+        currentSelectedIds = v ? new Set([String(v)]) : new Set();
+      },
       get currentSelectedIds() { return currentSelectedIds; },
       setColorMap: cm => { colorMap = cm; drawAll(); },
       setCanonicalPatterns: cp => { canonicalPatterns = cp || {}; },
