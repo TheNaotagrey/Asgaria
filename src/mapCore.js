@@ -1,5 +1,6 @@
 (function (global) {
   const terrainColor = [239, 228, 176];
+  const selectedDesaturationFactor = 0.2;
 
   /**
    * Initialise le rendu de la carte.
@@ -126,7 +127,17 @@
     function generateColor(str) {
       const hue = Math.floor(Math.random() * 360);
       const [r, g, b] = hslToRgb(hue, 65, 65);
-      return [r, g, b, 100];
+      return [r, g, b, 255];
+    }
+
+    function desaturateColor(rgb, factor = selectedDesaturationFactor) {
+      const safeFactor = Math.max(0, Math.min(1, factor));
+      const gray = Math.round((rgb[0] + rgb[1] + rgb[2]) / 3);
+      return [
+        Math.round(gray + (rgb[0] - gray) * safeFactor),
+        Math.round(gray + (rgb[1] - gray) * safeFactor),
+        Math.round(gray + (rgb[2] - gray) * safeFactor)
+      ];
     }
 
     function hashCoords(x, y, seed = 0) {
@@ -145,22 +156,25 @@
         for (let x = 0; x < mapWidth; x++) {
           const id = pixelMap[y][x];
           if (id && (colorMap[id] || canonicalPatterns[id])) {
+            const isSelected = id === currentSelectedId;
             if (canonicalPatterns[id]) {
               const cols = canonicalPatterns[id];
               const cellSize = 6;
               const colIndex =
                 hashCoords(Math.floor(x / cellSize), Math.floor(y / cellSize), parseInt(id, 10)) % cols.length;
-              const col = cols[colIndex];
+              const baseCol = cols[colIndex];
+              const col = isSelected ? desaturateColor(baseCol) : baseCol;
               data[idx++] = col[0];
               data[idx++] = col[1];
               data[idx++] = col[2];
-              data[idx++] = 100;
+              data[idx++] = 255;
             } else {
-              const col = colorMap[id];
+              const baseCol = colorMap[id];
+              const col = isSelected ? desaturateColor(baseCol) : baseCol;
               data[idx++] = col[0];
               data[idx++] = col[1];
               data[idx++] = col[2];
-              data[idx++] = col[3];
+              data[idx++] = 255;
             }
           } else {
             data[idx++] = 0;
@@ -271,9 +285,6 @@
     }
 
     function selectBarony(id) {
-      if (currentSelectedId && colorMap[currentSelectedId]) {
-        colorMap[currentSelectedId][3] = 100;
-      }
       currentSelectedId = id;
       if (!id) {
         drawAll();
@@ -281,7 +292,6 @@
         return;
       }
       if (!colorMap[id]) colorMap[id] = generateColor(id);
-      colorMap[id][3] = 180;
       drawAll();
       onSelect(id);
     }
