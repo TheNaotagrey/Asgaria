@@ -107,6 +107,8 @@
   let searchInput = null;
   let selectedTitle = null;
   let handleFilterChange = null;
+  const defaultFeudalSectionTitle = feudalSection?.querySelector('h3')?.textContent || 'Hiérarchie féodale';
+  const defaultFeudalHeaders = Array.from(infoFeudalTable?.querySelectorAll('thead th') || []).map(th => th.textContent);
 
   const titleTypeConfig = {
     viscounty: { label: 'Vicomté', map: () => viscountyMap, prefix: 'Vicomte de' },
@@ -255,11 +257,15 @@
   }
 
   function getTitleFilterValue(rankKey, mode) {
+    if (rankKey === 'duchy' && mode === 'duchy_piety_ranking') return 'duchy_piety_ranking';
     return mode === 'defacto' ? `${rankKey}_defacto` : rankKey;
   }
 
   function getTitleFilterInfo(filterValue) {
     if (!filterValue) return null;
+    if (filterValue === 'duchy_piety_ranking') {
+      return { rankKey: 'duchy', mode: 'dejure', infoMode: 'duchy_piety_ranking' };
+    }
     const isDefacto = filterValue.endsWith('_defacto');
     const rankKey = isDefacto ? filterValue.replace('_defacto', '') : filterValue;
     if (!titleTypeConfig[rankKey]) return null;
@@ -904,6 +910,7 @@
     if (seaInfoPanel) seaInfoPanel.style.display = 'none';
     infoPanel.style.display = 'block';
     const rankLabel = titleTypeConfig[rankKey]?.label || 'Titre';
+    restoreDefaultTitlePanelLayout();
     if (baronyTitle) baronyTitle.textContent = `${rankLabel}: ${titleInfo.name || ''} (#${titleInfo.id || ''})`;
     setSeigneurLine(infoOwnerLine, titleInfo.seigneur_id, 'Détenteur:');
     if (infoReligionLine) infoReligionLine.style.display = 'none';
@@ -912,6 +919,16 @@
     if (religiousSection) religiousSection.style.display = 'none';
     if (canonicalOwnedSection) canonicalOwnedSection.style.display = 'none';
     if (canonicalParentSection) canonicalParentSection.style.display = 'none';
+
+    const activeTitleFilter = getTitleFilterInfo(filterSelect?.value);
+    const isDuchyPietyPanel = activeTitleFilter?.infoMode === 'duchy_piety_ranking' && rankKey === 'duchy' && (targetMode || mode) === 'dejure';
+    if (isDuchyPietyPanel) {
+      if (titleSubtitlesSection) titleSubtitlesSection.style.display = 'none';
+      renderDuchyPietyRankingPanel(titleInfo.id, titleInfo.name || '');
+      syncTitleSelectionHighlight();
+      return;
+    }
+
     setTitleHierarchyTable(feudalSection, infoFeudalBody, rankKey, titleInfo, mode);
 
     if (titleSubtitlesSection && titleSubtitlesList) {
@@ -956,6 +973,17 @@
     { key: 'archduchy', label: 'Archiduc', plural: 'Archiducs', points: 0.035 },
     { key: 'kingdom', label: 'Roi', plural: 'Rois', points: 0.045 },
     { key: 'empire', label: 'Empereur', plural: 'Empereurs', points: 0.055 }
+  ];
+
+  const duchyPietyTitleBonusConfig = [
+    { key: 'barony', label: 'Baron', plural: 'Barons', points: 0.5 },
+    { key: 'viscounty', label: 'Vicomte', plural: 'Vicomtes', points: 0.75 },
+    { key: 'county', label: 'Comte', plural: 'Comtes', points: 1 },
+    { key: 'marquisate', label: 'Marquis', plural: 'Marquis', points: 1.25 },
+    { key: 'duchy', label: 'Duc', plural: 'Ducs', points: 1.5 },
+    { key: 'archduchy', label: 'Archiduc', plural: 'Archiducs', points: 2 },
+    { key: 'kingdom', label: 'Roi', plural: 'Rois', points: 3 },
+    { key: 'empire', label: 'Empereur', plural: 'Empereurs', points: 4 }
   ];
   const titleConfig = {
     viscounty: { map: viscountyMap, seigneurTo: seigneurToViscounty },
@@ -1086,6 +1114,159 @@
 
   function formatPointsNoDecimals(value) {
     return `${Math.floor(value)}`;
+  }
+
+  function getDuchyIdForBarony(info) {
+    if (!info) return null;
+    const county = countyMap[info.county_id];
+    return county?.duchy_id || null;
+  }
+
+  function createOrGetDuchyReligionStat(stats, duchyId, religionId) {
+    if (!duchyId || !religionId) return null;
+    const dKey = String(duchyId);
+    const rKey = String(religionId);
+    if (!stats[dKey]) stats[dKey] = {};
+    if (!stats[dKey][rKey]) {
+      stats[dKey][rKey] = {
+        duchyId,
+        religionId,
+        points: 0,
+        details: {
+          pop: 0,
+          priory: 0,
+          church: 0,
+          cathedral: 0,
+          bishopric: 0,
+          sanctuaryActive: 0,
+          sanctuaryInactive: 0,
+          banquet: 0,
+          titleCounts: {}
+        }
+      };
+    }
+    return stats[dKey][rKey];
+  }
+
+  function addDuchyPietyPoints(stats, duchyId, religionId, points, detailKey) {
+    const stat = createOrGetDuchyReligionStat(stats, duchyId, religionId);
+    if (!stat || !points) return;
+    stat.points += points;
+    if (detailKey && stat.details[detailKey] !== undefined) {
+      stat.details[detailKey] += 1;
+    }
+  }
+
+  function buildDuchyPietyStats() {
+    const stats = {};
+    Object.values(baronyMeta).forEach(info => {
+      const duchyId = getDuchyIdForBarony(info);
+      if (!duchyId) return;
+      addDuchyPietyPoints(stats, duchyId, info.religion_pop_id, 1, 'pop');
+      addDuchyPietyPoints(stats, duchyId, info.priory_religion_id, 1, 'priory');
+      addDuchyPietyPoints(stats, duchyId, info.church_religion_id, 3, 'church');
+      addDuchyPietyPoints(stats, duchyId, info.cathedral_religion_id, 5, 'cathedral');
+
+      const sancts = sanctuaryMap[info.id] || [];
+      sancts.forEach(s => {
+        const isActive = info.religion_pop_id && String(info.religion_pop_id) === String(s.religion_id);
+        addDuchyPietyPoints(stats, duchyId, s.religion_id, isActive ? 3 : 0.1, isActive ? 'sanctuaryActive' : 'sanctuaryInactive');
+      });
+
+      if (isVacantBarony(info) || !info.seigneur_id) return;
+      const owner = seigneurMap[info.seigneur_id];
+      if (!owner?.religion_id) return;
+      if (owner.bishop) addDuchyPietyPoints(stats, duchyId, owner.religion_id, 8, 'bishopric');
+      const rankKey = getSeigneurRankKey(info.seigneur_id);
+      const rankCfg = duchyPietyTitleBonusConfig.find(cfg => cfg.key === rankKey);
+      if (rankCfg) {
+        addDuchyPietyPoints(stats, duchyId, owner.religion_id, rankCfg.points);
+        const stat = createOrGetDuchyReligionStat(stats, duchyId, owner.religion_id);
+        stat.details.titleCounts[rankKey] = (stat.details.titleCounts[rankKey] || 0) + 1;
+      }
+    });
+
+    Object.values(duchyMap).forEach(duchy => {
+      if (!duchy?.id || !duchy.banquet_religion_id) return;
+      addDuchyPietyPoints(stats, duchy.id, duchy.banquet_religion_id, 8, 'banquet');
+    });
+    return stats;
+  }
+
+  function buildDuchyPietyTooltipRows(stat) {
+    const rows = [];
+    if (stat.details.pop) rows.push({ label: `Population (${stat.details.pop})`, points: `+${formatPoints(stat.details.pop)}` });
+    if (stat.details.priory) rows.push({ label: `Prieuré (${stat.details.priory})`, points: `+${formatPoints(stat.details.priory)}` });
+    if (stat.details.church) rows.push({ label: `Église (${stat.details.church})`, points: `+${formatPoints(stat.details.church * 3)}` });
+    if (stat.details.cathedral) rows.push({ label: `Cathédrale (${stat.details.cathedral})`, points: `+${formatPoints(stat.details.cathedral * 5)}` });
+    if (stat.details.bishopric) rows.push({ label: `Évêché (${stat.details.bishopric})`, points: `+${formatPoints(stat.details.bishopric * 8)}` });
+    if (stat.details.sanctuaryActive) rows.push({ label: `Sanctuaire actif (${stat.details.sanctuaryActive})`, points: `+${formatPoints(stat.details.sanctuaryActive * 3)}` });
+    if (stat.details.sanctuaryInactive) rows.push({ label: `Sanctuaire inactif (${stat.details.sanctuaryInactive})`, points: `+${formatPoints(stat.details.sanctuaryInactive * 0.1)}` });
+    if (stat.details.banquet) rows.push({ label: `Enchère au Banquet (${stat.details.banquet})`, points: `+${formatPoints(stat.details.banquet * 8)}` });
+    duchyPietyTitleBonusConfig.slice().reverse().forEach(cfg => {
+      const count = stat.details.titleCounts[cfg.key] || 0;
+      if (!count) return;
+      rows.push({ label: `${count} ${count > 1 ? cfg.plural : cfg.label}`, points: `+${formatPoints(count * cfg.points)}` });
+    });
+    return rows;
+  }
+
+  function renderDuchyPietyRankingPanel(duchyId, duchyName) {
+    if (!feudalSection || !infoFeudalTable || !infoFeudalBody) return;
+    const heading = feudalSection.querySelector('h3');
+    if (heading) heading.textContent = 'Classement de Piété Ducalle';
+    const headers = infoFeudalTable.querySelectorAll('thead th');
+    if (headers[0]) headers[0].textContent = 'Religion';
+    if (headers[1]) headers[1].textContent = 'Points';
+    if (headers[2]) headers[2].textContent = '';
+    if (infoFeudalTable) infoFeudalTable.classList.add('hide-dejure-column');
+    infoFeudalBody.innerHTML = '';
+    const duchyStats = buildDuchyPietyStats()[String(duchyId)] || {};
+    const rows = Object.values(duchyStats)
+      .map(stat => ({
+        ...stat,
+        religionName: religionMap[stat.religionId]?.name || `Religion #${stat.religionId}`,
+        tooltipRows: buildDuchyPietyTooltipRows(stat)
+      }))
+      .sort((a, b) => b.points - a.points || a.religionName.localeCompare(b.religionName, 'fr'));
+
+    if (!rows.length) {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 3;
+      td.textContent = 'Aucune donnée';
+      tr.appendChild(td);
+      infoFeudalBody.appendChild(tr);
+    } else {
+      rows.forEach(stat => {
+        const tr = document.createElement('tr');
+        const religionCell = document.createElement('td');
+        religionCell.textContent = stat.religionName;
+        const pointsCell = document.createElement('td');
+        const pointsSpan = document.createElement('span');
+        pointsSpan.className = 'tooltip';
+        pointsSpan.textContent = formatPoints(stat.points);
+        attachCultureFloatingTooltip(pointsSpan, stat.tooltipRows);
+        pointsCell.appendChild(pointsSpan);
+        const spacer = document.createElement('td');
+        tr.appendChild(religionCell);
+        tr.appendChild(pointsCell);
+        tr.appendChild(spacer);
+        infoFeudalBody.appendChild(tr);
+      });
+    }
+    if (baronyTitle) baronyTitle.textContent = duchyName || '';
+  }
+
+  function restoreDefaultTitlePanelLayout() {
+    if (!feudalSection || !infoFeudalTable) return;
+    const heading = feudalSection.querySelector('h3');
+    if (heading) heading.textContent = defaultFeudalSectionTitle;
+    const headers = infoFeudalTable.querySelectorAll('thead th');
+    defaultFeudalHeaders.forEach((label, index) => {
+      if (headers[index]) headers[index].textContent = label;
+    });
+    infoFeudalTable.classList.remove('hide-dejure-column');
   }
 
   function buildCultureTooltipRows(stat) {
@@ -1406,6 +1587,7 @@
     { value: 'marquisate', label: 'Marquisat de jure' },
     { value: 'marquisate_defacto', label: 'Marquisat de facto' },
     { value: 'duchy', label: 'Duché de jure' },
+    { value: 'duchy_piety_ranking', label: 'Classement de Piété Ducalle' },
     { value: 'duchy_defacto', label: 'Duché de facto' },
     { value: 'archduchy', label: 'Archiduché de jure' },
     { value: 'archduchy_defacto', label: 'Archiduché de facto' },
@@ -1627,6 +1809,7 @@
       }
     }
     selectedTitle = null;
+    restoreDefaultTitlePanelLayout();
     if (infoPanel) infoPanel.style.display = 'block';
     if (seaInfoPanel) seaInfoPanel.style.display = 'none';
     if (baronyTitle) {
