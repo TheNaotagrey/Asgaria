@@ -106,6 +106,7 @@
   let searchController = null;
   let searchInput = null;
   let selectedTitle = null;
+  let handleFilterChange = null;
 
   const titleTypeConfig = {
     viscounty: { label: 'Vicomté', map: () => viscountyMap, prefix: 'Vicomte de' },
@@ -230,7 +231,7 @@
   }
 
   function createTitleButton(rankKey, titleId, options = {}) {
-    const { mode = 'dejure', includeRank = false } = options;
+    const { mode = 'dejure', includeRank = false, forceFilterMode = null } = options;
     const map = getTitleMap(rankKey);
     const info = map[titleId];
     const label = info?.name || `${titleTypeConfig[rankKey]?.label || 'Titre'} #${titleId}`;
@@ -238,8 +239,23 @@
     btn.type = 'button';
     btn.className = 'barony-link';
     btn.textContent = includeRank ? `${titleTypeConfig[rankKey]?.label || 'Titre'} ${label}` : label;
-    btn.addEventListener('click', () => showTitleInfo(rankKey, titleId, mode));
+    btn.addEventListener('click', () => showTitleInfo(rankKey, titleId, mode, { forceFilterMode }));
     return btn;
+  }
+
+  function getTargetTitleMode(forceFilterMode) {
+    if (forceFilterMode === 'dejure' || forceFilterMode === 'defacto') {
+      return forceFilterMode;
+    }
+    const activeTitleFilter = getTitleFilterInfo(filterSelect?.value);
+    if (activeTitleFilter?.mode) {
+      return activeTitleFilter.mode;
+    }
+    return 'defacto';
+  }
+
+  function getTitleFilterValue(rankKey, mode) {
+    return mode === 'defacto' ? `${rankKey}_defacto` : rankKey;
   }
 
   function getTitleFilterInfo(filterValue) {
@@ -844,11 +860,11 @@
       levelCell.appendChild(strong);
       const dejureCell = document.createElement('td');
       if (row.dejureId) {
-        dejureCell.appendChild(createTitleButton(row.rankKey, row.dejureId, { mode: 'dejure' }));
+        dejureCell.appendChild(createTitleButton(row.rankKey, row.dejureId, { mode: 'dejure', forceFilterMode: 'dejure' }));
       }
       const defactoCell = document.createElement('td');
       if (row.defactoId) {
-        defactoCell.appendChild(createTitleButton(row.rankKey, row.defactoId, { mode: 'defacto' }));
+        defactoCell.appendChild(createTitleButton(row.rankKey, row.defactoId, { mode: 'defacto', forceFilterMode: 'defacto' }));
       }
       tr.appendChild(levelCell);
       tr.appendChild(dejureCell);
@@ -868,10 +884,21 @@
     core.setSelectedBaronies([]);
   }
 
-  function showTitleInfo(rankKey, titleId, mode = 'dejure') {
+  function showTitleInfo(rankKey, titleId, mode = 'dejure', options = {}) {
+    const { forceFilterMode = null } = options;
     const titleInfo = getTitleMap(rankKey)[titleId];
     if (!titleInfo || !infoPanel) return;
-    selectedTitle = { rankKey, id: titleId, mode };
+    const targetMode = getTargetTitleMode(forceFilterMode);
+    const targetFilterValue = getTitleFilterValue(rankKey, targetMode);
+    selectedTitle = { rankKey, id: titleId, mode: targetMode || mode };
+    if (filterSelect && filterSelect.value !== targetFilterValue) {
+      filterSelect.value = targetFilterValue;
+      if (typeof handleFilterChange === 'function') {
+        handleFilterChange();
+      } else if (filterManager) {
+        filterManager.applyFilter(filterSelect.value);
+      }
+    }
     hideSeigneurInfo();
     hideTradeRoutePanel();
     if (seaInfoPanel) seaInfoPanel.style.display = 'none';
@@ -889,14 +916,14 @@
 
     if (titleSubtitlesSection && titleSubtitlesList) {
       titleSubtitlesList.innerHTML = '';
-      const subtitles = getImmediateSubtitles(rankKey, titleId, mode);
+      const subtitles = getImmediateSubtitles(rankKey, titleId, targetMode || mode);
       if (subtitles.length > 0) {
         titleSubtitlesSection.style.display = 'block';
         subtitles.forEach(item => {
           const li = document.createElement('li');
           const childLabel = titleTypeConfig[item.rankKey]?.label || 'Titre';
           li.appendChild(document.createTextNode(`${childLabel} de `));
-          li.appendChild(createTitleButton(item.rankKey, item.id, { mode }));
+          li.appendChild(createTitleButton(item.rankKey, item.id, { mode: targetMode || mode }));
           titleSubtitlesList.appendChild(li);
         });
       } else {
@@ -1352,9 +1379,9 @@
       strong.textContent = row.level;
       levelCell.appendChild(strong);
       const dejureCell = document.createElement('td');
-      if (row.dejureId) dejureCell.appendChild(createTitleButton(row.rankKey, row.dejureId, { mode: 'dejure' }));
+      if (row.dejureId) dejureCell.appendChild(createTitleButton(row.rankKey, row.dejureId, { mode: 'dejure', forceFilterMode: 'dejure' }));
       const defactoCell = document.createElement('td');
-      if (row.defactoId) defactoCell.appendChild(createTitleButton(row.rankKey, row.defactoId, { mode: 'defacto' }));
+      if (row.defactoId) defactoCell.appendChild(createTitleButton(row.rankKey, row.defactoId, { mode: 'defacto', forceFilterMode: 'defacto' }));
       tr.appendChild(levelCell);
       tr.appendChild(dejureCell);
       tr.appendChild(defactoCell);
@@ -1396,7 +1423,6 @@
     { value: 'distance', label: 'Distance' },
     { value: 'baronies', label: 'Baronnies liées' }
   ];
-  let handleFilterChange = null;
   function getLandFilters() {
     const filters = [...landFiltersBase];
     filters.push({ value: 'trade_routes', label: 'Routes commerciales' });
@@ -1594,11 +1620,12 @@
     }
     const info = baronyMeta[id] || {};
     const titleFilter = getTitleFilterInfo(filterSelect?.value);
-    if (titleFilter) {
-      const titleId = getBaronyTitleId(info, titleFilter.rankKey, titleFilter.mode);
-      if (titleId) {
-        showTitleInfo(titleFilter.rankKey, titleId, titleFilter.mode);
-        return;
+    if (titleFilter && filterSelect) {
+      filterSelect.value = '';
+      if (typeof handleFilterChange === 'function') {
+        handleFilterChange();
+      } else if (filterManager) {
+        filterManager.applyFilter('');
       }
     }
     if (infoPanel) infoPanel.style.display = 'block';
