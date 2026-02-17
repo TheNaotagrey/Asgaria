@@ -73,6 +73,8 @@
   const canonicalOwnedList = document.getElementById('canonicalOwnedList');
   const canonicalParentSection = document.getElementById('canonicalParentSection');
   const canonicalParentList = document.getElementById('canonicalParentList');
+  const titleSubtitlesSection = document.getElementById('titleSubtitlesSection');
+  const titleSubtitlesList = document.getElementById('titleSubtitlesList');
   const seaInfoPanel = document.getElementById('seaInfoPanel');
   const seaInfoId = document.getElementById('seaInfoId');
   const seaInfoName = document.getElementById('seaInfoName');
@@ -102,6 +104,19 @@
   let searchEntries = [];
   let searchController = null;
   let searchInput = null;
+  let selectedTitle = null;
+
+  const titleTypeConfig = {
+    viscounty: { label: 'Vicomté', map: () => viscountyMap, prefix: 'Vicomte de' },
+    county: { label: 'Comté', map: () => countyMap, prefix: 'Comte de' },
+    marquisate: { label: 'Marquisat', map: () => marquisateMap, prefix: 'Marquis de' },
+    duchy: { label: 'Duché', map: () => duchyMap, prefix: 'Duc de' },
+    archduchy: { label: 'Archiduché', map: () => archduchyMap, prefix: 'Archiduc de' },
+    kingdom: { label: 'Royaume', map: () => kingdomMap, prefix: 'Roi de' },
+    empire: { label: 'Empire', map: () => empireMap, prefix: 'Empereur de' }
+  };
+
+  const titleHierarchy = ['viscounty', 'county', 'marquisate', 'duchy', 'archduchy', 'kingdom', 'empire'];
 
   function setLine(elem, text) {
     if (!elem) return;
@@ -202,6 +217,31 @@
     return name ? `${name} (#${baronyId})` : `Baronnie #${baronyId}`;
   }
 
+  function getTitleMap(rankKey) {
+    return titleTypeConfig[rankKey]?.map?.() || {};
+  }
+
+  function createTitleButton(rankKey, titleId, options = {}) {
+    const { mode = 'dejure', includeRank = false } = options;
+    const map = getTitleMap(rankKey);
+    const info = map[titleId];
+    const label = info?.name || `${titleTypeConfig[rankKey]?.label || 'Titre'} #${titleId}`;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'barony-link';
+    btn.textContent = includeRank ? `${titleTypeConfig[rankKey]?.label || 'Titre'} ${label}` : label;
+    btn.addEventListener('click', () => showTitleInfo(rankKey, titleId, mode));
+    return btn;
+  }
+
+  function getTitleFilterInfo(filterValue) {
+    if (!filterValue) return null;
+    const isDefacto = filterValue.endsWith('_defacto');
+    const rankKey = isDefacto ? filterValue.replace('_defacto', '') : filterValue;
+    if (!titleTypeConfig[rankKey]) return null;
+    return { rankKey, mode: isDefacto ? 'defacto' : 'dejure' };
+  }
+
   function buildPathTooltip(items, formatter, emptyLabel) {
     const list = (items || []).filter(Boolean);
     if (!list.length) return emptyLabel || '';
@@ -227,6 +267,7 @@
     if (!seigneurInfoPanel) return;
     const seigneur = seigneurMap[seigneurId];
     if (!seigneur) return;
+    selectedTitle = null;
     if (infoPanel) infoPanel.style.display = 'none';
     if (seaInfoPanel) seaInfoPanel.style.display = 'none';
     hideTradeRoutePanel();
@@ -239,25 +280,25 @@
 
     const titles = [];
     (seigneurToEmpire[seigneurId] || []).forEach(empireId => {
-      if (empireId && empireMap[empireId]) titles.push(`Empereur de ${empireMap[empireId].name}`);
+      if (empireId && empireMap[empireId]) titles.push({ rankKey: 'empire', id: empireId, mode: 'dejure' });
     });
     (seigneurToKingdom[seigneurId] || []).forEach(kingdomId => {
-      if (kingdomId && kingdomMap[kingdomId]) titles.push(`Roi de ${kingdomMap[kingdomId].name}`);
+      if (kingdomId && kingdomMap[kingdomId]) titles.push({ rankKey: 'kingdom', id: kingdomId, mode: 'dejure' });
     });
     (seigneurToArchduchy[seigneurId] || []).forEach(archduchyId => {
-      if (archduchyId && archduchyMap[archduchyId]) titles.push(`Archiduc de ${archduchyMap[archduchyId].name}`);
+      if (archduchyId && archduchyMap[archduchyId]) titles.push({ rankKey: 'archduchy', id: archduchyId, mode: 'dejure' });
     });
     (seigneurToDuchy[seigneurId] || []).forEach(duchyId => {
-      if (duchyId && duchyMap[duchyId]) titles.push(`Duc de ${duchyMap[duchyId].name}`);
+      if (duchyId && duchyMap[duchyId]) titles.push({ rankKey: 'duchy', id: duchyId, mode: 'dejure' });
     });
     (seigneurToMarquisate[seigneurId] || []).forEach(marquisateId => {
-      if (marquisateId && marquisateMap[marquisateId]) titles.push(`Marquis de ${marquisateMap[marquisateId].name}`);
+      if (marquisateId && marquisateMap[marquisateId]) titles.push({ rankKey: 'marquisate', id: marquisateId, mode: 'dejure' });
     });
     (seigneurToCounty[seigneurId] || []).forEach(countyId => {
-      if (countyId && countyMap[countyId]) titles.push(`Comte de ${countyMap[countyId].name}`);
+      if (countyId && countyMap[countyId]) titles.push({ rankKey: 'county', id: countyId, mode: 'dejure' });
     });
     (seigneurToViscounty[seigneurId] || []).forEach(viscountyId => {
-      if (viscountyId && viscountyMap[viscountyId]) titles.push(`Vicomte de ${viscountyMap[viscountyId].name}`);
+      if (viscountyId && viscountyMap[viscountyId]) titles.push({ rankKey: 'viscounty', id: viscountyId, mode: 'dejure' });
     });
     const ownedBaronies = Object.values(baronyLookup)
       .filter(b => b.seigneur_id === seigneurId)
@@ -568,6 +609,7 @@
     if (!routeId || !tradeRoutePanel) return;
     const route = tradeRouteById[routeId];
     if (!route) return;
+    selectedTitle = null;
     if (core && typeof core.selectBarony === 'function') {
       suppressTradeRoutePanelHide = true;
       core.selectBarony(null);
@@ -625,6 +667,7 @@
     if (!lineId || !tradeRoutePanel) return;
     const line = tradeLineById[lineId];
     if (!line) return;
+    selectedTitle = null;
     if (core && typeof core.selectBarony === 'function') {
       suppressTradeRoutePanelHide = true;
       core.selectBarony(null);
@@ -669,9 +712,14 @@
       return;
     }
     section.style.display = 'block';
-    titles.forEach(text => {
+    titles.forEach(title => {
+      if (!title || !title.rankKey || !title.id) return;
       const li = document.createElement('li');
-      li.textContent = text;
+      const cfg = titleTypeConfig[title.rankKey];
+      if (cfg?.prefix) {
+        li.appendChild(document.createTextNode(`${cfg.prefix} `));
+      }
+      li.appendChild(createTitleButton(title.rankKey, title.id, { mode: title.mode || 'dejure' }));
       list.appendChild(li);
     });
     baronies.forEach(barony => {
@@ -696,6 +744,135 @@
       });
     } else {
       section.style.display = 'none';
+    }
+  }
+
+  function getBaronyTitleId(baronyInfo, rankKey, mode = 'dejure') {
+    if (!baronyInfo) return null;
+    if (mode === 'defacto') return resolveDefactoTitle(baronyInfo, rankKey);
+    if (rankKey === 'viscounty') return baronyInfo.viscounty_id;
+    if (rankKey === 'county') return baronyInfo.county_id;
+    const county = countyMap[baronyInfo.county_id];
+    if (rankKey === 'marquisate') return county?.marquisate_id || null;
+    if (rankKey === 'duchy') return county?.duchy_id || null;
+    const duchy = county ? duchyMap[county.duchy_id] : null;
+    if (rankKey === 'archduchy') return duchy?.archduchy_id || null;
+    if (rankKey === 'kingdom') return duchy?.kingdom_id || null;
+    const kingdom = duchy ? kingdomMap[duchy.kingdom_id] : null;
+    if (rankKey === 'empire') return kingdom?.empire_id || null;
+    return null;
+  }
+
+  function getBaroniesForTitle(rankKey, titleId, mode = 'dejure') {
+    return Object.values(baronyMeta)
+      .filter(info => String(getBaronyTitleId(info, rankKey, mode) || '') === String(titleId))
+      .map(info => info.id);
+  }
+
+  function getImmediateSubtitles(rankKey, titleId, mode = 'dejure') {
+    const idx = titleHierarchy.indexOf(rankKey);
+    if (idx <= 0) return [];
+    const childRank = titleHierarchy[idx - 1];
+    const ids = new Set();
+    getBaroniesForTitle(rankKey, titleId, mode).forEach(baronyId => {
+      const childId = getBaronyTitleId(baronyMeta[baronyId], childRank, mode);
+      if (childId) ids.add(childId);
+    });
+    return [...ids]
+      .map(id => ({ rankKey: childRank, id }))
+      .sort((a, b) => {
+        const aName = getTitleMap(a.rankKey)[a.id]?.name || '';
+        const bName = getTitleMap(b.rankKey)[b.id]?.name || '';
+        return aName.localeCompare(bName, 'fr');
+      });
+  }
+
+  function setTitleHierarchyTable(section, tbody, rankKey, titleInfo, mode) {
+    if (!section || !tbody) return;
+    tbody.innerHTML = '';
+    const currentIndex = titleHierarchy.indexOf(rankKey);
+    if (currentIndex < 0 || !titleInfo) {
+      section.style.display = 'none';
+      return;
+    }
+    const sampleBaronyId = getBaroniesForTitle(rankKey, titleInfo.id, mode)[0];
+    const sampleBarony = sampleBaronyId ? baronyMeta[sampleBaronyId] : null;
+    if (!sampleBarony) {
+      section.style.display = 'none';
+      return;
+    }
+
+    const rows = [];
+    for (let i = currentIndex + 1; i < titleHierarchy.length; i++) {
+      const parentRank = titleHierarchy[i];
+      const dejureId = getBaronyTitleId(sampleBarony, parentRank, 'dejure');
+      const defactoId = getBaronyTitleId(sampleBarony, parentRank, 'defacto');
+      if (!dejureId && !defactoId) continue;
+      rows.push({ rankKey: parentRank, dejureId, defactoId });
+    }
+
+    if (!rows.length) {
+      section.style.display = 'none';
+      return;
+    }
+
+    section.style.display = 'block';
+    rows.reverse().forEach(row => {
+      const tr = document.createElement('tr');
+      const levelCell = document.createElement('td');
+      const strong = document.createElement('strong');
+      strong.textContent = titleTypeConfig[row.rankKey].label;
+      levelCell.appendChild(strong);
+      const dejureCell = document.createElement('td');
+      if (row.dejureId) {
+        dejureCell.appendChild(createTitleButton(row.rankKey, row.dejureId, { mode: 'dejure' }));
+      }
+      const defactoCell = document.createElement('td');
+      if (row.defactoId) {
+        defactoCell.appendChild(createTitleButton(row.rankKey, row.defactoId, { mode: 'defacto' }));
+      }
+      tr.appendChild(levelCell);
+      tr.appendChild(dejureCell);
+      tr.appendChild(defactoCell);
+      tbody.appendChild(tr);
+    });
+  }
+
+  function showTitleInfo(rankKey, titleId, mode = 'dejure') {
+    const titleInfo = getTitleMap(rankKey)[titleId];
+    if (!titleInfo || !infoPanel) return;
+    selectedTitle = { rankKey, id: titleId, mode };
+    hideSeigneurInfo();
+    hideTradeRoutePanel();
+    if (seaInfoPanel) seaInfoPanel.style.display = 'none';
+    infoPanel.style.display = 'block';
+    const rankLabel = titleTypeConfig[rankKey]?.label || 'Titre';
+    if (baronyTitle) baronyTitle.textContent = `${rankLabel}: ${titleInfo.name || ''} (#${titleInfo.id || ''})`;
+    setSeigneurLine(infoOwnerLine, titleInfo.seigneur_id, 'Détenteur:');
+    if (infoReligionLine) infoReligionLine.style.display = 'none';
+    if (infoCultureLine) infoCultureLine.style.display = 'none';
+    if (tradeRoutesSection) tradeRoutesSection.style.display = 'none';
+    if (religiousSection) religiousSection.style.display = 'none';
+    if (canonicalOwnedSection) canonicalOwnedSection.style.display = 'none';
+    if (canonicalParentSection) canonicalParentSection.style.display = 'none';
+    setTitleHierarchyTable(feudalSection, infoFeudalBody, rankKey, titleInfo, mode);
+
+    if (titleSubtitlesSection && titleSubtitlesList) {
+      titleSubtitlesList.innerHTML = '';
+      const subtitles = getImmediateSubtitles(rankKey, titleId, mode);
+      if (subtitles.length > 0) {
+        titleSubtitlesSection.style.display = 'block';
+        subtitles.forEach(item => {
+          const li = document.createElement('li');
+          li.appendChild(createTitleButton(item.rankKey, item.id, { mode }));
+          titleSubtitlesList.appendChild(li);
+        });
+      } else {
+        titleSubtitlesSection.style.display = 'none';
+      }
+    }
+    if (core && typeof core.setSelectedBaronies === 'function') {
+      core.setSelectedBaronies(getBaroniesForTitle(rankKey, titleId, mode));
     }
   }
 
@@ -1082,46 +1259,53 @@
 
     const rows = {
       viscounty: {
+        rankKey: 'viscounty',
         level: 'Vicomté',
-        dejure: viscounty?.name || '',
-        defacto: viscountyMap[resolveDefactoTitle(info, 'viscounty')]?.name || ''
+        dejureId: viscounty?.id || null,
+        defactoId: resolveDefactoTitle(info, 'viscounty')
       },
       county: {
+        rankKey: 'county',
         level: 'Comté',
-        dejure: county?.name || '',
-        defacto: countyMap[resolveDefactoTitle(info, 'county')]?.name || ''
+        dejureId: county?.id || null,
+        defactoId: resolveDefactoTitle(info, 'county')
       },
       marquisate: {
+        rankKey: 'marquisate',
         level: 'Marquisat',
-        dejure: marquisate?.name || '',
-        defacto: marquisateMap[resolveDefactoTitle(info, 'marquisate')]?.name || ''
+        dejureId: marquisate?.id || null,
+        defactoId: resolveDefactoTitle(info, 'marquisate')
       },
       duchy: {
+        rankKey: 'duchy',
         level: 'Duché',
-        dejure: duchy?.name || '',
-        defacto: duchyMap[resolveDefactoTitle(info, 'duchy')]?.name || ''
+        dejureId: duchy?.id || null,
+        defactoId: resolveDefactoTitle(info, 'duchy')
       },
       archduchy: {
+        rankKey: 'archduchy',
         level: 'Archiduché',
-        dejure: archduchy?.name || '',
-        defacto: archduchyMap[resolveDefactoTitle(info, 'archduchy')]?.name || ''
+        dejureId: archduchy?.id || null,
+        defactoId: resolveDefactoTitle(info, 'archduchy')
       },
       kingdom: {
+        rankKey: 'kingdom',
         level: 'Royaume',
-        dejure: kingdom?.name || '',
-        defacto: kingdomMap[resolveDefactoTitle(info, 'kingdom')]?.name || ''
+        dejureId: kingdom?.id || null,
+        defactoId: resolveDefactoTitle(info, 'kingdom')
       },
       empire: {
+        rankKey: 'empire',
         level: 'Empire',
-        dejure: empire?.name || '',
-        defacto: empireMap[resolveDefactoTitle(info, 'empire')]?.name || ''
+        dejureId: empire?.id || null,
+        defactoId: resolveDefactoTitle(info, 'empire')
       }
     };
 
     const order = ['kingdom', 'empire', 'archduchy', 'duchy', 'marquisate', 'county', 'viscounty'];
     const filteredRows = order
       .map(key => rows[key])
-      .filter(row => row && (row.dejure || row.defacto));
+      .filter(row => row && (row.dejureId || row.defactoId));
 
     const hasData = filteredRows.length > 0;
     if (!hasData) {
@@ -1137,9 +1321,9 @@
       strong.textContent = row.level;
       levelCell.appendChild(strong);
       const dejureCell = document.createElement('td');
-      dejureCell.textContent = row.dejure;
+      if (row.dejureId) dejureCell.appendChild(createTitleButton(row.rankKey, row.dejureId, { mode: 'dejure' }));
       const defactoCell = document.createElement('td');
-      defactoCell.textContent = row.defacto;
+      if (row.defactoId) defactoCell.appendChild(createTitleButton(row.rankKey, row.defactoId, { mode: 'defacto' }));
       tr.appendChild(levelCell);
       tr.appendChild(dejureCell);
       tr.appendChild(defactoCell);
@@ -1347,6 +1531,7 @@
   }
 
   function handleSelect(id) {
+    selectedTitle = null;
     hideSeigneurInfo();
     if (!suppressTradeRoutePanelHide) {
       hideTradeRoutePanel();
@@ -1377,6 +1562,14 @@
       return;
     }
     const info = baronyMeta[id] || {};
+    const titleFilter = getTitleFilterInfo(filterSelect?.value);
+    if (titleFilter) {
+      const titleId = getBaronyTitleId(info, titleFilter.rankKey, titleFilter.mode);
+      if (titleId) {
+        showTitleInfo(titleFilter.rankKey, titleId, titleFilter.mode);
+        return;
+      }
+    }
     if (infoPanel) infoPanel.style.display = 'block';
     if (seaInfoPanel) seaInfoPanel.style.display = 'none';
     if (baronyTitle) {
@@ -1405,6 +1598,7 @@
       return;
     }
     setTradeRouteInfoMode(false);
+    if (titleSubtitlesSection) titleSubtitlesSection.style.display = 'none';
     setLabeledLine(
       infoReligionLine,
       'Religion de la population :',
@@ -1435,6 +1629,9 @@
     setBaronyList(canonicalParentSection, canonicalParentList, parentCanonicals);
     if (filterManager && filterSelect && filterSelect.value === 'distance') {
       filterManager.applyFilter('distance');
+    }
+    if (core && typeof core.setSelectedBaronies === 'function') {
+      core.setSelectedBaronies(id ? [id] : []);
     }
   }
 
@@ -1715,6 +1912,7 @@
         }
         if (filterSelect) {
           handleFilterChange = () => {
+            const activeTitleFilter = getTitleFilterInfo(filterSelect.value);
             if (filterSelect.value !== 'trade_routes') {
               selectedTradeRouteId = null;
               selectedTradeLineId = null;
@@ -1726,7 +1924,19 @@
               }
               setTradeRouteInfoMode(false);
               hideTradeRoutePanel();
-              if (infoPanel) infoPanel.style.display = core?.currentSelectedId ? 'block' : 'none';
+              if (activeTitleFilter && selectedTitle && selectedTitle.rankKey === activeTitleFilter.rankKey) {
+                showTitleInfo(selectedTitle.rankKey, selectedTitle.id, activeTitleFilter.mode);
+              } else if (selectedTitle) {
+                if (infoPanel) infoPanel.style.display = 'block';
+                if (core && typeof core.setSelectedBaronies === 'function') {
+                  core.setSelectedBaronies([]);
+                }
+              } else {
+                if (infoPanel) infoPanel.style.display = core?.currentSelectedId ? 'block' : 'none';
+                if (core && typeof core.setSelectedBaronies === 'function') {
+                  core.setSelectedBaronies(core?.currentSelectedId ? [core.currentSelectedId] : []);
+                }
+              }
             } else if (core.currentSelectedId) {
               setTradeRouteInfoMode(true);
               renderTradeRoutesList(core.currentSelectedId);
@@ -1738,6 +1948,11 @@
               if (tradeRoutePanel) tradeRoutePanel.style.display = 'block';
             }
             filterManager.applyFilter(filterSelect.value);
+            if (activeTitleFilter && selectedTitle && selectedTitle.rankKey === activeTitleFilter.rankKey) {
+              if (core && typeof core.setSelectedBaronies === 'function') {
+                core.setSelectedBaronies(getBaroniesForTitle(selectedTitle.rankKey, selectedTitle.id, activeTitleFilter.mode));
+              }
+            }
             updateCultureRankingPanel();
           };
           filterSelect.addEventListener('change', handleFilterChange);
