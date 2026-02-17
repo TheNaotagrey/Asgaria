@@ -342,6 +342,10 @@
           showBaronyDetails(match.baronyId);
           return;
         }
+        if (match.titleRankKey && match.titleId) {
+          showTitleInfo(match.titleRankKey, match.titleId, match.titleMode || 'dejure');
+          return;
+        }
         const targetId = match.seigneurId || match.id;
         if (targetId) showSeigneurInfo(targetId);
       }
@@ -376,6 +380,9 @@
         entries.push({
           id: `${key}-${title.id}`,
           seigneurId: title.seigneur_id,
+          titleRankKey: key,
+          titleId: title.id,
+          titleMode: 'dejure',
           name: display,
           displayName: `${display} — ${seigneurName}`,
           sortName: display
@@ -838,6 +845,17 @@
     });
   }
 
+  function syncTitleSelectionHighlight() {
+    if (!core || typeof core.setSelectedBaronies !== 'function') return;
+    if (!selectedTitle) return;
+    const activeTitleFilter = getTitleFilterInfo(filterSelect?.value);
+    if (activeTitleFilter && activeTitleFilter.rankKey === selectedTitle.rankKey) {
+      core.setSelectedBaronies(getBaroniesForTitle(selectedTitle.rankKey, selectedTitle.id, activeTitleFilter.mode));
+      return;
+    }
+    core.setSelectedBaronies([]);
+  }
+
   function showTitleInfo(rankKey, titleId, mode = 'dejure') {
     const titleInfo = getTitleMap(rankKey)[titleId];
     if (!titleInfo || !infoPanel) return;
@@ -864,6 +882,8 @@
         titleSubtitlesSection.style.display = 'block';
         subtitles.forEach(item => {
           const li = document.createElement('li');
+          const childLabel = titleTypeConfig[item.rankKey]?.label || 'Titre';
+          li.appendChild(document.createTextNode(`${childLabel} de `));
           li.appendChild(createTitleButton(item.rankKey, item.id, { mode }));
           titleSubtitlesList.appendChild(li);
         });
@@ -871,9 +891,7 @@
         titleSubtitlesSection.style.display = 'none';
       }
     }
-    if (core && typeof core.setSelectedBaronies === 'function') {
-      core.setSelectedBaronies(getBaroniesForTitle(rankKey, titleId, mode));
-    }
+    syncTitleSelectionHighlight();
   }
 
   function addSeigneurTitle(map, seigneurId, titleId) {
@@ -1948,10 +1966,8 @@
               if (tradeRoutePanel) tradeRoutePanel.style.display = 'block';
             }
             filterManager.applyFilter(filterSelect.value);
-            if (activeTitleFilter && selectedTitle && selectedTitle.rankKey === activeTitleFilter.rankKey) {
-              if (core && typeof core.setSelectedBaronies === 'function') {
-                core.setSelectedBaronies(getBaroniesForTitle(selectedTitle.rankKey, selectedTitle.id, activeTitleFilter.mode));
-              }
+            if (selectedTitle) {
+              syncTitleSelectionHighlight();
             }
             updateCultureRankingPanel();
           };
