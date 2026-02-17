@@ -1,6 +1,6 @@
 (function (global) {
   const terrainColor = [239, 228, 176];
-  const selectedTransparencyFactor = 0.55;
+  const selectedTransparencyFactor = 1;
 
   /**
    * Initialise le rendu de la carte.
