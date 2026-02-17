@@ -52,7 +52,9 @@
   let core = null;
 
   const baseMap = document.getElementById('baseMap');
+  const idOverlayMap = document.getElementById('idOverlayMap');
   if (mapMode === 'sea' && baseMap) baseMap.src = 'zones_maritimes.png';
+  if (idOverlayMap && mapMode === 'sea') idOverlayMap.style.display = 'none';
   const pixelCanvas = document.getElementById('pixelCanvas');
   const mapContainer = document.getElementById('mapContainer');
   const infoPanel = document.getElementById('infoPanel');
@@ -1690,6 +1692,10 @@
       mapHeight = baseMap.naturalHeight;
       baseMap.style.width = mapWidth + 'px';
       baseMap.style.height = mapHeight + 'px';
+      if (idOverlayMap) {
+        idOverlayMap.style.width = mapWidth + 'px';
+        idOverlayMap.style.height = mapHeight + 'px';
+      }
       pixelCanvas.width = mapWidth;
       pixelCanvas.height = mapHeight;
       pixelCanvas.style.width = mapWidth + 'px';
