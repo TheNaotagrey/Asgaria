@@ -360,6 +360,15 @@ main {
   pointer-events: auto;
 }
 
+.id-overlay-map {
+  position: absolute;
+  top: 0;
+  left: 0;
+  image-rendering: pixelated;
+  pointer-events: none;
+  z-index: 3;
+}
+
 /* Panneau d’informations */
 .info-panel {
   position: absolute;
