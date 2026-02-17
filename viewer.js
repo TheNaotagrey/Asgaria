@@ -117,6 +117,13 @@
   };
 
   const titleHierarchy = ['viscounty', 'county', 'marquisate', 'duchy', 'archduchy', 'kingdom', 'empire'];
+  const dejureSubtitleRankMap = {
+    empire: 'kingdom',
+    kingdom: 'duchy',
+    archduchy: 'duchy',
+    duchy: 'county',
+    marquisate: 'county'
+  };
 
   function setLine(elem, text) {
     if (!elem) return;
@@ -776,10 +783,49 @@
       .map(info => info.id);
   }
 
+  function getHighestTitleForSeigneur(seigneurId) {
+    if (!seigneurId) return null;
+    const sid = String(seigneurId);
+    for (let i = titleHierarchy.length - 1; i >= 0; i--) {
+      const rankKey = titleHierarchy[i];
+      const list = titleConfig[rankKey]?.seigneurTo?.[sid];
+      if (Array.isArray(list) && list.length > 0) {
+        return { rankKey, id: list[0] };
+      }
+    }
+    return null;
+  }
+
+  function getDefactoSubtitlesFromVassals(rankKey, titleId) {
+    const titleInfo = getTitleMap(rankKey)?.[titleId];
+    const holderId = titleInfo?.seigneur_id;
+    if (!holderId) return [];
+    const seen = new Set();
+    const subtitles = [];
+    Object.values(seigneurMap).forEach(seigneur => {
+      if (String(seigneur.overlord_id || '') !== String(holderId)) return;
+      const highestTitle = getHighestTitleForSeigneur(seigneur.id);
+      if (!highestTitle) return;
+      const key = `${highestTitle.rankKey}:${highestTitle.id}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      subtitles.push(highestTitle);
+    });
+    return subtitles.sort((a, b) => {
+      const rankDiff = titleHierarchy.indexOf(b.rankKey) - titleHierarchy.indexOf(a.rankKey);
+      if (rankDiff !== 0) return rankDiff;
+      const aName = getTitleMap(a.rankKey)[a.id]?.name || '';
+      const bName = getTitleMap(b.rankKey)[b.id]?.name || '';
+      return aName.localeCompare(bName, 'fr');
+    });
+  }
+
   function getImmediateSubtitles(rankKey, titleId, mode = 'dejure') {
-    const idx = titleHierarchy.indexOf(rankKey);
-    if (idx <= 0) return [];
-    const childRank = titleHierarchy[idx - 1];
+    if (mode === 'defacto') {
+      return getDefactoSubtitlesFromVassals(rankKey, titleId);
+    }
+    const childRank = dejureSubtitleRankMap[rankKey];
+    if (!childRank) return [];
     const ids = new Set();
     getBaroniesForTitle(rankKey, titleId, mode).forEach(baronyId => {
       const childId = getBaronyTitleId(baronyMeta[baronyId], childRank, mode);
