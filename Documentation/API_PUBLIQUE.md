@@ -114,6 +114,7 @@ Niveau féodal supérieur au comté. Sert à structurer l'organisation territori
 - `seigneur_id` (`INTEGER|null`) : détenteur.
 - `kingdom_id` (`INTEGER|null`) : royaume de jure.
 - `archduchy_id` (`INTEGER|null`) : archiduché de jure.
+- `banquet_religion_id` (`INTEGER|null`) : religion gagnante de l'Enchère au Banquet (bonus de piété ducale).
 - `defacto_kingdom_id` (`INTEGER|null`) : royaume de facto.
 - `defacto_archduchy_id` (`INTEGER|null`) : archiduché de facto.
 - `color` (`TEXT`) : couleur.

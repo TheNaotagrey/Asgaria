@@ -2833,7 +2833,7 @@ async function loadKingdoms(){
   const empiresSelect = sortByName(empires);
   const kingdomsById = kingdoms.slice().sort((a,b)=>a.id - b.id);
   const duchiesByName = sortByName(duchies);
-  const duchyFields = ['name','seigneur_id','kingdom_id','archduchy_id','defacto_kingdom_id','defacto_archduchy_id','color'];
+  const duchyFields = ['name','seigneur_id','kingdom_id','archduchy_id','banquet_religion_id','defacto_kingdom_id','defacto_archduchy_id','color'];
   renderTable(document.getElementById('tableKingdoms'), kingdomsById, {
     endpoint:'kingdoms',
     fields:['name','seigneur_id','empire_id','defacto_empire_id','color'],
@@ -2866,7 +2866,7 @@ async function loadArchduchies(){
   const kingdomsSelect = sortByName(kingdoms);
   const archduchiesById = archduchies.slice().sort((a,b)=>a.id - b.id);
   const duchiesByName = sortByName(duchies);
-  const duchyFields = ['name','seigneur_id','kingdom_id','archduchy_id','defacto_kingdom_id','defacto_archduchy_id','color'];
+  const duchyFields = ['name','seigneur_id','kingdom_id','archduchy_id','banquet_religion_id','defacto_kingdom_id','defacto_archduchy_id','color'];
   renderTable(document.getElementById('tableArchduchies'), archduchiesById, {
     endpoint:'archduchies',
     fields:['name','seigneur_id','defacto_kingdom_id','color'],
@@ -2888,24 +2888,26 @@ async function loadArchduchies(){
 }
 
 async function loadDuchies(){
-  const [duchies,seigneurs,kingdoms,archduchies,counties] = await Promise.all([
+  const [duchies,seigneurs,kingdoms,archduchies,counties,religions] = await Promise.all([
     getData('duchies','/api/duchies'),
     getData('seigneurs','/api/seigneurs'),
     getData('kingdoms','/api/kingdoms'),
     getData('archduchies','/api/archduchies'),
     getData('counties','/api/counties'),
+    getData('religions','/api/religions'),
   ]);
   const seigneursSelect = sortByName(seigneurs);
   const kingdomsSelect = sortByName(kingdoms);
   const archduchiesSelect = sortByName(archduchies);
+  const religionsSelect = sortByName(religions);
   const duchiesById = duchies.slice().sort((a,b)=>a.id - b.id);
   const countiesByName = sortByName(counties);
   const countyFields = ['name','seigneur_id','duchy_id','marquisate_id','defacto_duchy_id','defacto_marquisate_id','color'];
   renderTable(document.getElementById('tableDuchies'), duchiesById, {
     endpoint:'duchies',
-    fields:['name','seigneur_id','kingdom_id','archduchy_id','defacto_kingdom_id','defacto_archduchy_id','color'],
-    selects:{seigneur_id:seigneursSelect, kingdom_id:kingdomsSelect, archduchy_id:archduchiesSelect, defacto_kingdom_id:kingdomsSelect, defacto_archduchy_id:archduchiesSelect},
-    labels:{name:'Nom', seigneur_id:'Détenteur du titre', kingdom_id:'Royaume', archduchy_id:'Archiduché', defacto_kingdom_id:'Royaume de facto', defacto_archduchy_id:'Archiduché de facto', color:'Couleur'},
+    fields:['name','seigneur_id','kingdom_id','archduchy_id','banquet_religion_id','defacto_kingdom_id','defacto_archduchy_id','color'],
+    selects:{seigneur_id:seigneursSelect, kingdom_id:kingdomsSelect, archduchy_id:archduchiesSelect, banquet_religion_id:religionsSelect, defacto_kingdom_id:kingdomsSelect, defacto_archduchy_id:archduchiesSelect},
+    labels:{name:'Nom', seigneur_id:'Détenteur du titre', kingdom_id:'Royaume', archduchy_id:'Archiduché', banquet_religion_id:'Enchère au Banquet', defacto_kingdom_id:'Royaume de facto', defacto_archduchy_id:'Archiduché de facto', color:'Couleur'},
     colorFields:['color'],
     relationWatch:['kingdom_id','archduchy_id'],
     deleteConfig: defaultDeleteConfig('le duché'),

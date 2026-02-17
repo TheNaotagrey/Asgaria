@@ -72,6 +72,7 @@
     { value: 'marquisate', label: 'Marquisat de jure' },
     { value: 'marquisate_defacto', label: 'Marquisat de facto' },
     { value: 'duchy', label: 'Duché de jure' },
+    { value: 'duchy_piety_ranking', label: 'Classement de Piété Ducalle' },
     { value: 'duchy_defacto', label: 'Duché de facto' },
     { value: 'archduchy', label: 'Archiduché de jure' },
     { value: 'archduchy_defacto', label: 'Archiduché de facto' },

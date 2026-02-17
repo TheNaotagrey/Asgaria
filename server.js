@@ -123,10 +123,12 @@ CREATE TABLE IF NOT EXISTS duchies (
   seigneur_id INTEGER,
   kingdom_id INTEGER,
   archduchy_id INTEGER,
+  banquet_religion_id INTEGER,
   defacto_kingdom_id INTEGER,
   defacto_archduchy_id INTEGER,
   color TEXT,
   FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id),
+  FOREIGN KEY(banquet_religion_id) REFERENCES religions(id),
   FOREIGN KEY(kingdom_id) REFERENCES kingdoms(id),
   FOREIGN KEY(archduchy_id) REFERENCES archduchies(id)
 );
@@ -879,6 +881,9 @@ db.serialize(() => {
       if (!rows.some(r => r.name === 'archduchy_id')) {
         db.run('ALTER TABLE duchies ADD COLUMN archduchy_id INTEGER');
       }
+      if (!rows.some(r => r.name === 'banquet_religion_id')) {
+        db.run('ALTER TABLE duchies ADD COLUMN banquet_religion_id INTEGER');
+      }
       if (!rows.some(r => r.name === 'defacto_kingdom_id')) {
         db.run('ALTER TABLE duchies ADD COLUMN defacto_kingdom_id INTEGER');
       }
@@ -1457,7 +1462,7 @@ app.post('/api/profile', (req, res) => {
 app.use('/api/empires', crudRoutes('empires',['name','seigneur_id','color']));
 app.use('/api/kingdoms', crudRoutes('kingdoms',['name','seigneur_id','empire_id','defacto_empire_id','color']));
 app.use('/api/archduchies', crudRoutes('archduchies',['name','seigneur_id','defacto_kingdom_id','color']));
-app.use('/api/duchies', crudRoutes('duchies',['name','seigneur_id','kingdom_id','archduchy_id','defacto_kingdom_id','defacto_archduchy_id','color']));
+app.use('/api/duchies', crudRoutes('duchies',['name','seigneur_id','kingdom_id','archduchy_id','banquet_religion_id','defacto_kingdom_id','defacto_archduchy_id','color']));
 app.use('/api/marquisates', crudRoutes('marquisates',['name','seigneur_id','defacto_duchy_id','color']));
 app.use('/api/counties', crudRoutes('counties',['name','seigneur_id','duchy_id','marquisate_id','defacto_duchy_id','defacto_marquisate_id','color']));
 app.use('/api/viscounties', crudRoutes('viscounties',['name','seigneur_id','defacto_county_id','color']));
@@ -2211,7 +2216,7 @@ app.get('/api/organigrammes', (req, res) => {
     empires: 'SELECT id, name, seigneur_id, color FROM empires',
     kingdoms: 'SELECT id, name, seigneur_id, empire_id, color FROM kingdoms',
     archduchies: 'SELECT id, name, seigneur_id, color FROM archduchies',
-    duchies: 'SELECT id, name, seigneur_id, kingdom_id, archduchy_id, color FROM duchies',
+    duchies: 'SELECT id, name, seigneur_id, kingdom_id, archduchy_id, banquet_religion_id, color FROM duchies',
     marquisates: 'SELECT id, name, seigneur_id, color FROM marquisates',
     counties: 'SELECT id, name, seigneur_id, duchy_id, marquisate_id, color FROM counties',
     viscounties: 'SELECT id, name, seigneur_id, color FROM viscounties',
