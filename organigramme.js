@@ -28,6 +28,7 @@ const LABEL_VERTICAL_PADDING = 6;
 const LABEL_MAX_WIDTH = 180;
 const LABEL_LINE_HEIGHT = 18;
 const LABEL_MEASURE_CANVAS = document.createElement('canvas');
+const VOWEL_REGEX = /^[aeiouyàâäéèêëîïôöùûüÿæœ]/i;
 
 const state = {
   data: null,
@@ -138,7 +139,12 @@ function buildMaps(data) {
       const seigneurName = state.seigneursById.get(row.seigneur_id)?.name || 'Seigneur inconnu';
       if (titleName) {
         const baronySuffix = key === 'barony' && row.id ? ` (#${row.id})` : '';
-        const display = `${titleLabel} ${titleName}${baronySuffix}`.trim();
+        const display = formatTitleDisplay({
+          key,
+          label: titleLabel,
+          name: titleName,
+          suffix: baronySuffix
+        });
         state.searchEntries.push({
           id: `${table}-${row.id}`,
           seigneurId: row.seigneur_id,
@@ -231,9 +237,13 @@ function getTopLevelSeigneurs() {
 function formatRootLabel(seigneur) {
   const highest = state.highestTitleBySeigneur.get(seigneur.id) || titleStyleByKey.seigneur;
   const titles = state.titlesBySeigneur.get(seigneur.id) || [];
-  const titleName = titles.find((title) => title.key === highest.key)?.name;
-  if (titleName) {
-    return `${highest.label} ${titleName}`;
+  const highestTitle = titles.find((title) => title.key === highest.key);
+  if (highestTitle?.name) {
+    return formatTitleDisplay({
+      key: highestTitle.key,
+      label: highest.label,
+      name: highestTitle.name
+    });
   }
   return `${highest.label} ${seigneur.name}`;
 }
@@ -539,25 +549,32 @@ function renderDialog(seigneurId) {
 }
 
 function formatTitleName(title) {
-  const prefixMap = {
-    empire: 'Empereur de',
-    kingdom: 'Roi de',
-    archduchy: 'Archiduc de',
-    duchy: 'Duc de',
-    marquisate: 'Marquis de',
-    county: 'Comte de',
-    viscounty: 'Vicomte de',
-    barony: 'Baron de'
-  };
-  const prefix = prefixMap[title.key];
   const baronySuffix = title.key === 'barony' && title.id ? ` (#${title.id})` : '';
-  if (prefix && title.name) {
-    return `${prefix} ${title.name}${baronySuffix}`;
+  return formatTitleDisplay({
+    key: title.key,
+    label: title.label,
+    name: title.name,
+    suffix: baronySuffix
+  });
+}
+
+function formatTitleDisplay({ key, label, name, suffix = '' }) {
+  if (!name) {
+    return `${label}${suffix}`;
   }
-  if (title.name) {
-    return `${title.label} ${title.name}${baronySuffix}`;
+  if (key === 'barony' && isBishopricName(name)) {
+    return `${name}${suffix}`;
   }
-  return `${title.label}${baronySuffix}`;
+  return `${label} ${buildFrenchTitlePreposition(name)}${name}${suffix}`;
+}
+
+function buildFrenchTitlePreposition(name) {
+  const trimmed = String(name || '').trim();
+  return VOWEL_REGEX.test(trimmed) ? "d'" : 'de ';
+}
+
+function isBishopricName(name) {
+  return /^évêché\s+de\b/i.test(String(name || '').trim());
 }
 
 function setLabeledLine(elem, label, value) {
@@ -581,22 +598,22 @@ function setLabeledLine(elem, label, value) {
 function setSeigneurLine(elem, seigneurId, label) {
   if (!elem) return;
   elem.innerHTML = '';
+  if (!seigneurId) {
+    elem.style.display = 'none';
+    return;
+  }
   elem.style.display = 'flex';
   const labelSpan = document.createElement('span');
   labelSpan.className = 'info-label';
   labelSpan.textContent = label;
   elem.appendChild(labelSpan);
   elem.appendChild(document.createTextNode(' '));
-  if (seigneurId) {
-    const overlord = state.seigneursById.get(seigneurId);
-    if (overlord) {
-      elem.appendChild(createSeigneurButton(overlord.id, overlord.name));
-      return;
-    }
-    elem.appendChild(document.createTextNode('Inconnu'));
+  const overlord = state.seigneursById.get(seigneurId);
+  if (overlord) {
+    elem.appendChild(createSeigneurButton(overlord.id, overlord.name));
     return;
   }
-  elem.appendChild(document.createTextNode('Aucun'));
+  elem.appendChild(document.createTextNode('Inconnu'));
 }
 
 function createSeigneurButton(seigneurId, label) {
@@ -628,6 +645,7 @@ function setupInteractions() {
   let isDragging = false;
   let lastPosition = { x: 0, y: 0 };
   let activePointerId = null;
+  let dragDistance = 0;
   let pinchState = { pointers: new Map(), distance: null };
 
   const zoomAtPoint = (clientX, clientY, factor) => {
@@ -646,8 +664,11 @@ function setupInteractions() {
   const moveDrag = (event) => {
     if (!isDragging || event.pointerId !== activePointerId) return;
     hideInfoPanel();
-    state.transform.x += event.clientX - lastPosition.x;
-    state.transform.y += event.clientY - lastPosition.y;
+    const deltaX = event.clientX - lastPosition.x;
+    const deltaY = event.clientY - lastPosition.y;
+    dragDistance += Math.hypot(deltaX, deltaY);
+    state.transform.x += deltaX;
+    state.transform.y += deltaY;
     lastPosition = { x: event.clientX, y: event.clientY };
     applyTransform();
   };
@@ -667,6 +688,7 @@ function setupInteractions() {
       isDragging = true;
       activePointerId = event.pointerId;
       lastPosition = { x: event.clientX, y: event.clientY };
+      dragDistance = 0;
     }
 
     if (elements.canvas.setPointerCapture) {
@@ -704,8 +726,17 @@ function setupInteractions() {
     }
 
     if (event.pointerId === activePointerId) {
+      if (event.type === 'pointerup' && dragDistance < 6) {
+        const nodeGroup = event.target.closest('.organigramme-node');
+        const id = Number(nodeGroup?.dataset.id);
+        if (id) {
+          renderDialog(id);
+          centerOnSeigneur(id);
+        }
+      }
       isDragging = false;
       activePointerId = null;
+      dragDistance = 0;
     }
 
     if (elements.canvas.releasePointerCapture && elements.canvas.hasPointerCapture && elements.canvas.hasPointerCapture(event.pointerId)) {
