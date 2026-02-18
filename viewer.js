@@ -78,6 +78,7 @@
   const canonicalParentList = document.getElementById('canonicalParentList');
   const titleSubtitlesSection = document.getElementById('titleSubtitlesSection');
   const titleSubtitlesList = document.getElementById('titleSubtitlesList');
+  const titleSubtitlesHeading = titleSubtitlesSection?.querySelector('h3') || null;
   const seaInfoPanel = document.getElementById('seaInfoPanel');
   const seaInfoId = document.getElementById('seaInfoId');
   const seaInfoName = document.getElementById('seaInfoName');
@@ -109,6 +110,7 @@
   let searchInput = null;
   let selectedTitle = null;
   let handleFilterChange = null;
+  let defactoParentCache = new Map();
   const defaultFeudalSectionTitle = feudalSection?.querySelector('h3')?.textContent || 'Hiérarchie féodale';
   const defaultFeudalHeaders = Array.from(infoFeudalTable?.querySelectorAll('thead th') || []).map(th => th.textContent);
 
@@ -128,7 +130,19 @@
     kingdom: 'duchy',
     archduchy: 'duchy',
     duchy: 'county',
-    marquisate: 'county'
+    marquisate: 'county',
+    county: 'barony',
+    viscounty: 'barony'
+  };
+  const subtitlePluralByRank = {
+    barony: 'Baronnies',
+    viscounty: 'Vicomtés',
+    county: 'Comtés',
+    marquisate: 'Marquisats',
+    duchy: 'Duchés',
+    archduchy: 'Archiduchés',
+    kingdom: 'Royaumes',
+    empire: 'Empires'
   };
 
   function setLine(elem, text) {
@@ -808,21 +822,70 @@
       .map(info => info.id);
   }
 
-  function getImmediateSubtitles(rankKey, titleId, mode = 'dejure') {
+  function getTitleName(rankKey, id) {
+    if (rankKey === 'barony') return baronyMeta[id]?.name || baronyLookup[id]?.name || '';
+    return getTitleMap(rankKey)[id]?.name || '';
+  }
+
+  function compareSubtitleItems(a, b) {
+    const levelDiff = getRankIndex(b.rankKey) - getRankIndex(a.rankKey);
+    if (levelDiff !== 0) return levelDiff;
+    return getTitleName(a.rankKey, a.id).localeCompare(getTitleName(b.rankKey, b.id), 'fr');
+  }
+
+  function getImmediateDejureSubtitles(rankKey, titleId) {
     const childRank = dejureSubtitleRankMap[rankKey];
     if (!childRank) return [];
     const ids = new Set();
-    getBaroniesForTitle(rankKey, titleId, mode).forEach(baronyId => {
-      const childId = getBaronyTitleId(baronyMeta[baronyId], childRank, mode);
-      if (childId) ids.add(childId);
+    getBaroniesForTitle(rankKey, titleId, 'dejure').forEach(baronyId => {
+      const childId = getBaronyTitleId(baronyMeta[baronyId], childRank, 'dejure');
+      if (childId) ids.add(String(childId));
     });
-    return [...ids]
-      .map(id => ({ rankKey: childRank, id }))
-      .sort((a, b) => {
-        const aName = getTitleMap(a.rankKey)[a.id]?.name || '';
-        const bName = getTitleMap(b.rankKey)[b.id]?.name || '';
-        return aName.localeCompare(bName, 'fr');
+    return [...ids].map(id => ({ rankKey: childRank, id })).sort(compareSubtitleItems);
+  }
+
+  function getImmediateDefactoSubtitles(rankKey, titleId) {
+    const parentIndex = getRankIndex(rankKey);
+    if (parentIndex <= 0) return [];
+    const items = [];
+    for (let childIndex = parentIndex - 1; childIndex >= 0; childIndex--) {
+      const childRank = rankSequence[childIndex];
+      if (childRank === 'barony') {
+        Object.values(baronyMeta).forEach(info => {
+          const parent = resolveDefactoParent('barony', info);
+          if (parent?.rankKey === rankKey && String(parent.id) === String(titleId)) {
+            items.push({ rankKey: 'barony', id: String(info.id) });
+          }
+        });
+        continue;
+      }
+      Object.values(getTitleMap(childRank)).forEach(info => {
+        if (!info?.id) return;
+        const parent = resolveDefactoParent(childRank, info);
+        if (parent?.rankKey === rankKey && String(parent.id) === String(titleId)) {
+          items.push({ rankKey: childRank, id: String(info.id) });
+        }
       });
+    }
+    const dedup = new Map();
+    items.forEach(item => {
+      dedup.set(`${item.rankKey}:${item.id}`, item);
+    });
+    return [...dedup.values()].sort(compareSubtitleItems);
+  }
+
+  function getImmediateSubtitles(rankKey, titleId, mode = 'dejure') {
+    return mode === 'defacto'
+      ? getImmediateDefactoSubtitles(rankKey, titleId)
+      : getImmediateDejureSubtitles(rankKey, titleId);
+  }
+
+  function getSubtitleHeading(rankKey, mode = 'dejure') {
+    if (mode === 'defacto') return 'Sous-titres de facto:';
+    const childRank = dejureSubtitleRankMap[rankKey];
+    if (!childRank) return 'Sous-titres de jure:';
+    const plural = subtitlePluralByRank[childRank] || 'Sous-titres';
+    return `${plural} de jure:`;
   }
 
   function setTitleHierarchyTable(section, tbody, rankKey, titleInfo, mode) {
@@ -944,13 +1007,20 @@
     if (titleSubtitlesSection && titleSubtitlesList) {
       titleSubtitlesList.innerHTML = '';
       const subtitles = getImmediateSubtitles(rankKey, titleId, targetMode || mode);
+      if (titleSubtitlesHeading) {
+        titleSubtitlesHeading.textContent = getSubtitleHeading(rankKey, targetMode || mode);
+      }
       if (subtitles.length > 0) {
         titleSubtitlesSection.style.display = 'block';
         subtitles.forEach(item => {
           const li = document.createElement('li');
-          const childLabel = titleTypeConfig[item.rankKey]?.label || 'Titre';
-          li.appendChild(document.createTextNode(`${childLabel} de `));
-          li.appendChild(createTitleButton(item.rankKey, item.id, { mode: targetMode || mode }));
+          if (item.rankKey === 'barony') {
+            li.appendChild(createBaronyButton(item.id));
+          } else {
+            const childLabel = titleTypeConfig[item.rankKey]?.label || 'Titre';
+            li.appendChild(document.createTextNode(`${childLabel} de `));
+            li.appendChild(createTitleButton(item.rankKey, item.id, { mode: targetMode || mode }));
+          }
           titleSubtitlesList.appendChild(li);
         });
       } else {
@@ -1006,6 +1076,7 @@
   };
 
   function refreshTitleConfig() {
+    clearDefactoCache();
     titleConfig.viscounty.map = viscountyMap;
     titleConfig.viscounty.seigneurTo = seigneurToViscounty;
     titleConfig.county.map = countyMap;
@@ -1024,6 +1095,10 @@
 
   function getRankIndex(rankKey) {
     return rankSequence.indexOf(rankKey);
+  }
+
+  function clearDefactoCache() {
+    defactoParentCache = new Map();
   }
 
   function buildSeigneurChain(startId) {
@@ -1058,12 +1133,20 @@
   }
 
   function chooseClosestTitleForSeigneur(seigneurId, startIndex, dejureMap) {
+    const sid = String(seigneurId || '');
     for (let i = startIndex + 1; i < rankSequence.length; i++) {
       const key = rankSequence[i];
-      const list = titleConfig[key]?.seigneurTo?.[String(seigneurId)];
+      const list = titleConfig[key]?.seigneurTo?.[sid];
+      const dejureId = dejureMap[key];
+      if (dejureId && Array.isArray(list) && list.includes(dejureId)) {
+        return { rankKey: key, id: dejureId };
+      }
+    }
+    for (let i = startIndex + 1; i < rankSequence.length; i++) {
+      const key = rankSequence[i];
+      const list = titleConfig[key]?.seigneurTo?.[sid];
       if (Array.isArray(list) && list.length > 0) {
-        const selected = chooseByDejure(list, dejureMap[key]);
-        return selected ? { rankKey: key, id: selected } : null;
+        return { rankKey: key, id: list[0] };
       }
     }
     return null;
@@ -1416,7 +1499,7 @@
     return dejureMap;
   }
 
-  function resolveDefactoParent(rankKey, info) {
+  function resolveDefactoParentRaw(rankKey, info) {
     if (!info) return null;
     const startIndex = getRankIndex(rankKey);
     if (startIndex < 0 || startIndex >= rankSequence.length - 1) return null;
@@ -1429,13 +1512,28 @@
       if (highestIndex > startIndex) {
         const selected = chooseClosestTitleForSeigneur(seigneurId, startIndex, dejureMap);
         if (selected) return selected;
-      } else {
-        const overlordId = seigneurMap?.[seigneurId]?.overlord_id;
-        const selected = chooseClosestTitleFromChain(overlordId, startIndex, dejureMap);
-        if (selected) return selected;
       }
+      const overlordId = seigneurMap?.[seigneurId]?.overlord_id;
+      const selected = chooseClosestTitleFromChain(overlordId, startIndex, dejureMap);
+      if (selected) return selected;
     }
     return null;
+  }
+
+  function getDefactoToken(rankKey, info) {
+    if (!rankKey || !info?.id) return null;
+    return `${rankKey}:${info.id}`;
+  }
+
+  function resolveDefactoParent(rankKey, info) {
+    const token = getDefactoToken(rankKey, info);
+    if (!token) return null;
+    if (defactoParentCache.has(token)) {
+      return defactoParentCache.get(token);
+    }
+    const resolved = resolveDefactoParentRaw(rankKey, info);
+    defactoParentCache.set(token, resolved || null);
+    return resolved;
   }
 
   function resolveDefactoTitle(info, targetRankKey) {
