@@ -19,6 +19,9 @@ Ce dépôt propose un serveur Express/Node.js avec une base SQLite et plusieurs 
 - **script.js** : éditeur de carte permettant de modifier les baronnies et d'enregistrer les pixels.
 - **src/mapCore.js** : fonctions communes de rendu/zoom utilisées par `viewer.js` et `script.js`.
 - **src/mapFilters.js** : gestion des filtres et de la coloration de la carte, partagée par `viewer.js` et `script.js`.
+- **index2.html** : variante temporaire de la page carte (baronnies/maritime) pour valider l’architecture basée sur `viewModel.js`.
+- **viewer2.js** : variante temporaire de `viewer.js` qui reconstruit les index (titres, relations canoniques et sanctuaires) via `viewModel.js`.
+- **src/mapCore2.js**, **src/mapFilters2.js**, **src/bfs2.js**, **src/duchyPiety2.js**, **src/seigneurSearch2.js** : scripts temporaires de compatibilité chargés par `index2.html`.
 - **src/duchyPiety.js** : moteur partagé de calcul de la piété ducale (points détaillés, départage des égalités et religion gagnante), utilisé par `viewer.js` et `src/mapFilters.js`.
 - **src/crudRouter.js** : générateur de routes CRUD génériques utilisé par `server.js` pour réduire la duplication.
 - La base de données inclut désormais une table `sanctuaries` (avec un statut actif/inactif), une table `canonical_lands` (relation entre deux baronnies) et les colonnes `priory_religion_id`, `church_religion_id`, `cathedral_religion_id` et `vacant` (baronnie vacante) dans la table `baronies`, `defacto_county_id` dans la table `viscounties`, ainsi que `player` et `bishop` dans la table `seigneurs`. La table `duchies` inclut aussi `banquet_religion_id` (religion gagnante de l'Enchère au Banquet, nullable).
@@ -30,7 +33,7 @@ Ce dépôt propose un serveur Express/Node.js avec une base SQLite et plusieurs 
 - **organigramme.js** : affiche la page d’organigramme féodal des seigneurs (hiérarchie vassale, interactions et navigation).
 - **renderHeader.js** : insère le fragment HTML du header commun côté client.
 - **handleError.js** et **logger.js** : gestion des erreurs et du logging.
-- Les pages HTML (`index.html`, `mapEditor.html`, `admin.html`, `gestion.html`, `profile.html`, `organigramme.html`) chargent ces scripts selon leur rôle.
+- Les pages HTML (`index.html`, `index2.html`, `mapEditor.html`, `admin.html`, `gestion.html`, `profile.html`, `organigramme.html`) chargent ces scripts selon leur rôle.
 - Les scripts client communiquent avec l'API du serveur via `fetch`.
 - La base de données contient également une table `trade_transactions` (origine, destination, ressources, type, état, raison, décision, retour) pour enregistrer les échanges entre seigneuries. L'origine et la destination y sont stockées via les identifiants de seigneurie, les noms des seigneurs ou baronnies étant résolus dynamiquement. Les effets `land_transaction_max_per_month` et `naval_transaction_max_per_month` permettent d'augmenter les limites mensuelles de transactions.
 - La table `trade_routes` inclut désormais un identifiant propre et un chemin (liste ordonnée d'identifiants de baronnies) pour définir la route commerciale.
