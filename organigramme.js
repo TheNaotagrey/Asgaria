@@ -661,6 +661,7 @@ function setupInteractions() {
   let lastPosition = { x: 0, y: 0 };
   let activePointerId = null;
   let dragDistance = 0;
+  let pointerDownNodeId = null;
   let pinchState = { pointers: new Map(), distance: null };
 
   const zoomAtPoint = (clientX, clientY, factor) => {
@@ -692,6 +693,8 @@ function setupInteractions() {
     if (event.button !== 0 && event.pointerType !== 'touch') return;
     if (event.target.closest('.seigneur-search')) return;
     if (event.target.closest('.seigneur-search-results')) return;
+
+    pointerDownNodeId = resolveNodeIdFromEvent(event);
 
     pinchState.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (pinchState.pointers.size === 2) {
@@ -742,7 +745,7 @@ function setupInteractions() {
 
     if (event.pointerId === activePointerId) {
       if (event.type === 'pointerup' && dragDistance < 6) {
-        const id = resolveNodeIdFromEvent(event);
+        const id = resolveNodeIdFromEvent(event) || pointerDownNodeId;
         if (id) {
           renderDialog(id);
           centerOnSeigneur(id);
@@ -755,6 +758,10 @@ function setupInteractions() {
 
     if (elements.canvas.releasePointerCapture && elements.canvas.hasPointerCapture && elements.canvas.hasPointerCapture(event.pointerId)) {
       elements.canvas.releasePointerCapture(event.pointerId);
+    }
+
+    if (pinchState.pointers.size === 0) {
+      pointerDownNodeId = null;
     }
   };
 
