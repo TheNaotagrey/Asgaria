@@ -1126,6 +1126,11 @@
     return `${Math.floor(value)}`;
   }
 
+  function formatPointsOneDecimal(value) {
+    return Number(value || 0).toFixed(1);
+  }
+
+
   function normalizeLabelForSearch(value) {
     return String(value || '')
       .normalize('NFD')
@@ -1147,76 +1152,22 @@
     return county?.duchy_id || null;
   }
 
-  function createOrGetDuchyReligionStat(stats, duchyId, religionId) {
-    if (!duchyId || isExcludedPietyReligion(religionId)) return null;
-    const dKey = String(duchyId);
-    const rKey = String(religionId);
-    if (!stats[dKey]) stats[dKey] = {};
-    if (!stats[dKey][rKey]) {
-      stats[dKey][rKey] = {
-        duchyId,
-        religionId,
-        points: 0,
-        details: {
-          pop: 0,
-          priory: 0,
-          church: 0,
-          cathedral: 0,
-          bishopric: 0,
-          sanctuaryActive: 0,
-          sanctuaryInactive: 0,
-          banquet: 0,
-          titleCounts: {}
-        }
-      };
-    }
-    return stats[dKey][rKey];
-  }
-
-  function addDuchyPietyPoints(stats, duchyId, religionId, points, detailKey) {
-    const stat = createOrGetDuchyReligionStat(stats, duchyId, religionId);
-    if (!stat || !points) return;
-    stat.points += points;
-    if (detailKey && stat.details[detailKey] !== undefined) {
-      stat.details[detailKey] += 1;
-    }
-  }
-
   function buildDuchyPietyStats() {
-    const stats = {};
-    Object.values(baronyMeta).forEach(info => {
-      const duchyId = getDuchyIdForBarony(info);
-      if (!duchyId) return;
-      addDuchyPietyPoints(stats, duchyId, info.religion_pop_id, 1, 'pop');
-      addDuchyPietyPoints(stats, duchyId, info.priory_religion_id, 1, 'priory');
-      addDuchyPietyPoints(stats, duchyId, info.church_religion_id, 3, 'church');
-      addDuchyPietyPoints(stats, duchyId, info.cathedral_religion_id, 5, 'cathedral');
-
-      const sancts = sanctuaryMap[info.id] || [];
-      sancts.forEach(s => {
-        const isActive = info.religion_pop_id && String(info.religion_pop_id) === String(s.religion_id);
-        addDuchyPietyPoints(stats, duchyId, s.religion_id, isActive ? 3 : 0.1, isActive ? 'sanctuaryActive' : 'sanctuaryInactive');
-      });
-
-      if (isVacantBarony(info) || !info.seigneur_id) return;
-      const owner = seigneurMap[info.seigneur_id];
-      const ownerReligionId = owner?.religion_id;
-      if (isExcludedPietyReligion(ownerReligionId)) return;
-      if (owner.bishop) addDuchyPietyPoints(stats, duchyId, ownerReligionId, 8, 'bishopric');
-      const rankKey = getSeigneurRankKey(info.seigneur_id);
-      const rankCfg = duchyPietyTitleBonusConfig.find(cfg => cfg.key === rankKey);
-      if (rankCfg) {
-        addDuchyPietyPoints(stats, duchyId, ownerReligionId, rankCfg.points);
-        const stat = createOrGetDuchyReligionStat(stats, duchyId, ownerReligionId);
-        stat.details.titleCounts[rankKey] = (stat.details.titleCounts[rankKey] || 0) + 1;
+    return duchyPiety.computeDuchyPietyStats(
+      {
+        baronyMeta,
+        sanctuaryMap,
+        seigneurMap,
+        duchyMap,
+        religionMap
+      },
+      {
+        getDuchyIdForBarony,
+        getSeigneurRankKey,
+        isExcludedReligion: isExcludedPietyReligion,
+        includeTieBreakBonus: true
       }
-    });
-
-    Object.values(duchyMap).forEach(duchy => {
-      if (!duchy?.id || !duchy.banquet_religion_id) return;
-      addDuchyPietyPoints(stats, duchy.id, duchy.banquet_religion_id, 8, 'banquet');
-    });
-    return stats;
+    );
   }
 
   function buildDuchyPietyTooltipRows(stat) {
@@ -1229,6 +1180,7 @@
     if (stat.details.sanctuaryActive) rows.push({ label: `${stat.details.sanctuaryActive} ${stat.details.sanctuaryActive > 1 ? 'Sanctuaires actifs' : 'Sanctuaire actif'}`, points: `+${formatPoints(stat.details.sanctuaryActive * 3)}` });
     if (stat.details.sanctuaryInactive) rows.push({ label: `${stat.details.sanctuaryInactive} ${stat.details.sanctuaryInactive > 1 ? 'Sanctuaires inactifs' : 'Sanctuaire inactif'}`, points: `+${formatPoints(stat.details.sanctuaryInactive * 0.1)}` });
     if (stat.details.banquet) rows.push({ label: `${stat.details.banquet} ${stat.details.banquet > 1 ? 'Enchères au Banquet' : 'Enchère au Banquet'}`, points: `+${formatPoints(stat.details.banquet * 8)}` });
+    if (stat.details.tieBreak) rows.push({ label: `Départage égalité (${stat.details.tieBreak.label})`, points: `+${formatPoints(stat.details.tieBreak.bonus)}` });
     duchyPietyTitleBonusConfig.slice().reverse().forEach(cfg => {
       const count = stat.details.titleCounts[cfg.key] || 0;
       if (!count) return;
@@ -1268,7 +1220,7 @@
         const pointsCell = document.createElement('td');
         const pointsSpan = document.createElement('span');
         pointsSpan.className = 'tooltip';
-        pointsSpan.textContent = formatPoints(stat.points);
+        pointsSpan.textContent = formatPointsOneDecimal(stat.points);
         attachCultureFloatingTooltip(pointsSpan, stat.tooltipRows);
         pointsCell.appendChild(pointsSpan);
         tr.appendChild(religionCell);

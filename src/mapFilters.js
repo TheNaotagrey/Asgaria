@@ -22,17 +22,6 @@
       return !!(info && (info.vacant === 1 || info.vacant === '1' || info.vacant === true));
     }
 
-    const duchyPietyTitleBonusConfig = {
-      barony: 0.5,
-      viscounty: 0.75,
-      county: 1,
-      marquisate: 1.25,
-      duchy: 1.5,
-      archduchy: 2,
-      kingdom: 3,
-      empire: 4
-    };
-
     function getSeigneurRankKey(seigneurId) {
       const sid = String(seigneurId || '');
       if (data.seigneurToEmpire?.[sid]?.length) return 'empire';
@@ -51,53 +40,37 @@
       return county?.duchy_id || null;
     }
 
+    function normalizeLabelForSearch(value) {
+      return String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase();
+    }
+
+    function isExcludedPietyReligion(religionId) {
+      if (!religionId) return true;
+      const religion = data.religionMap?.[religionId];
+      if (!religion?.name) return false;
+      return normalizeLabelForSearch(religion.name).includes('athe');
+    }
+
     function buildDuchyPietyWinners() {
-      const duchyStats = {};
-      Object.values(data.baronyMeta || {}).forEach(info => {
-        const duchyId = getDuchyIdForBarony(info);
-        if (!duchyId) return;
-        const key = String(duchyId);
-        if (!duchyStats[key]) duchyStats[key] = {};
-        const add = (religionId, points) => {
-          if (!religionId || !points) return;
-          const rKey = String(religionId);
-          duchyStats[key][rKey] = (duchyStats[key][rKey] || 0) + points;
-        };
-        add(info.religion_pop_id, 1);
-        add(info.priory_religion_id, 1);
-        add(info.church_religion_id, 3);
-        add(info.cathedral_religion_id, 5);
-        const sancts = data.sanctuaryMap?.[info.id] || [];
-        sancts.forEach(s => {
-          const isActive = info.religion_pop_id && String(info.religion_pop_id) === String(s.religion_id);
-          add(s.religion_id, isActive ? 3 : 0.1);
-        });
-        if (!isVacantBarony(info)) {
-          const owner = info.seigneur_id ? data.seigneurMap?.[info.seigneur_id] : null;
-          if (owner?.bishop) add(owner.religion_id, 8);
-          const rankKey = getSeigneurRankKey(info.seigneur_id);
-          add(owner?.religion_id, duchyPietyTitleBonusConfig[rankKey] || 0);
+      const stats = duchyPiety.computeDuchyPietyStats(
+        {
+          baronyMeta: data.baronyMeta,
+          sanctuaryMap: data.sanctuaryMap,
+          seigneurMap: data.seigneurMap,
+          duchyMap: data.duchyMap,
+          religionMap: data.religionMap
+        },
+        {
+          getDuchyIdForBarony,
+          getSeigneurRankKey,
+          isExcludedReligion: isExcludedPietyReligion,
+          includeTieBreakBonus: true
         }
-      });
-      Object.values(data.duchyMap || {}).forEach(duchy => {
-        const religionId = duchy?.banquet_religion_id;
-        if (!duchy?.id || !religionId) return;
-        const dKey = String(duchy.id);
-        const rKey = String(religionId);
-        if (!duchyStats[dKey]) duchyStats[dKey] = {};
-        duchyStats[dKey][rKey] = (duchyStats[dKey][rKey] || 0) + 8;
-      });
-      const winners = {};
-      Object.entries(duchyStats).forEach(([duchyId, scores]) => {
-        const ranked = Object.entries(scores).sort((a, b) => {
-          if (b[1] !== a[1]) return b[1] - a[1];
-          const aName = data.religionMap?.[a[0]]?.name || '';
-          const bName = data.religionMap?.[b[0]]?.name || '';
-          return aName.localeCompare(bName, 'fr');
-        });
-        if (ranked.length > 0) winners[duchyId] = parseInt(ranked[0][0], 10);
-      });
-      return winners;
+      );
+      return duchyPiety.buildDuchyPietyWinnersFromStats(stats, data.religionMap);
     }
 
     function generateColor(str) {
