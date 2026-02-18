@@ -10,6 +10,8 @@
     const tradeRouteLandColor = [255, 106, 6];
     const tradeRouteSeaColor = [52, 152, 219];
     const tradeRoutePathColor = [255, 159, 67];
+    const DEFAULT_ALPHA = 255;
+    const SELECTED_ALPHA = 102;
     let currentFilter = '';
     let canonicalPatterns = {};
     let colorMap = {};
@@ -101,7 +103,7 @@
     function generateColor(str) {
       const hue = Math.floor(Math.random() * 360);
       const [r, g, b] = hslToRgb(hue, 65, 65);
-      return [r, g, b, 255];
+      return [r, g, b, DEFAULT_ALPHA];
     }
 
     function hslToRgb(h, s, l) {
@@ -362,16 +364,16 @@
             if (d === undefined) return;
             const hue = (d * 40) % 360;
             const [r, g, b] = hslToRgb(hue, 65, 65);
-            colorMap[id] = [r, g, b, 100];
+            colorMap[id] = [r, g, b, DEFAULT_ALPHA];
           });
         } else {
           Object.keys(data.baronyMeta || {}).forEach(id => {
             const hue = Math.floor(Math.random() * 360);
             const [r, g, b] = hslToRgb(hue, 65, 65);
-            colorMap[id] = [r, g, b, 100];
+            colorMap[id] = [r, g, b, DEFAULT_ALPHA];
           });
         }
-        if (core.currentSelectedId && colorMap[core.currentSelectedId]) colorMap[core.currentSelectedId][3] = 180;
+        if (core.currentSelectedId && colorMap[core.currentSelectedId]) colorMap[core.currentSelectedId][3] = SELECTED_ALPHA;
         updateLegend(null);
         canonicalPatterns = {};
         core.setCanonicalPatterns(canonicalPatterns);
@@ -384,7 +386,7 @@
         initColorMap();
         updateLegend(null);
         if (core.currentSelectedId && colorMap[core.currentSelectedId]) {
-          colorMap[core.currentSelectedId][3] = 180;
+          colorMap[core.currentSelectedId][3] = SELECTED_ALPHA;
           core.setColorMap(colorMap);
         }
         return;
@@ -403,9 +405,9 @@
           if (d === undefined) return;
           const hue = (d * 40) % 360;
           const [r, g, b] = hslToRgb(hue, 65, 65);
-          colorMap[id] = [r, g, b, 100];
+          colorMap[id] = [r, g, b, DEFAULT_ALPHA];
         });
-        if (core.currentSelectedId && colorMap[core.currentSelectedId]) colorMap[core.currentSelectedId][3] = 180;
+        if (core.currentSelectedId && colorMap[core.currentSelectedId]) colorMap[core.currentSelectedId][3] = SELECTED_ALPHA;
         updateLegend(null);
         core.setCanonicalPatterns({});
         core.setColorMap(colorMap);
@@ -423,18 +425,18 @@
           const endId = route.barony_id_2;
           const pathNodes = path.filter(id => id && id !== startId && id !== endId);
           pathNodes.forEach(id => {
-            colorMap[id] = [...tradeRoutePathColor, 100];
+            colorMap[id] = [...tradeRoutePathColor, DEFAULT_ALPHA];
           });
-          if (startId) colorMap[startId] = [...tradeRoutePrimaryColor, 180];
-          if (endId) colorMap[endId] = [...tradeRoutePrimaryColor, 180];
+          if (startId) colorMap[startId] = [...tradeRoutePrimaryColor, SELECTED_ALPHA];
+          if (endId) colorMap[endId] = [...tradeRoutePrimaryColor, SELECTED_ALPHA];
           updateLegend(null);
           core.setCanonicalPatterns({});
           core.setColorMap(colorMap);
           return;
         }
         if (line) {
-          colorMap[line.barony_id_1] = [...tradeRoutePrimaryColor, 180];
-          colorMap[line.barony_id_2] = [...tradeRoutePrimaryColor, 180];
+          colorMap[line.barony_id_1] = [...tradeRoutePrimaryColor, SELECTED_ALPHA];
+          colorMap[line.barony_id_2] = [...tradeRoutePrimaryColor, SELECTED_ALPHA];
           updateLegend(null);
           core.setCanonicalPatterns({});
           core.setColorMap(colorMap);
@@ -447,21 +449,21 @@
           core.setColorMap(colorMap);
           return;
         }
-        colorMap[selectedId] = [...tradeRoutePrimaryColor, 180];
+        colorMap[selectedId] = [...tradeRoutePrimaryColor, SELECTED_ALPHA];
         const landConnected = new Set((data.tradeRouteConnections && data.tradeRouteConnections[selectedId]) || []);
         const seaConnected = new Set((data.tradeLineConnections && data.tradeLineConnections[selectedId]) || []);
         landConnected.forEach(id => {
           if (!id) return;
           if (seaConnected.has(id)) {
             canonicalPatterns[id] = [tradeRouteLandColor, tradeRouteSeaColor];
-            colorMap[id] = [...tradeRouteLandColor, 100];
+            colorMap[id] = [...tradeRouteLandColor, DEFAULT_ALPHA];
             return;
           }
-          colorMap[id] = [...tradeRouteLandColor, 100];
+          colorMap[id] = [...tradeRouteLandColor, DEFAULT_ALPHA];
         });
         seaConnected.forEach(id => {
           if (!id || landConnected.has(id)) return;
-          colorMap[id] = [...tradeRouteSeaColor, 100];
+          colorMap[id] = [...tradeRouteSeaColor, DEFAULT_ALPHA];
         });
         updateLegend({
           land: { color: tradeRouteLandColor, name: 'Route (terre)' },
@@ -497,7 +499,7 @@
         if (type === 'canonical') {
           const rIds = data.canonicalLandMap[id] || [];
           if (rIds.length === 0) {
-            colorMap[id] = [...terrainColor, 100];
+            colorMap[id] = [...terrainColor, DEFAULT_ALPHA];
             return;
           }
           canonicalPatterns[id] = rIds.map(cid => {
@@ -508,14 +510,14 @@
             return groupColors[cid].color;
           });
           const first = canonicalPatterns[id][0];
-          colorMap[id] = [first[0], first[1], first[2], 100];
+          colorMap[id] = [first[0], first[1], first[2], DEFAULT_ALPHA];
           return;
         } else if (type === 'religion') {
           groupId = info.religion_pop_id;
           groupName = data.religionMap[groupId]?.name || '';
         } else if (type === 'seigneur_religion') {
           if (isVacant) {
-            colorMap[id] = [...terrainColor, 100];
+            colorMap[id] = [...terrainColor, DEFAULT_ALPHA];
             return;
           }
           const owner = info.seigneur_id ? data.seigneurMap?.[info.seigneur_id] : null;
@@ -622,7 +624,7 @@
               );
             }
             const first = canonicalPatterns[id][0];
-            colorMap[id] = [first[0], first[1], first[2], 100];
+            colorMap[id] = [first[0], first[1], first[2], DEFAULT_ALPHA];
             return;
           }
         } else if (type === 'priory') {
@@ -642,7 +644,7 @@
           }
         } else if (type === 'occupation') {
           if (isVacant) {
-            colorMap[id] = [...terrainColor, 100];
+            colorMap[id] = [...terrainColor, DEFAULT_ALPHA];
             return;
           }
           const owner = info.seigneur_id && data.seigneurMap ? data.seigneurMap[info.seigneur_id] : null;
@@ -667,7 +669,7 @@
           groupName = isVacant ? 'Vacante' : 'Occupée';
         }
         if (groupId == null) {
-          colorMap[id] = [...terrainColor, 100];
+          colorMap[id] = [...terrainColor, DEFAULT_ALPHA];
           return;
         }
         if (!groupColors[groupId]) {
@@ -710,10 +712,10 @@
           groupColors[groupId] = { color: col, name: groupName || 'N/A' };
         }
         const col = groupColors[groupId].color;
-        colorMap[id] = [col[0], col[1], col[2], 100];
+        colorMap[id] = [col[0], col[1], col[2], DEFAULT_ALPHA];
       });
       if (core.currentSelectedId && colorMap[core.currentSelectedId]) {
-        colorMap[core.currentSelectedId][3] = 180;
+        colorMap[core.currentSelectedId][3] = SELECTED_ALPHA;
       }
       updateLegend(groupColors);
       core.setCanonicalPatterns(canonicalPatterns);
