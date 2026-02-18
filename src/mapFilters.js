@@ -373,7 +373,6 @@
             colorMap[id] = [r, g, b, DEFAULT_ALPHA];
           });
         }
-        if (core.currentSelectedId && colorMap[core.currentSelectedId]) colorMap[core.currentSelectedId][3] = SELECTED_ALPHA;
         updateLegend(null);
         canonicalPatterns = {};
         core.setCanonicalPatterns(canonicalPatterns);
@@ -385,10 +384,6 @@
       if (!type) {
         initColorMap();
         updateLegend(null);
-        if (core.currentSelectedId && colorMap[core.currentSelectedId]) {
-          colorMap[core.currentSelectedId][3] = SELECTED_ALPHA;
-          core.setColorMap(colorMap);
-        }
         return;
       }
       if (type === 'distance') {
@@ -407,7 +402,6 @@
           const [r, g, b] = hslToRgb(hue, 65, 65);
           colorMap[id] = [r, g, b, DEFAULT_ALPHA];
         });
-        if (core.currentSelectedId && colorMap[core.currentSelectedId]) colorMap[core.currentSelectedId][3] = SELECTED_ALPHA;
         updateLegend(null);
         core.setCanonicalPatterns({});
         core.setColorMap(colorMap);
@@ -714,9 +708,6 @@
         const col = groupColors[groupId].color;
         colorMap[id] = [col[0], col[1], col[2], DEFAULT_ALPHA];
       });
-      if (core.currentSelectedId && colorMap[core.currentSelectedId]) {
-        colorMap[core.currentSelectedId][3] = SELECTED_ALPHA;
-      }
       updateLegend(groupColors);
       core.setCanonicalPatterns(canonicalPatterns);
       core.setColorMap(colorMap);
