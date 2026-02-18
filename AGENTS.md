@@ -44,5 +44,6 @@ Ce dépôt propose un serveur Express/Node.js avec une base SQLite et plusieurs 
 - Ajouter ou supprimer des scripts majeurs nécessite d'actualiser la section "Scripts et relations principales".
 - Les développements se font en JavaScript (CommonJS côté serveur, scripts front-end sans bundler) avec Node.js ≥14.
 - Après toute modification du code, exécuter les vérifications disponibles (`npm test`, même si aucun test n'est défini) et corriger les erreurs le cas échéant.
+- En général, pour chaque modification où c'est applicable, fournir au minimum un test/check exécuté et une capture d'écran de validation de l'interface impactée.
 - Après toute modification de l'API publique (routes, paramètres, schémas JSON, tables/champs exposés), mettre à jour `Documentation/API_PUBLIQUE.md` dans le même changement.
 - Toute interface utilisateur destinée aux utilisateurs finaux doit être intégralement en français (100% des textes affichés).

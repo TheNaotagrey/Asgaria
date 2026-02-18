@@ -828,6 +828,20 @@ th.multi-col {
   border: 1px solid #000;
 }
 
+
+.legend--tall {
+  top: 10px;
+  bottom: auto;
+  max-height: calc(100vh - var(--legend-header-offset, 120px));
+  overflow-y: auto;
+}
+.legend-item--interactive {
+  cursor: pointer;
+}
+.legend-item--interactive:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
 /* Classement des cultures */
 .culture-ranking {
   position: absolute;
