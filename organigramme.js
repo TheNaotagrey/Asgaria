@@ -393,6 +393,21 @@ function applyTransform() {
   elements.graph.setAttribute('transform', `translate(${x} ${y}) scale(${scale})`);
 }
 
+function resolveNodeIdFromEvent(event) {
+  if (!event) return null;
+
+  const directTarget = event.target?.closest?.('.organigramme-node');
+  if (directTarget?.dataset?.id) {
+    return Number(directTarget.dataset.id);
+  }
+
+  if (typeof event.composedPath !== 'function') return null;
+  const path = event.composedPath();
+  const match = path.find((item) => item?.classList?.contains?.('organigramme-node'));
+  const rawId = match?.dataset?.id;
+  return rawId ? Number(rawId) : null;
+}
+
 function renderGraph(rootId) {
   if (!elements.graph) return;
   elements.graph.innerHTML = '';
@@ -727,8 +742,7 @@ function setupInteractions() {
 
     if (event.pointerId === activePointerId) {
       if (event.type === 'pointerup' && dragDistance < 6) {
-        const nodeGroup = event.target.closest('.organigramme-node');
-        const id = Number(nodeGroup?.dataset.id);
+        const id = resolveNodeIdFromEvent(event);
         if (id) {
           renderDialog(id);
           centerOnSeigneur(id);
@@ -759,9 +773,7 @@ function setupInteractions() {
   }, { passive: false });
 
   elements.graph.addEventListener('click', (event) => {
-    const nodeGroup = event.target.closest('.organigramme-node');
-    if (!nodeGroup) return;
-    const id = Number(nodeGroup.dataset.id);
+    const id = resolveNodeIdFromEvent(event);
     if (id) {
       renderDialog(id);
       centerOnSeigneur(id);
