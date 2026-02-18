@@ -920,7 +920,7 @@
     infoPanel.style.display = 'block';
     const rankLabel = titleTypeConfig[rankKey]?.label || 'Titre';
     restoreDefaultTitlePanelLayout();
-    if (baronyTitle) baronyTitle.textContent = `${rankLabel}: ${titleInfo.name || ''} (#${titleInfo.id || ''})`;
+    if (baronyTitle) baronyTitle.textContent = `${rankLabel}: ${titleInfo.name || ''}`;
     setSeigneurLine(infoOwnerLine, titleInfo.seigneur_id, 'Détenteur:');
     if (infoReligionLine) infoReligionLine.style.display = 'none';
     if (infoCultureLine) infoCultureLine.style.display = 'none';
@@ -1547,7 +1547,6 @@
   }
 
   const landFiltersBase = [
-    { value: '', label: 'Aucun' },
     { value: 'religion', label: 'Religion de la Population' },
     { value: 'seigneur_religion', label: 'Religion du seigneur' },
     { value: 'sanctuary', label: 'Sanctuaire' },
@@ -1555,7 +1554,9 @@
     { value: 'church', label: 'Église' },
     { value: 'cathedral', label: 'Cathédrale' },
     { value: 'canonical', label: 'Terres canoniques' },
+    { value: 'duchy_piety_ranking', label: 'Classement de piété ducal' },
     { value: 'culture', label: 'Culture' },
+    { value: '', label: 'Baronnies' },
     { value: 'viscounty', label: 'Vicomté de jure' },
     { value: 'viscounty_defacto', label: 'Vicomté de facto' },
     { value: 'county', label: 'Comté de jure' },
@@ -1563,7 +1564,6 @@
     { value: 'marquisate', label: 'Marquisat de jure' },
     { value: 'marquisate_defacto', label: 'Marquisat de facto' },
     { value: 'duchy', label: 'Duché de jure' },
-    { value: 'duchy_piety_ranking', label: 'Classement de piété ducal' },
     { value: 'duchy_defacto', label: 'Duché de facto' },
     { value: 'archduchy', label: 'Archiduché de jure' },
     { value: 'archduchy_defacto', label: 'Archiduché de facto' },
@@ -1596,17 +1596,27 @@
       opt.textContent = f.label;
       filterSelect.appendChild(opt);
     });
+    filterSelect.value = '';
   }
   populateFilters();
   function updateLegend(groups) {
     if (!legendDiv) return;
     if (!groups) {
+      legendDiv.classList.remove('legend--tall');
       legendDiv.style.display = 'none';
       legendDiv.innerHTML = '';
       return;
     }
+    const currentFilter = filterSelect ? filterSelect.value : '';
+    legendDiv.classList.toggle('legend--tall', currentFilter === 'county' || currentFilter === 'county_defacto');
+    const headerHeight = document.querySelector('.app-header')?.offsetHeight || 0;
+    legendDiv.style.setProperty('--legend-header-offset', `${headerHeight + 20}px`);
     legendDiv.innerHTML = '';
-    Object.entries(groups).forEach(([id, info]) => {
+    const sortedEntries = Object.entries(groups).sort(([, a], [, b]) =>
+      String(a?.name || '').localeCompare(String(b?.name || ''), 'fr', { sensitivity: 'base' })
+    );
+    const titleFilter = getTitleFilterInfo(currentFilter);
+    sortedEntries.forEach(([id, info]) => {
       const item = document.createElement('div');
       item.className = 'legend-item';
       const colorBox = document.createElement('span');
@@ -1616,6 +1626,17 @@
       const lab = document.createElement('span');
       lab.textContent = info.name;
       item.appendChild(lab);
+      if (titleFilter && id) {
+        item.classList.add('legend-item--interactive');
+        item.title = 'Cliquer pour sélectionner ce titre';
+        item.addEventListener('click', () => {
+          showTitleInfo(titleFilter.rankKey, id, titleFilter.mode, { forceFilterMode: titleFilter.mode });
+          const representativeBarony = getBaroniesForTitle(titleFilter.rankKey, id, titleFilter.mode)[0] || null;
+          if (core && typeof core.selectBarony === 'function') {
+            core.selectBarony(representativeBarony);
+          }
+        });
+      }
       legendDiv.appendChild(item);
     });
     legendDiv.style.display = 'block';
