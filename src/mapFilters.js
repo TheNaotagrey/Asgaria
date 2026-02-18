@@ -101,7 +101,7 @@
     function generateColor(str) {
       const hue = Math.floor(Math.random() * 360);
       const [r, g, b] = hslToRgb(hue, 65, 65);
-      return [r, g, b, 100];
+      return [r, g, b, 255];
     }
 
     function hslToRgb(h, s, l) {
