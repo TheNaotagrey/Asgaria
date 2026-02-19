@@ -1,498 +1,201 @@
 (function (global) {
   const terrainColor = [239, 228, 176];
-  const selectedTransparencyFactor = 0.4;
 
-  /**
-   * Initialise le rendu de la carte.
-   * @param {Object} [opts] Options de configuration.
-   * @param {HTMLCanvasElement} [opts.canvas] Canvas cible. Utilisé si `mapId` n'est pas fourni.
-   * @param {string} [opts.mapId='pixelCanvas'] Id du canvas à récupérer dans le DOM.
-   * @param {boolean} [opts.enablePan=true] Active le déplacement de la carte à la souris.
-   * @param {boolean} [opts.enableZoom=true] Active le zoom via la molette.
-   * @param {number} [opts.width] Largeur fixe du canvas.
-   * @param {number} [opts.height] Hauteur fixe du canvas.
-   * @param {Function} [opts.fetchData] Fonction asynchrone de récupération des données.
-   * @param {Function} [opts.onSelect] Callback lors de la sélection d'une baronnie.
-   * @param {Function} [opts.drawOverlay] Fonction de dessin d'une surcouche.
-   * @param {string} [opts.mapMode='land'] Mode de carte à charger.
-   */
-  function init(opts = {}) {
+  function init(options = {}) {
     const {
-      canvas: passedCanvas,
-      mapId = 'pixelCanvas',
-      enablePan = true,
-      enableZoom = true,
-      width,
-      height,
-      fetchData = async () => ({}),
-      onSelect = () => {},
-      drawOverlay = () => {},
-      mapMode = 'land',
-      staticMap = false
-    } = opts;
+      canvas,
+      baseMap,
+      filterSelect,
+      legendEl,
+      onSelectionChange = () => {},
+      mapMode = 'land'
+    } = options;
 
-    const canvas = passedCanvas || document.getElementById(mapId);
-    if (!canvas) throw new Error('No canvas element provided or found');
-
-    if (width) {
-      canvas.width = width;
-      canvas.style.width = width + 'px';
-    }
-    if (height) {
-      canvas.height = height;
-      canvas.style.height = height + 'px';
-    }
-
-    const group = canvas.parentElement;
-    const container = group.parentElement;
     const ctx = canvas.getContext('2d');
-    let mapWidth = canvas.width;
-    let mapHeight = canvas.height;
+    const state = {
+      vm: null,
+      filters: null,
+      activeFilter: 'barony',
+      colorMap: {},
+      selected: { baronyId: null, seigneurId: null, title: null },
+      highlighted: new Set(),
+      mode: mapMode,
+      pixelData: {}
+    };
 
-    // Data stores
-    let pixelData = {};
     let pixelMap = [];
-    let baronyMeta = {};
-    let seigneurMap = {};
-    let religionMap = {};
-    let cultureMapInfo = {};
-    let countyMap = {};
-    let duchyMap = {};
-    let kingdomMap = {};
-    let viscountyMap = {};
-    let marquisateMap = {};
-    let archduchyMap = {};
-    let empireMap = {};
-    let seigneurToViscounty = {}, seigneurToCounty = {}, seigneurToMarquisate = {}, seigneurToDuchy = {}, seigneurToArchduchy = {}, seigneurToKingdom = {}, seigneurToEmpire = {};
-    let canonicalLandMap = {};
-    let baronyAdjacency = {};
-    let canonicalPatterns = {};
 
-    // visual state
-    let colorMap = {};
-    let currentSelectedId = null;
-    let currentSelectedIds = new Set();
-
-    // pan/zoom state
-    let scale = 1;
-    let offsetX = 0;
-    let offsetY = 0;
-    let panning = false;
-    let panStartX = 0;
-    let panStartY = 0;
-    let activePointerId = null;
-    let movedDuringPan = false;
-    let pinchState = null;
-    let selectionPointerId = null;
-    let suppressSelection = false;
-
-    function applyTransform() {
-      group.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${scale})`;
-    }
-
-    function resetView() {
-      scale = 1;
-      offsetX = 0;
-      offsetY = 0;
-      applyTransform();
-    }
-
-    function centerMap() {
-      const contW = container.clientWidth;
-      const contH = container.clientHeight;
-      scale = 1;
-      offsetX = (contW - mapWidth * scale) / 2;
-      offsetY = (contH - mapHeight * scale) / 2;
-      applyTransform();
-    }
-
-    function rebuildPixelMap() {
-      pixelMap = Array.from({ length: mapHeight }, () => new Array(mapWidth).fill(0));
-      Object.entries(pixelData).forEach(([id, coords]) => {
-        coords.forEach(([x, y]) => {
-          if (y >= 0 && y < mapHeight && x >= 0 && x < mapWidth) {
-            pixelMap[y][x] = String(id);
-          }
+    function buildPixelMap() {
+      const width = canvas.width;
+      const height = canvas.height;
+      pixelMap = Array.from({ length: height }, () => new Array(width).fill(null));
+      Object.entries(state.pixelData || {}).forEach(([id, coords]) => {
+        (coords || []).forEach(([x, y]) => {
+          if (y >= 0 && y < height && x >= 0 && x < width) pixelMap[y][x] = String(id);
         });
       });
     }
 
-    function hslToRgb(h, s, l) {
-      s /= 100; l /= 100;
-      const k = n => (n + h / 30) % 12;
-      const a = s * Math.min(l, 1 - l);
-      const f = n => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
-      return [Math.round(255 * f(0)), Math.round(255 * f(8)), Math.round(255 * f(4))];
+    function applyFilter() {
+      const result = state.filters.applyFilter(state.activeFilter, { selected: state.selected });
+      state.colorMap = result.colorMap || {};
+      renderLegend(result.legendItems || []);
+      computeHighlights();
+      drawAll();
     }
 
-    function generateColor(str) {
-      const hue = Math.floor(Math.random() * 360);
-      const [r, g, b] = hslToRgb(hue, 65, 65);
-      return [r, g, b, 255];
+    function computeHighlights() {
+      state.highlighted = new Set();
+      if (state.activeFilter === 'duchy_dejure' || state.activeFilter === 'duchy_defacto') {
+        const mode = state.activeFilter.endsWith('defacto') ? 'defacto' : 'dejure';
+        const duchyId = state.selected.title?.type === 'duchy' ? state.selected.title.id : null;
+        if (duchyId) {
+          state.vm.getBaroniesForTitle('duchy', duchyId, mode).forEach((b) => state.highlighted.add(String(b.id)));
+        }
+      }
+      if (state.activeFilter === 'distance' && state.selected.baronyId) {
+        state.highlighted.add(String(state.selected.baronyId));
+      }
     }
-
-    function getSelectedAlpha(baseColor, factor = selectedTransparencyFactor) {
-      const safeFactor = Math.max(0, Math.min(1, factor));
-      const baseAlpha = Number.isFinite(baseColor[3]) ? baseColor[3] : 255;
-      return Math.max(0, Math.min(255, Math.round(baseAlpha * safeFactor)));
-    }
-
-    function hashCoords(x, y, seed = 0) {
-      let h = x * 374761393 + y * 668265263 + seed * 982451653;
-      h = (h ^ (h >>> 13)) * 1274126177;
-      return (h ^ (h >>> 16)) >>> 0;
-    }
-
-    // color map is expected to be provided externally
 
     function drawAll() {
-      const imageData = ctx.createImageData(mapWidth, mapHeight);
-      const data = imageData.data;
+      const image = ctx.createImageData(canvas.width, canvas.height);
+      const data = image.data;
       let idx = 0;
-      for (let y = 0; y < mapHeight; y++) {
-        for (let x = 0; x < mapWidth; x++) {
-          const id = pixelMap[y][x];
-          if (id && (colorMap[id] || canonicalPatterns[id])) {
-            const isSelected = currentSelectedIds.size > 0
-              ? currentSelectedIds.has(id)
-              : id === currentSelectedId;
-            if (canonicalPatterns[id]) {
-              const cols = canonicalPatterns[id];
-              const cellSize = 6;
-              const colIndex =
-                hashCoords(Math.floor(x / cellSize), Math.floor(y / cellSize), parseInt(id, 10)) % cols.length;
-              const baseCol = cols[colIndex];
-              const alpha = isSelected ? getSelectedAlpha(baseCol) : (Number.isFinite(baseCol[3]) ? baseCol[3] : 255);
-              data[idx++] = baseCol[0];
-              data[idx++] = baseCol[1];
-              data[idx++] = baseCol[2];
-              data[idx++] = alpha;
-            } else {
-              const baseCol = colorMap[id];
-              const alpha = isSelected ? getSelectedAlpha(baseCol) : (Number.isFinite(baseCol[3]) ? baseCol[3] : 255);
-              data[idx++] = baseCol[0];
-              data[idx++] = baseCol[1];
-              data[idx++] = baseCol[2];
-              data[idx++] = alpha;
-            }
-          } else {
-            data[idx++] = 0;
-            data[idx++] = 0;
-            data[idx++] = 0;
-            data[idx++] = 0;
-          }
+      for (let y = 0; y < canvas.height; y += 1) {
+        for (let x = 0; x < canvas.width; x += 1) {
+          const baronyId = pixelMap[y][x];
+          const col = state.colorMap[baronyId] || [0, 0, 0, 0];
+          const isHigh = baronyId && state.highlighted.has(String(baronyId));
+          data[idx++] = col[0] || 0;
+          data[idx++] = col[1] || 0;
+          data[idx++] = col[2] || 0;
+          data[idx++] = isHigh ? 255 : (col[3] ?? 255) * 0.85;
         }
       }
-      ctx.putImageData(imageData, 0, 0);
-      drawOverlay(ctx, scale, offsetX, offsetY);
+      ctx.putImageData(image, 0, 0);
     }
 
-    function handleWheel(e) {
-      e.preventDefault();
-      const factor = e.deltaY < 0 ? 1.1 : 0.9;
-      zoomAtClientPoint(e.clientX, e.clientY, factor);
-    }
-
-    function zoomAtClientPoint(clientX, clientY, factor) {
-      const rect = group.getBoundingClientRect();
-      const mx = (clientX - rect.left) / scale;
-      const my = (clientY - rect.top) / scale;
-      const prevScale = scale;
-      scale *= factor;
-      scale = Math.max(0.2, Math.min(scale, 10));
-      offsetX -= mx * (scale - prevScale);
-      offsetY -= my * (scale - prevScale);
-      applyTransform();
-    }
-
-    function handlePanStart(e) {
-      activePointerId = e.pointerId;
-      panning = true;
-      movedDuringPan = false;
-      panStartX = e.clientX;
-      panStartY = e.clientY;
-    }
-
-    function handlePanMove(e) {
-      if (!panning || e.pointerId !== activePointerId) return;
-      const dx = e.clientX - panStartX;
-      const dy = e.clientY - panStartY;
-      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) movedDuringPan = true;
-      offsetX += dx;
-      offsetY += dy;
-      panStartX = e.clientX;
-      panStartY = e.clientY;
-      applyTransform();
-    }
-
-    function handlePanEnd() {
-      panning = false;
-      activePointerId = null;
-    }
-
-    function getCanvasCoordsFromClient(clientX, clientY) {
-      const rect = canvas.getBoundingClientRect();
-      return {
-        x: Math.floor((clientX - rect.left) * canvas.width / rect.width),
-        y: Math.floor((clientY - rect.top) * canvas.height / rect.height)
-      };
-    }
-
-
-    function createMobileZoomControls() {
-      if (!enableZoom || !container || container.querySelector('.mobile-zoom-controls')) return;
-      if (!window.matchMedia || !window.matchMedia('(pointer: coarse)').matches) return;
-
-      const controls = document.createElement('div');
-      controls.className = 'mobile-zoom-controls';
-
-      const zoomInBtn = document.createElement('button');
-      zoomInBtn.type = 'button';
-      zoomInBtn.className = 'control-btn mobile-zoom-btn';
-      zoomInBtn.setAttribute('aria-label', 'Zoom avant');
-      zoomInBtn.textContent = '+';
-
-      const zoomOutBtn = document.createElement('button');
-      zoomOutBtn.type = 'button';
-      zoomOutBtn.className = 'control-btn mobile-zoom-btn';
-      zoomOutBtn.setAttribute('aria-label', 'Zoom arrière');
-      zoomOutBtn.textContent = '−';
-
-      zoomInBtn.addEventListener('click', () => {
-        const rect = container.getBoundingClientRect();
-        zoomAtClientPoint(rect.left + rect.width / 2, rect.top + rect.height / 2, 1.2);
-      });
-      zoomOutBtn.addEventListener('click', () => {
-        const rect = container.getBoundingClientRect();
-        zoomAtClientPoint(rect.left + rect.width / 2, rect.top + rect.height / 2, 1 / 1.2);
-      });
-
-      controls.appendChild(zoomInBtn);
-      controls.appendChild(zoomOutBtn);
-      container.appendChild(controls);
-    }
-
-    function fitToContainer() {
-      const contW = container.clientWidth;
-      const contH = container.clientHeight;
-      const scaleX = contW / mapWidth;
-      const scaleY = contH / mapHeight;
-      scale = Math.min(scaleX, scaleY);
-      offsetX = (contW - mapWidth * scale) / 2;
-      offsetY = (contH - mapHeight * scale) / 2;
-      applyTransform();
-    }
-
-    function selectBarony(id) {
-      currentSelectedId = id;
-      currentSelectedIds = id ? new Set([String(id)]) : new Set();
-      if (!id) {
-        drawAll();
-        onSelect(id);
+    function renderLegend(items) {
+      if (!legendEl) return;
+      legendEl.innerHTML = '';
+      if (!items.length) {
+        legendEl.style.display = 'none';
         return;
       }
-      if (!colorMap[id]) colorMap[id] = generateColor(id);
-      drawAll();
-      onSelect(id);
-    }
-
-    function setSelectedBaronies(ids = []) {
-      currentSelectedIds = new Set((ids || []).filter(Boolean).map(val => String(val)));
-      drawAll();
-    }
-
-    function handleCanvasSelection(clientX, clientY) {
-      const { x, y } = getCanvasCoordsFromClient(clientX, clientY);
-      const id = pixelMap[y] ? pixelMap[y][x] : null;
-      selectBarony(id);
-    }
-
-    function handlePointerDown(e) {
-      if (e.button !== 0 && e.pointerType !== 'touch') return;
-      if (pinchState && pinchState.pointers.size >= 2) return;
-      selectionPointerId = e.pointerId;
-
-      if (e.pointerType === 'touch') {
-        if (!pinchState) pinchState = { pointers: new Map(), prevDistance: null, midpoint: null };
-        pinchState.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-
-        if (pinchState.pointers.size === 2) {
-          const [a, b] = [...pinchState.pointers.values()];
-          pinchState.prevDistance = Math.hypot(b.x - a.x, b.y - a.y);
-          pinchState.midpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-          panning = false;
-          activePointerId = null;
-          selectionPointerId = null;
-          suppressSelection = true;
-        } else if (enablePan) {
-          handlePanStart(e);
+      legendEl.style.display = 'block';
+      items.forEach((item) => {
+        const row = document.createElement('div');
+        row.className = 'legend-item';
+        const sw = document.createElement('span');
+        sw.className = 'legend-swatch';
+        sw.style.background = `rgba(${item.color[0]}, ${item.color[1]}, ${item.color[2]}, ${(item.color[3] ?? 255) / 255})`;
+        const txt = document.createElement('span');
+        txt.textContent = item.label;
+        row.appendChild(sw);
+        row.appendChild(txt);
+        if (item.selection) {
+          row.style.cursor = 'pointer';
+          row.addEventListener('click', () => selectEntity(item.selection.type, item.selection.id));
         }
-      } else if (enablePan) {
-        handlePanStart(e);
-      }
-
-      if (canvas.setPointerCapture) {
-        canvas.setPointerCapture(e.pointerId);
-      }
-      e.preventDefault();
+        legendEl.appendChild(row);
+      });
     }
 
-    function handlePointerMove(e) {
-      if (pinchState && pinchState.pointers.has(e.pointerId)) {
-        pinchState.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-        if (pinchState.pointers.size === 2 && enableZoom) {
-          const [a, b] = [...pinchState.pointers.values()];
-          const distance = Math.hypot(b.x - a.x, b.y - a.y);
-          const midpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-          if (pinchState.prevDistance && distance > 0) {
-            const factor = distance / pinchState.prevDistance;
-            if (Number.isFinite(factor) && factor > 0) {
-              zoomAtClientPoint(midpoint.x, midpoint.y, factor);
-            }
-          }
-          pinchState.prevDistance = distance;
-          pinchState.midpoint = midpoint;
-        } else if (pinchState.pointers.size === 1 && enablePan) {
-          handlePanMove(e);
-        }
-      } else if (enablePan) {
-        handlePanMove(e);
+    function selectEntity(type, id) {
+      if (type === 'duchy') {
+        state.activeFilter = state.activeFilter === 'duchy_defacto' ? 'duchy_defacto' : 'duchy_dejure';
+        state.selected.title = { type: 'duchy', id: String(id) };
+      } else if (type === 'seigneur') {
+        state.selected.seigneurId = String(id);
       }
+      if (filterSelect) filterSelect.value = state.activeFilter;
+      onSelectionChange({ ...state.selected, type, id: String(id), filter: state.activeFilter });
+      applyFilter();
     }
 
-    function handlePointerUpOrCancel(e) {
-      const wasActivePanPointer = panning && e.pointerId === activePointerId;
-
-      if (pinchState && pinchState.pointers.has(e.pointerId)) {
-        pinchState.pointers.delete(e.pointerId);
-        if (pinchState.pointers.size < 2) {
-          pinchState.prevDistance = null;
-          pinchState.midpoint = null;
-        }
-        if (pinchState.pointers.size === 1 && enablePan) {
-          const remaining = [...pinchState.pointers.entries()][0];
-          if (remaining) {
-            const [remainingId, point] = remaining;
-            activePointerId = remainingId;
-            panning = true;
-            movedDuringPan = true;
-            panStartX = point.x;
-            panStartY = point.y;
-          }
-        }
+    function selectBarony(baronyId) {
+      state.selected.baronyId = String(baronyId);
+      const barony = state.vm.getEntity('barony', baronyId);
+      if (barony?.seigneur) state.selected.seigneurId = String(barony.seigneur.id);
+      if (state.activeFilter.startsWith('duchy_')) {
+        const mode = state.activeFilter.endsWith('defacto') ? 'defacto' : 'dejure';
+        const duchy = state.vm.getBaronyTitleId(baronyId, 'duchy', mode);
+        if (duchy) state.selected.title = { type: 'duchy', id: String(duchy.id) };
       }
-
-      if (wasActivePanPointer) {
-        const shouldSelect = !movedDuringPan && (!pinchState || pinchState.pointers.size === 0);
-        handlePanEnd();
-        if (shouldSelect && e.type === 'pointerup') {
-          handleCanvasSelection(e.clientX, e.clientY);
-        }
-      } else if (!enablePan) {
-        const canSelectWithoutPan = (
-          e.type === 'pointerup' &&
-          e.pointerId === selectionPointerId &&
-          !suppressSelection &&
-          (!pinchState || pinchState.pointers.size === 0)
-        );
-        if (canSelectWithoutPan) {
-          handleCanvasSelection(e.clientX, e.clientY);
-        }
-      }
-
-      if (!pinchState || pinchState.pointers.size === 0) {
-        suppressSelection = false;
-      }
-      if (e.pointerId === selectionPointerId) {
-        selectionPointerId = null;
-      }
-
-      if (canvas.releasePointerCapture && canvas.hasPointerCapture && canvas.hasPointerCapture(e.pointerId)) {
-        canvas.releasePointerCapture(e.pointerId);
-      }
+      onSelectionChange({ ...state.selected, type: 'barony', id: String(baronyId), filter: state.activeFilter });
+      applyFilter();
     }
 
+    function setupInteractions() {
+      canvas.addEventListener('click', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const x = Math.floor((e.clientX - rect.left) * canvas.width / rect.width);
+        const y = Math.floor((e.clientY - rect.top) * canvas.height / rect.height);
+        const baronyId = pixelMap[y]?.[x];
+        if (baronyId) selectBarony(baronyId);
+      });
 
-    const positionMap = staticMap ? resetView : (!enablePan && !enableZoom) ? centerMap : fitToContainer;
-
-    if (enableZoom) {
-      canvas.addEventListener('wheel', handleWheel, { passive: false });
+      filterSelect?.addEventListener('change', () => {
+        state.activeFilter = filterSelect.value;
+        applyFilter();
+      });
     }
-    canvas.addEventListener('pointerdown', handlePointerDown, { passive: false });
-    canvas.addEventListener('pointermove', handlePointerMove, { passive: false });
-    canvas.addEventListener('pointerup', handlePointerUpOrCancel);
-    canvas.addEventListener('pointercancel', handlePointerUpOrCancel);
-    createMobileZoomControls();
 
-    window.addEventListener('resize', () => {
-      positionMap();
-      drawAll();
-    });
-
-    async function load() {
-      const data = await fetchData();
-      mapWidth = data.mapWidth || mapWidth;
-      mapHeight = data.mapHeight || mapHeight;
-      pixelData = data.pixelData || {};
-      baronyMeta = data.baronyMeta || {};
-      seigneurMap = data.seigneurMap || {};
-      religionMap = data.religionMap || {};
-      cultureMapInfo = data.cultureMapInfo || {};
-      countyMap = data.countyMap || {};
-      duchyMap = data.duchyMap || {};
-      kingdomMap = data.kingdomMap || {};
-      viscountyMap = data.viscountyMap || {};
-      marquisateMap = data.marquisateMap || {};
-      archduchyMap = data.archduchyMap || {};
-      empireMap = data.empireMap || {};
-      canonicalLandMap = data.canonicalLandMap || {};
-      baronyAdjacency = data.baronyAdjacency || {};
-      seigneurToViscounty = data.seigneurToViscounty || {};
-      seigneurToCounty = data.seigneurToCounty || {};
-      seigneurToMarquisate = data.seigneurToMarquisate || {};
-      seigneurToDuchy = data.seigneurToDuchy || {};
-      seigneurToArchduchy = data.seigneurToArchduchy || {};
-      seigneurToKingdom = data.seigneurToKingdom || {};
-      seigneurToEmpire = data.seigneurToEmpire || {};
-      rebuildPixelMap();
-      positionMap();
-      drawAll();
+    async function fetchJson(url) {
+      const res = await fetch(url);
+      return res.json();
     }
-    const ready = load();
+
+    async function loadData() {
+      const [baronies, seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires, canonicalLands, sanctuaries, baronyConnections, baronyPixels] = await Promise.all([
+        fetchJson('/api/baronies'), fetchJson('/api/seigneurs'), fetchJson('/api/religions'), fetchJson('/api/cultures'),
+        fetchJson('/api/counties'), fetchJson('/api/duchies'), fetchJson('/api/kingdoms'), fetchJson('/api/viscounties'),
+        fetchJson('/api/marquisates'), fetchJson('/api/archduchies'), fetchJson('/api/empires'), fetchJson('/api/canonical_lands'),
+        fetchJson('/api/sanctuaries'), fetchJson('/api/barony_connections'), fetchJson('/api/barony_pixels')
+      ]);
+      state.vm = viewModel.build({
+        baronies, seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates,
+        archduchies, empires, canonicalLands, sanctuaries, baronyConnections
+      });
+      state.filters = mapFilters2.create(state.vm);
+      state.pixelData = baronyPixels || {};
+      buildPixelMap();
+      populateFilterSelect();
+      applyFilter();
+    }
+
+    function populateFilterSelect() {
+      if (!filterSelect) return;
+      filterSelect.innerHTML = '';
+      state.filters.getFilters().forEach((f) => {
+        const opt = document.createElement('option');
+        opt.value = f.id;
+        opt.textContent = f.label;
+        filterSelect.appendChild(opt);
+      });
+      filterSelect.value = state.activeFilter;
+    }
+
+    const ready = (async () => {
+      if (baseMap && !baseMap.complete) {
+        await new Promise((resolve) => { baseMap.onload = resolve; });
+      }
+      canvas.width = baseMap.naturalWidth;
+      canvas.height = baseMap.naturalHeight;
+      setupInteractions();
+      await loadData();
+    })();
 
     return {
-      selectBarony,
-      setSelectedBaronies,
-      drawAll,
-      fitToContainer,
-      resetView,
-      drawPixel: (x, y, id) => {
-        if (!colorMap[id]) {
-          colorMap[id] = generateColor(id);
-        }
-        const col = colorMap[id];
-        const alpha = col.length > 3 ? col[3] / 255 : 1;
-        ctx.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},${alpha})`;
-        ctx.fillRect(x, y, 1, 1);
-      },
-      setPixelData: pd => {
-        pixelData = pd || {};
-        rebuildPixelMap();
-        drawAll();
-      },
-      get pixelData() { return pixelData; },
-      get pixelMap() { return pixelMap; },
-      get colorMap() { return colorMap; },
-      get currentSelectedId() { return currentSelectedId; },
-      set currentSelectedId(v) {
-        currentSelectedId = v;
-        currentSelectedIds = v ? new Set([String(v)]) : new Set();
-      },
-      get currentSelectedIds() { return currentSelectedIds; },
-      setColorMap: cm => { colorMap = cm; drawAll(); },
-      setCanonicalPatterns: cp => { canonicalPatterns = cp || {}; },
-      get ready() { return ready; }
+      ready,
+      getViewModel: () => state.vm,
+      getState: () => state,
+      setFilter: (filterId) => { state.activeFilter = filterId; if (filterSelect) filterSelect.value = filterId; applyFilter(); },
+      selectEntity,
+      selectBarony
     };
   }
+
   global.mapCore2 = { init, terrainColor };
-})(typeof window !== 'undefined' ? window : global);
+})(typeof window !== 'undefined' ? window : globalThis);
