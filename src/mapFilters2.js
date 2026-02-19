@@ -331,7 +331,11 @@
             core.setColorMap(colorMap);
             return;
           }
-          const { distanceMap: distances } = breadthFirst(core.currentSelectedId, cur => data.baronyAdjacency[cur] || []);
+          const { distanceMap: distances } = bfs2.computeBaronyDistances({
+            start: core.currentSelectedId,
+            viewModel: data.viewModel,
+            adjacencyMap: data.baronyAdjacency
+          });
           Object.keys(data.baronyMeta).forEach(id => {
             const d = distances[id];
             if (d === undefined) return;
@@ -367,7 +371,11 @@
           core.setColorMap(colorMap);
           return;
         }
-        const { distanceMap: distances } = breadthFirst(core.currentSelectedId, cur => data.baronyAdjacency[cur] || []);
+        const { distanceMap: distances } = bfs2.computeBaronyDistances({
+            start: core.currentSelectedId,
+            viewModel: data.viewModel,
+            adjacencyMap: data.baronyAdjacency
+          });
         Object.keys(data.baronyMeta).forEach(id => {
           const d = distances[id];
           if (d === undefined) return;

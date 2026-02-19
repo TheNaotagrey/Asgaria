@@ -23,7 +23,8 @@
     includeDerivedIndexes: true,
     includeOrganigrammes: true,
     includeCanonicalRelations: true,
-    includeSanctuaries: true
+    includeSanctuaries: true,
+    includeBaronyConnections: true
   };
 
   function toId(value) {
@@ -131,6 +132,7 @@
       b.canonicalLands = [];
       b.canonicalFor = [];
       b.sanctuaries = [];
+      b.connectedBaronies = [];
     });
   }
 
@@ -312,6 +314,32 @@
         if (religion) religion.sanctuaries.push(s);
       });
     }
+  }
+
+
+
+  function linkBaronyConnections(vm, rawData, options) {
+    if (!options.includeBaronyConnections) return;
+    const connections = rawData.baronyConnections || rawData.barony_connections || [];
+    if (!Array.isArray(connections)) return;
+
+    connections.forEach((entry) => {
+      const leftId = toId(entry.barony_id_1);
+      const rightId = toId(entry.barony_id_2);
+      if (!leftId || !rightId || leftId === rightId) return;
+      const left = vm.baronies.byId[leftId];
+      const right = vm.baronies.byId[rightId];
+      if (!left || !right) return;
+      const parsedDistance = parseInt(entry.distance, 10);
+      const distance = Number.isFinite(parsedDistance) && parsedDistance > 0 ? parsedDistance : 1;
+
+      if (!left.connectedBaronies.some((neighbor) => neighbor.id === right.id)) {
+        left.connectedBaronies.push({ id: right.id, distance });
+      }
+      if (!right.connectedBaronies.some((neighbor) => neighbor.id === left.id)) {
+        right.connectedBaronies.push({ id: left.id, distance });
+      }
+    });
   }
 
   function buildOwnerTitleIndex(vm) {
@@ -526,7 +554,8 @@
       titlesBySeigneurId: {},
       baroniesByCountyId: {},
       baroniesByViscountyId: {},
-      baroniesByDefactoTopId: {}
+      baroniesByDefactoTopId: {},
+      baronyAdjacency: {}
     };
 
     vm.seigneurs.list.forEach((s) => {
@@ -559,6 +588,9 @@
       const key = top ? `${top._type}:${top.id}` : 'none';
       if (!vm.indexes.baroniesByDefactoTopId[key]) vm.indexes.baroniesByDefactoTopId[key] = [];
       vm.indexes.baroniesByDefactoTopId[key].push(b);
+      vm.indexes.baronyAdjacency[b.id] = Array.isArray(b.connectedBaronies)
+        ? b.connectedBaronies.map((neighbor) => ({ id: neighbor.id, distance: neighbor.distance }))
+        : [];
     });
   }
 
@@ -583,6 +615,7 @@
     linkTitleOwners(vm);
     linkDeJureHierarchy(vm);
     linkSpecialRelations(vm, options);
+    linkBaronyConnections(vm, rawData, options);
 
     if (options.includeDefacto) {
       computeDefactoHierarchy(vm);

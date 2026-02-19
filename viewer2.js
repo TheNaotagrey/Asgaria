@@ -2115,7 +2115,8 @@
         seigneurToEmpire,
         mapWidth,
         mapHeight,
-        mapMode
+        mapMode,
+        viewModel: vm
       };
       updateSearchEntries();
       return mapData;
@@ -2163,17 +2164,11 @@
       archduchies,
       empires,
       canonicalLands,
-      sanctuaries
+      sanctuaries,
+      baronyConnections: connections
     });
     applyViewModelData(vm);
-    baronyAdjacency = {};
-    connections.forEach(c => {
-      const dist = parseInt(c.distance, 10) || 1;
-      if (!baronyAdjacency[c.barony_id_1]) baronyAdjacency[c.barony_id_1] = [];
-      if (!baronyAdjacency[c.barony_id_2]) baronyAdjacency[c.barony_id_2] = [];
-      baronyAdjacency[c.barony_id_1].push({ id: c.barony_id_2, distance: dist });
-      baronyAdjacency[c.barony_id_2].push({ id: c.barony_id_1, distance: dist });
-    });
+    baronyAdjacency = vm.indexes?.baronyAdjacency || {};
     tradeRoutes = Array.isArray(routes) ? routes : [];
     buildTradeRouteMaps(tradeRoutes);
     tradeLines = Array.isArray(lines) ? lines : [];
@@ -2216,7 +2211,8 @@
       seigneurToEmpire,
       mapWidth,
       mapHeight,
-      mapMode
+      mapMode,
+      viewModel: vm
     };
     updateSearchEntries();
     return mapData;
