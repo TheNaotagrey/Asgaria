@@ -2,6 +2,7 @@
   function init(options = {}) {
     const {
       vm,
+      mapMode = 'land',
       infoPanel,
       seaInfoPanel,
       seigneurInfoPanel,
@@ -10,20 +11,29 @@
       infoOwnerLine,
       infoReligionLine,
       infoCultureLine,
+      seaInfoId,
+      seaInfoName,
+      seaInfoSeigneur,
       seigneurInfoTitle,
       seigneurInfoIdentity,
       seigneurInfoReligion
     } = options;
 
     function hideAll() {
-      [infoPanel, seaInfoPanel, seigneurInfoPanel, tradeRoutePanel].forEach((p) => {
-        if (p) p.style.display = 'none';
-      });
+      [infoPanel, seaInfoPanel, seigneurInfoPanel, tradeRoutePanel].forEach((p) => { if (p) p.style.display = 'none'; });
     }
 
     function renderSelection(payload) {
       if (!payload) return;
       if (payload.type === 'barony') {
+        if (mapMode === 'sea') {
+          hideAll();
+          if (seaInfoPanel) seaInfoPanel.style.display = 'block';
+          if (seaInfoId) seaInfoId.textContent = String(payload.id);
+          if (seaInfoName) seaInfoName.textContent = `Zone #${payload.id}`;
+          if (seaInfoSeigneur) seaInfoSeigneur.textContent = '';
+          return;
+        }
         const barony = vm.getEntity('barony', payload.id);
         if (!barony) return;
         hideAll();
@@ -44,13 +54,13 @@
         if (seigneurInfoReligion) seigneurInfoReligion.textContent = `Religion: ${seigneur.religion?.name || 'Aucune'}`;
         return;
       }
-      if (payload.type === 'duchy') {
-        const duchy = vm.getEntity('duchy', payload.id);
-        if (!duchy) return;
+      if (['viscounty', 'county', 'marquisate', 'duchy', 'archduchy', 'kingdom', 'empire'].includes(payload.type)) {
+        const title = vm.getEntity(payload.type, payload.id);
+        if (!title) return;
         hideAll();
         if (infoPanel) infoPanel.style.display = 'block';
-        if (baronyTitle) baronyTitle.textContent = `Duché: ${duchy.name || ''} (#${duchy.id})`;
-        if (infoOwnerLine) infoOwnerLine.textContent = `Seigneur: ${duchy.seigneur?.name || 'Aucun'}`;
+        if (baronyTitle) baronyTitle.textContent = `${payload.type}: ${title.name || ''} (#${title.id})`;
+        if (infoOwnerLine) infoOwnerLine.textContent = `Seigneur: ${title.seigneur?.name || 'Aucun'}`;
         if (infoReligionLine) infoReligionLine.textContent = '';
         if (infoCultureLine) infoCultureLine.textContent = '';
       }

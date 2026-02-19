@@ -24,6 +24,7 @@
     core.ready.then(() => {
       panel = mapInfoPanel2.init({
         vm: core.getViewModel(),
+        mapMode,
         infoPanel: document.getElementById('infoPanel'),
         seaInfoPanel: document.getElementById('seaInfoPanel'),
         seigneurInfoPanel: document.getElementById('seigneurInfoPanel'),
@@ -34,7 +35,10 @@
         infoCultureLine: document.getElementById('infoCultureLine'),
         seigneurInfoTitle: document.getElementById('seigneurInfoTitle'),
         seigneurInfoIdentity: document.getElementById('seigneurInfoIdentity'),
-        seigneurInfoReligion: document.getElementById('seigneurInfoReligion')
+        seigneurInfoReligion: document.getElementById('seigneurInfoReligion'),
+        seaInfoId: document.getElementById('seaInfoId'),
+        seaInfoName: document.getElementById('seaInfoName'),
+        seaInfoSeigneur: document.getElementById('seaInfoSeigneur')
       });
     });
   });
