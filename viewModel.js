@@ -24,7 +24,8 @@
     includeOrganigrammes: true,
     includeCanonicalRelations: true,
     includeSanctuaries: true,
-    includeBaronyConnections: true
+    includeBaronyConnections: true,
+    includeColors: true
   };
 
   function toId(value) {
@@ -594,6 +595,40 @@
     });
   }
 
+
+  function hashString(value) {
+    let hash = 2166136261;
+    const text = String(value || '');
+    for (let i = 0; i < text.length; i += 1) {
+      hash ^= text.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
+  }
+
+  function hslToHex(h, s, l) {
+    const sat = s / 100;
+    const lig = l / 100;
+    const k = (n) => (n + h / 30) % 12;
+    const a = sat * Math.min(lig, 1 - lig);
+    const f = (n) => lig - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+    const toHex = (n) => Math.round(255 * n).toString(16).padStart(2, '0');
+    return `#${toHex(f(0))}${toHex(f(8))}${toHex(f(4))}`;
+  }
+
+  function ensureEntityColors(vm, options) {
+    if (!options.includeColors) return;
+    const groups = ['religions', 'cultures', 'seigneurs', 'viscounties', 'counties', 'marquisates', 'duchies', 'archduchies', 'kingdoms', 'empires'];
+    groups.forEach((collectionName, idx) => {
+      (vm[collectionName]?.list || []).forEach((entry) => {
+        if (entry.color) return;
+        const seed = hashString(`${collectionName}:${entry.id}:${entry.name || ''}`);
+        const hue = (seed + idx * 47) % 360;
+        entry.color = hslToHex(hue, 58, 54);
+      });
+    });
+  }
+
   function build(rawData = {}, customOptions = {}) {
     const options = { ...DEFAULT_OPTIONS, ...customOptions };
     const vm = {
@@ -626,6 +661,7 @@
     }
 
     finalizeIndexes(vm, options);
+    ensureEntityColors(vm, options);
 
     vm.getEntity = function getEntity(rankOrType, id) {
       if (!rankOrType) return null;
@@ -649,6 +685,56 @@
       const barony = vm.getEntity('barony', baronyId);
       if (!barony || !barony.defactoByRank) return null;
       return barony.defactoByRank[String(rankKey || '').toLowerCase()] || null;
+    };
+
+
+    vm.getBaronyTitleId = function getBaronyTitleId(baronyId, rankKey, mode = 'dejure') {
+      const barony = vm.getEntity('barony', baronyId);
+      const normalizedRank = String(rankKey || '').toLowerCase();
+      if (!barony || !normalizedRank) return null;
+      if (mode === 'defacto') {
+        return barony.defactoByRank?.[normalizedRank] || null;
+      }
+      if (normalizedRank === 'barony') return barony;
+      if (normalizedRank === 'viscounty') return vm.getEntity('viscounty', barony.viscounty_id);
+      if (normalizedRank === 'county') return vm.getEntity('county', barony.county_id);
+      const county = vm.getEntity('county', barony.county_id);
+      if (normalizedRank === 'marquisate') return vm.getEntity('marquisate', county?.marquisate_id);
+      const duchy = vm.getEntity('duchy', county?.duchy_id);
+      if (normalizedRank === 'duchy') return duchy;
+      if (normalizedRank === 'archduchy') return vm.getEntity('archduchy', duchy?.archduchy_id);
+      const kingdom = vm.getEntity('kingdom', duchy?.kingdom_id);
+      if (normalizedRank === 'kingdom') return kingdom;
+      if (normalizedRank === 'empire') return vm.getEntity('empire', kingdom?.empire_id);
+      return null;
+    };
+
+    vm.getBaroniesForTitle = function getBaroniesForTitle(rankKey, titleId, mode = 'dejure') {
+      return vm.baronies.list.filter((barony) => {
+        const title = vm.getBaronyTitleId(barony.id, rankKey, mode);
+        return !!title && String(title.id) === String(titleId);
+      });
+    };
+
+    vm.getImmediateSubtitles = function getImmediateSubtitles(rankKey, titleId, mode = 'dejure') {
+      const childRankByRank = {
+        empire: 'kingdom', kingdom: 'duchy', archduchy: 'duchy', duchy: 'county', marquisate: 'county', county: 'barony', viscounty: 'barony'
+      };
+      const childRank = childRankByRank[String(rankKey || '').toLowerCase()];
+      if (!childRank) return [];
+      if (mode === 'defacto') {
+        const childCollection = vm[`${childRank}s`]?.list || [];
+        return childCollection.filter((child) => child.defactoParent && child.defactoParent._type === rankKey && String(child.defactoParent.id) === String(titleId));
+      }
+      return vm.getBaroniesForTitle(rankKey, titleId, 'dejure')
+        .map((barony) => vm.getBaronyTitleId(barony.id, childRank, 'dejure'))
+        .filter(Boolean)
+        .filter((value, index, array) => array.findIndex((item) => String(item.id) === String(value.id)) === index);
+    };
+
+    vm.getEntityColor = function getEntityColor(rankOrType, id, fallback = '#999999') {
+      const entity = vm.getEntity(rankOrType, id);
+      return entity?.color || fallback;
     };
 
     return vm;

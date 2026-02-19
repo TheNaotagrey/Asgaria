@@ -19,6 +19,7 @@ Ce dépôt propose un serveur Express/Node.js avec une base SQLite et plusieurs 
 - **script.js** : éditeur de carte permettant de modifier les baronnies et d'enregistrer les pixels.
 - **src/mapCore.js** : fonctions communes de rendu/zoom utilisées par `viewer.js` et `script.js`.
 - **src/mapFilters.js** : gestion des filtres et de la coloration de la carte, partagée par `viewer.js` et `script.js`.
+- **viewModel.js** : construit un modèle relationnel unifié (titres, liens de jure/de facto, terres canoniques, sanctuaires, connexions entre baronnies) et peut enrichir les entités avec des couleurs exploitables côté UI.
 - **index2.html** : variante temporaire de la page carte (baronnies/maritime) pour valider l’architecture basée sur `viewModel.js`.
 - **viewer2.js** : variante temporaire de `viewer.js` qui reconstruit les index (titres, relations canoniques et sanctuaires) via `viewModel.js`.
 - **src/mapCore2.js**, **src/mapFilters2.js**, **src/bfs2.js**, **src/duchyPiety2.js**, **src/seigneurSearch2.js** : pile temporaire dédiée à `index2.html`, conçue pour exploiter `viewModel.js` et simplifier la logique du client.

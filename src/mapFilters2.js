@@ -298,6 +298,20 @@
       return null;
     }
 
+
+    function getViewModelTitle(rankKey, baronyId, mode = 'dejure') {
+      if (!data.viewModel || typeof data.viewModel.getBaronyTitleId !== 'function') return null;
+      return data.viewModel.getBaronyTitleId(baronyId, rankKey, mode);
+    }
+
+    function getEntityHexColor(rankKey, id) {
+      if (!rankKey || id === null || id === undefined) return null;
+      if (data.viewModel && typeof data.viewModel.getEntityColor === 'function') {
+        return data.viewModel.getEntityColor(rankKey, id, null);
+      }
+      return null;
+    }
+
     function resolveDefactoTitle(info, targetRankKey) {
       if (!info) return null;
       const targetIndex = getRankIndex(targetRankKey);
@@ -509,59 +523,50 @@
             groupName = cultureInfo.name || '';
           }
         } else if (type === 'viscounty') {
-          groupId = info.viscounty_id;
+          groupId = getViewModelTitle('viscounty', id, 'dejure')?.id || info.viscounty_id;
           groupName = data.viscountyMap[groupId]?.name || '';
         } else if (type === 'county') {
-          groupId = info.county_id;
+          groupId = getViewModelTitle('county', id, 'dejure')?.id || info.county_id;
           groupName = data.countyMap[groupId]?.name || '';
         } else if (type === 'marquisate') {
-          const county = data.countyMap[info.county_id];
-          groupId = county ? county.marquisate_id : null;
+          groupId = getViewModelTitle('marquisate', id, 'dejure')?.id;
           groupName = data.marquisateMap[groupId]?.name || '';
         } else if (type === 'duchy') {
-          const county = data.countyMap[info.county_id];
-          groupId = county ? county.duchy_id : null;
+          groupId = getViewModelTitle('duchy', id, 'dejure')?.id;
           groupName = data.duchyMap[groupId]?.name || '';
         } else if (type === 'duchy_piety_ranking') {
           const duchyId = getDuchyIdForBarony(info);
           groupId = duchyId ? duchyPietyWinners[String(duchyId)] : null;
           groupName = data.religionMap[groupId]?.name || '';
         } else if (type === 'archduchy') {
-          const county = data.countyMap[info.county_id];
-          const duchy = county ? data.duchyMap[county.duchy_id] : null;
-          groupId = duchy ? duchy.archduchy_id : null;
+          groupId = getViewModelTitle('archduchy', id, 'dejure')?.id;
           groupName = data.archduchyMap[groupId]?.name || '';
         } else if (type === 'kingdom') {
-          const county = data.countyMap[info.county_id];
-          const duchy = county ? data.duchyMap[county.duchy_id] : null;
-          groupId = duchy ? duchy.kingdom_id : null;
+          groupId = getViewModelTitle('kingdom', id, 'dejure')?.id;
           groupName = data.kingdomMap[groupId]?.name || '';
         } else if (type === 'empire') {
-          const county = data.countyMap[info.county_id];
-          const duchy = county ? data.duchyMap[county.duchy_id] : null;
-          const kingdom = duchy ? data.kingdomMap[duchy.kingdom_id] : null;
-          groupId = kingdom ? kingdom.empire_id : null;
+          groupId = getViewModelTitle('empire', id, 'dejure')?.id;
           groupName = data.empireMap[groupId]?.name || '';
         } else if (type === 'viscounty_defacto') {
-          groupId = resolveDefactoTitle(info, 'viscounty');
+          groupId = getViewModelTitle('viscounty', id, 'defacto')?.id || resolveDefactoTitle(info, 'viscounty');
           groupName = data.viscountyMap[groupId]?.name || '';
         } else if (type === 'county_defacto') {
-          groupId = resolveDefactoTitle(info, 'county');
+          groupId = getViewModelTitle('county', id, 'defacto')?.id || resolveDefactoTitle(info, 'county');
           groupName = data.countyMap[groupId]?.name || '';
         } else if (type === 'marquisate_defacto') {
-          groupId = resolveDefactoTitle(info, 'marquisate');
+          groupId = getViewModelTitle('marquisate', id, 'defacto')?.id || resolveDefactoTitle(info, 'marquisate');
           groupName = data.marquisateMap[groupId]?.name || '';
         } else if (type === 'duchy_defacto') {
-          groupId = resolveDefactoTitle(info, 'duchy');
+          groupId = getViewModelTitle('duchy', id, 'defacto')?.id || resolveDefactoTitle(info, 'duchy');
           groupName = data.duchyMap[groupId]?.name || '';
         } else if (type === 'archduchy_defacto') {
-          groupId = resolveDefactoTitle(info, 'archduchy');
+          groupId = getViewModelTitle('archduchy', id, 'defacto')?.id || resolveDefactoTitle(info, 'archduchy');
           groupName = data.archduchyMap[groupId]?.name || '';
         } else if (type === 'kingdom_defacto') {
-          groupId = resolveDefactoTitle(info, 'kingdom');
+          groupId = getViewModelTitle('kingdom', id, 'defacto')?.id || resolveDefactoTitle(info, 'kingdom');
           groupName = data.kingdomMap[groupId]?.name || '';
         } else if (type === 'empire_defacto') {
-          groupId = resolveDefactoTitle(info, 'empire');
+          groupId = getViewModelTitle('empire', id, 'defacto')?.id || resolveDefactoTitle(info, 'empire');
           groupName = data.empireMap[groupId]?.name || '';
         } else if (type === 'sanctuary') {
           const sancts = data.sanctuaryMap[id] || [];

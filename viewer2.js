@@ -802,6 +802,9 @@
 
   function getBaronyTitleId(baronyInfo, rankKey, mode = 'dejure') {
     if (!baronyInfo) return null;
+    if (mapData.viewModel && typeof mapData.viewModel.getBaronyTitleId === 'function') {
+      return mapData.viewModel.getBaronyTitleId(baronyInfo.id, rankKey, mode)?.id || null;
+    }
     if (mode === 'defacto') return resolveDefactoTitle(baronyInfo, rankKey);
     if (rankKey === 'viscounty') return baronyInfo.viscounty_id;
     if (rankKey === 'county') return baronyInfo.county_id;
@@ -817,6 +820,9 @@
   }
 
   function getBaroniesForTitle(rankKey, titleId, mode = 'dejure') {
+    if (mapData.viewModel && typeof mapData.viewModel.getBaroniesForTitle === 'function') {
+      return mapData.viewModel.getBaroniesForTitle(rankKey, titleId, mode).map((barony) => barony.id);
+    }
     return Object.values(baronyMeta)
       .filter(info => String(getBaronyTitleId(info, rankKey, mode) || '') === String(titleId))
       .map(info => info.id);
@@ -875,6 +881,12 @@
   }
 
   function getImmediateSubtitles(rankKey, titleId, mode = 'dejure') {
+    if (mapData.viewModel && typeof mapData.viewModel.getImmediateSubtitles === 'function') {
+      return mapData.viewModel
+        .getImmediateSubtitles(rankKey, titleId, mode)
+        .map((entry) => ({ rankKey: entry._type || rankKey, id: String(entry.id) }))
+        .sort(compareSubtitleItems);
+    }
     return mode === 'defacto'
       ? getImmediateDefactoSubtitles(rankKey, titleId)
       : getImmediateDejureSubtitles(rankKey, titleId);
