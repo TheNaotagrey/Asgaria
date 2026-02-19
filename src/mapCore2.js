@@ -2,8 +2,20 @@
   const terrainColor = [239, 228, 176];
 
   function init(options = {}) {
-    const { canvas, baseMap, filterSelect, legendEl, onSelectionChange = () => {}, mapMode = 'land' } = options;
+    const {
+      canvas,
+      baseMap,
+      filterSelect,
+      legendEl,
+      onSelectionChange = () => {},
+      mapMode = 'land',
+      enablePan = true,
+      enableZoom = true
+    } = options;
     const ctx = canvas.getContext('2d');
+    const group = canvas.parentElement;
+    const container = group?.parentElement;
+    const idOverlay = group?.querySelector('#idOverlayMap');
 
     const state = {
       vm: null,
@@ -20,6 +32,55 @@
     };
 
     let pixelMap = [];
+    let scale = 1;
+    let offsetX = 0;
+    let offsetY = 0;
+    let panning = false;
+    let panStartX = 0;
+    let panStartY = 0;
+    let activePointerId = null;
+    let movedDuringPan = false;
+
+    function applyTransform() {
+      if (!group) return;
+      group.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${scale})`;
+    }
+
+    function fitToContainer() {
+      if (!container) {
+        applyTransform();
+        return;
+      }
+      const contW = container.clientWidth;
+      const contH = container.clientHeight;
+      const scaleX = contW / canvas.width;
+      const scaleY = contH / canvas.height;
+      scale = Math.min(scaleX, scaleY);
+      offsetX = (contW - canvas.width * scale) / 2;
+      offsetY = (contH - canvas.height * scale) / 2;
+      applyTransform();
+    }
+
+    function zoomAtClientPoint(clientX, clientY, factor) {
+      if (!group) return;
+      const rect = group.getBoundingClientRect();
+      const mx = (clientX - rect.left) / scale;
+      const my = (clientY - rect.top) / scale;
+      const prevScale = scale;
+      scale *= factor;
+      scale = Math.max(0.2, Math.min(scale, 10));
+      offsetX -= mx * (scale - prevScale);
+      offsetY -= my * (scale - prevScale);
+      applyTransform();
+    }
+
+    function getCanvasCoordsFromClient(clientX, clientY) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: Math.floor((clientX - rect.left) * canvas.width / rect.width),
+        y: Math.floor((clientY - rect.top) * canvas.height / rect.height)
+      };
+    }
 
     function buildPixelMap() {
       const width = canvas.width;
@@ -137,19 +198,65 @@
       applyFilter();
     }
 
+    function handleCanvasSelection(clientX, clientY) {
+      const { x, y } = getCanvasCoordsFromClient(clientX, clientY);
+      const id = pixelMap[y]?.[x];
+      if (id) selectBarony(id);
+    }
+
     function setupInteractions() {
-      canvas.addEventListener('click', (e) => {
-        const rect = canvas.getBoundingClientRect();
-        const x = Math.floor((e.clientX - rect.left) * canvas.width / rect.width);
-        const y = Math.floor((e.clientY - rect.top) * canvas.height / rect.height);
-        const id = pixelMap[y]?.[x];
-        if (id) selectBarony(id);
+      if (enableZoom) {
+        canvas.addEventListener('wheel', (e) => {
+          e.preventDefault();
+          const factor = e.deltaY < 0 ? 1.1 : 0.9;
+          zoomAtClientPoint(e.clientX, e.clientY, factor);
+        }, { passive: false });
+      }
+
+      canvas.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0 && e.pointerType !== 'touch') return;
+        if (!enablePan) return;
+        panning = true;
+        activePointerId = e.pointerId;
+        movedDuringPan = false;
+        panStartX = e.clientX;
+        panStartY = e.clientY;
+        if (canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId);
       });
+
+      canvas.addEventListener('pointermove', (e) => {
+        if (!enablePan || !panning || e.pointerId !== activePointerId) return;
+        const dx = e.clientX - panStartX;
+        const dy = e.clientY - panStartY;
+        if (Math.abs(dx) > 2 || Math.abs(dy) > 2) movedDuringPan = true;
+        offsetX += dx;
+        offsetY += dy;
+        panStartX = e.clientX;
+        panStartY = e.clientY;
+        applyTransform();
+      });
+
+      const handlePointerUp = (e) => {
+        const shouldSelect = e.pointerId === activePointerId && !movedDuringPan;
+        if (e.pointerId === activePointerId) {
+          panning = false;
+          activePointerId = null;
+        }
+        if (shouldSelect) handleCanvasSelection(e.clientX, e.clientY);
+        if (canvas.releasePointerCapture && canvas.hasPointerCapture && canvas.hasPointerCapture(e.pointerId)) {
+          canvas.releasePointerCapture(e.pointerId);
+        }
+      };
+
+      canvas.addEventListener('pointerup', handlePointerUp);
+      canvas.addEventListener('pointercancel', handlePointerUp);
 
       filterSelect?.addEventListener('change', () => {
         state.activeFilter = filterSelect.value;
         applyFilter();
       });
+
+      window.addEventListener('resize', fitToContainer);
     }
 
     async function fetchJson(url) { const r = await fetch(url); return r.json(); }
@@ -222,11 +329,22 @@
       if (baseMap && !baseMap.complete) await new Promise((resolve) => { baseMap.onload = resolve; });
       canvas.width = baseMap.naturalWidth;
       canvas.height = baseMap.naturalHeight;
+      canvas.style.width = `${canvas.width}px`;
+      canvas.style.height = `${canvas.height}px`;
+      if (baseMap) {
+        baseMap.style.width = `${canvas.width}px`;
+        baseMap.style.height = `${canvas.height}px`;
+      }
+      if (idOverlay) {
+        idOverlay.style.width = `${canvas.width}px`;
+        idOverlay.style.height = `${canvas.height}px`;
+      }
       setupInteractions();
       if (state.mode === 'sea') await loadSeaData(); else await loadLandData();
       buildPixelMap();
       populateFilterSelect();
       applyFilter();
+      fitToContainer();
     })();
 
     return { ready, getViewModel: () => state.vm, getState: () => state, setFilter: (f) => { state.activeFilter = f; if (filterSelect) filterSelect.value = f; applyFilter(); }, selectEntity, selectBarony };
