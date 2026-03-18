@@ -1774,13 +1774,9 @@ app.get('/api/my_seigneurie', (req, res) => {
             if (errI) return handleError(res, errI);
             const infraList = iprops || [];
             const capacities = { vivres: 500, points_magique: 2000, hommes_darmes: 0, chevaux: 0, trebuchets: 0 };
-            const progressKey = computeMonthlyProgressKey(s);
-            let spellsCast = s.spells_cast || 0;
-            if (s.spell_month !== progressKey) spellsCast = 0;
-            let landTransactions = s.land_transactions || 0;
-            if (s.land_transaction_month !== progressKey) landTransactions = 0;
-            let navalTransactions = s.naval_transactions || 0;
-            if (s.naval_transaction_month !== progressKey) navalTransactions = 0;
+            const spellsCast = s.spells_cast || 0;
+            const landTransactions = s.land_transactions || 0;
+            const navalTransactions = s.naval_transactions || 0;
             const buildingProductionBonus = {};
             const buildingProductionBonusDetails = {};
             const effectCtx = {
@@ -2097,11 +2093,8 @@ app.get('/api/my_seigneurie', (req, res) => {
           infrastructures: row.infrastructures,
           tax_rate: row.tax_rate,
           spells_cast: row.spells_cast,
-          spell_month: row.spell_month,
           land_transactions: row.land_transactions,
-          land_transaction_month: row.land_transaction_month,
-          naval_transactions: row.naval_transactions,
-          naval_transaction_month: row.naval_transaction_month
+          naval_transactions: row.naval_transactions
         };
         respond(seig, s);
       });
@@ -2148,7 +2141,7 @@ app.post('/api/seigneurie/advance_update', (req, res) => {
   if (!req.session.user) return res.status(401).json({ error: 'Non autorise' });
   getSeigneurie(
     req,
-    'seigneuries.id, seigneuries.baronnie_id, seigneuries.population, seigneuries.tax_rate, seigneuries.inventaire_id, seigneuries.buildings, seigneuries.infrastructures, seigneuries.spells_cast, seigneuries.spell_month, seigneuries.land_transactions, seigneuries.land_transaction_month, seigneuries.naval_transactions, seigneuries.naval_transaction_month, seigneuries.update_year, seigneuries.update_number',
+    'seigneuries.id, seigneuries.baronnie_id, seigneuries.population, seigneuries.tax_rate, seigneuries.inventaire_id, seigneuries.buildings, seigneuries.infrastructures, seigneuries.spells_cast, seigneuries.land_transactions, seigneuries.naval_transactions, seigneuries.update_year, seigneuries.update_number',
     (err, srow) => {
       if (err) return handleError(res, err);
       if (!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
@@ -2314,16 +2307,15 @@ app.post('/api/seigneurie/advance_update', (req, res) => {
             });
           }
 
-          const progressKey = getUpdateKey(nextUpdate);
           await dbRunAsync(
             `UPDATE inventaire SET ${inventaireFields.map((field) => `${field}=?`).join(', ')} WHERE id=?`,
             [...inventaireFields.map((field) => inventoryState[field] || 0), srow.inventaire_id]
           );
           await dbRunAsync(
             `UPDATE seigneuries
-             SET population=?, update_year=?, update_number=?, spells_cast=0, spell_month=?, land_transactions=0, land_transaction_month=?, naval_transactions=0, naval_transaction_month=?
+             SET population=?, update_year=?, update_number=?, spells_cast=0, land_transactions=0, naval_transactions=0
              WHERE id=?`,
-            [srow.population || 0, nextUpdate.year, nextUpdate.number, progressKey, progressKey, progressKey, srow.id]
+            [srow.population || 0, nextUpdate.year, nextUpdate.number, srow.id]
           );
 
           await new Promise((resolve, reject) => {
@@ -2577,15 +2569,12 @@ app.post('/api/cast_spell', (req,res)=>{
   const spellId = parseInt(req.body.id, 10);
   if (!spellId) return res.status(400).json({ error: 'ID invalide' });
   const requestedAmount = parseInt(req.body.amount, 10) || 0;
-  getSeigneurie(req, 'seigneuries.id, seigneuries.baronnie_id, seigneuries.buildings, seigneuries.infrastructures, seigneuries.spells_cast, seigneuries.spell_month, seigneuries.update_year, seigneuries.update_number', (err, srow) => {
+  getSeigneurie(req, 'seigneuries.id, seigneuries.baronnie_id, seigneuries.buildings, seigneuries.infrastructures, seigneuries.spells_cast, seigneuries.update_year, seigneuries.update_number', (err, srow) => {
     if (err) return handleError(res, err);
     if (!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
     const seigneurieId = srow.id;
     const infrastructures = safeParse(srow.infrastructures, {});
-    const currentProgressKey = computeMonthlyProgressKey(srow);
     let casts = srow.spells_cast || 0;
-    let spellMonth = srow.spell_month;
-    if (spellMonth !== currentProgressKey) { casts = 0; spellMonth = currentProgressKey; }
     db.all('SELECT id, label, effects FROM infrastructure_properties', [], (err2, iprops) => {
       if (err2) return handleError(res, err2);
       const effectCtx = { spellSuccessBonus:0, basicSpellDiscount:0, advancedSpellDiscount:0, spellRangeBonus:0, spellMax:0 };
@@ -2688,7 +2677,7 @@ app.post('/api/cast_spell', (req,res)=>{
             }
             function finish() {
               casts += 1;
-              db.run('UPDATE seigneuries SET spells_cast=?, spell_month=? WHERE id=?', [casts, spellMonth, seigneurieId], err7 => {
+              db.run('UPDATE seigneuries SET spells_cast=? WHERE id=?', [casts, seigneurieId], err7 => {
                 if (err7) return handleError(res, err7);
                 res.json({ success, randomLuxury });
               });
@@ -2764,10 +2753,6 @@ function buildUpdateStatus(row, blockers = [], now = new Date()) {
     unlockDate: unlockDate.toISOString(),
     unlockLabel: unlockDate.toLocaleDateString('fr-CA')
   };
-}
-
-function computeMonthlyProgressKey(row, now = new Date()) {
-  return getUpdateKey(normalizeSeigneurieUpdate(row, now));
 }
 
 function computeEmploymentFromState(db, seigneurieRow, cb) {
@@ -3862,15 +3847,12 @@ app.post('/api/send_transaction', (req, res) => {
   const txType = req.body.type === 'naval' ? 'naval' : 'land';
   const reason = req.body.reason || null;
   if (!targetBaronyId || typeof resources !== 'object') return res.status(400).json({ error: 'Données invalides' });
-  getSeigneurie(req, 'seigneuries.id, seigneuries.baronnie_id, seigneuries.inventaire_id, seigneuries.buildings, seigneuries.infrastructures, seigneuries.land_transactions, seigneuries.land_transaction_month, seigneuries.naval_transactions, seigneuries.naval_transaction_month, seigneuries.update_year, seigneuries.update_number', (err, srow) => {
+  getSeigneurie(req, 'seigneuries.id, seigneuries.baronnie_id, seigneuries.inventaire_id, seigneuries.buildings, seigneuries.infrastructures, seigneuries.land_transactions, seigneuries.naval_transactions, seigneuries.update_year, seigneuries.update_number', (err, srow) => {
     if (err) return handleError(res, err);
     if (!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
     const seigneurieId = srow.id;
     const infrastructures = safeParse(srow.infrastructures, {});
-    const currentProgressKey = computeMonthlyProgressKey(srow);
     let count = txType === 'naval' ? (srow.naval_transactions || 0) : (srow.land_transactions || 0);
-    let month = txType === 'naval' ? srow.naval_transaction_month : srow.land_transaction_month;
-    if (month !== currentProgressKey) { count = 0; month = currentProgressKey; }
     db.all('SELECT id, label, effects FROM infrastructure_properties', [], (err2, iprops) => {
       if (err2) return handleError(res, err2);
       const effectCtx = { landTxMax:0, navalTxMax:0 };
@@ -3935,9 +3917,8 @@ app.post('/api/send_transaction', (req, res) => {
               function finish() {
                 const newCount = count + 1;
                 const field = txType === 'naval' ? 'naval_transactions' : 'land_transactions';
-                const monthField = txType === 'naval' ? 'naval_transaction_month' : 'land_transaction_month';
                 const originUpdate = normalizeSeigneurieUpdate(srow);
-                db.run(`UPDATE seigneuries SET ${field}=?, ${monthField}=? WHERE id=?`, [newCount, month, seigneurieId], err7 => {
+                db.run(`UPDATE seigneuries SET ${field}=? WHERE id=?`, [newCount, seigneurieId], err7 => {
                   if (err7) return handleError(res, err7);
                   db.run('INSERT INTO trade_transactions (origin_id, destination_id, origin_update_year, origin_update_number, resources, type, state, reason) VALUES (?,?,?,?,?,?,?,?)', [seigneurieId, dest.id, originUpdate.year, originUpdate.number, JSON.stringify(resources), txType, 'En Attente', reason], function(err8) {
                     if (err8) return handleError(res, err8);
