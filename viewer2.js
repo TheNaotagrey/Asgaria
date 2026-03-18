@@ -25,6 +25,13 @@
       panel = mapInfoPanel2.init({
         vm: core.getViewModel(),
         mapMode,
+        onNavigate: (type, id) => {
+          if (type === 'barony') {
+            core.selectBarony(id);
+            return;
+          }
+          core.selectEntity(type, id);
+        },
         infoPanel: document.getElementById('infoPanel'),
         seaInfoPanel: document.getElementById('seaInfoPanel'),
         seigneurInfoPanel: document.getElementById('seigneurInfoPanel'),
@@ -33,9 +40,21 @@
         infoOwnerLine: document.getElementById('infoOwnerLine'),
         infoReligionLine: document.getElementById('infoReligionLine'),
         infoCultureLine: document.getElementById('infoCultureLine'),
+        tradeRoutesSection: document.getElementById('tradeRoutesSection'),
+        tradeRoutesList: document.getElementById('tradeRoutesList'),
+        tradeLinesList: document.getElementById('tradeLinesList'),
+        infoFeudalBody: document.getElementById('infoFeudalBody'),
+        infoDuchyPietyBody: document.getElementById('infoDuchyPietyBody'),
+        infoReligiousList: document.getElementById('infoReligiousList'),
+        canonicalOwnedList: document.getElementById('canonicalOwnedList'),
+        canonicalParentList: document.getElementById('canonicalParentList'),
+        titleSubtitlesList: document.getElementById('titleSubtitlesList'),
         seigneurInfoTitle: document.getElementById('seigneurInfoTitle'),
         seigneurInfoIdentity: document.getElementById('seigneurInfoIdentity'),
         seigneurInfoReligion: document.getElementById('seigneurInfoReligion'),
+        seigneurOverlordLine: document.getElementById('seigneurOverlordLine'),
+        seigneurTitlesList: document.getElementById('seigneurTitlesList'),
+        seigneurVassalList: document.getElementById('seigneurVassalList'),
         seaInfoId: document.getElementById('seaInfoId'),
         seaInfoName: document.getElementById('seaInfoName'),
         seaInfoSeigneur: document.getElementById('seaInfoSeigneur')
