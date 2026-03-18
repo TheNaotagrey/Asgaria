@@ -1240,6 +1240,65 @@ th.multi-col {
   min-width: 250px;
 }
 
+.summary-header-row {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.summary-info-tables {
+  flex: 1;
+  min-width: min(100%, 520px);
+}
+
+.summary-update-panel {
+  width: min(100%, 320px);
+  margin-left: auto;
+}
+
+.update-panel-card {
+  border: 1px solid #d7d3c6;
+  background: #faf6ec;
+  padding: 12px;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+}
+
+.update-panel-title {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #6f6652;
+}
+
+.update-panel-value {
+  margin-top: 6px;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #3b3122;
+}
+
+.update-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.update-warning-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #b73232;
+  color: #fff;
+  font-weight: 700;
+  cursor: help;
+}
+
 /* Bouton de construction désactivé */
 .build-btn:disabled {
   opacity: 0.5;

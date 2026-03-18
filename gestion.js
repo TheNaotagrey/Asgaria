@@ -63,6 +63,29 @@ let currentUser = null;
 let currentSeigneurieId = null;
 const params = new URLSearchParams(location.search);
 let transactionToOpen = params.get('transactionId');
+const updateLabels = {
+  1: 'Fevrier',
+  2: 'Mars',
+  3: 'Avril',
+  4: 'Mai',
+  5: 'Juin',
+  6: 'Juillet',
+  7: 'Aout',
+  8: 'Septembre',
+  9: 'Octobre',
+  10: 'Hiver'
+};
+
+function formatUpdateStatusLabel(update) {
+  if (!update || !update.year || !update.number) return '';
+  return `${updateLabels[update.number] || 'Mise a jour'} ${update.year}`;
+}
+
+function compareUpdateStatus(left, right) {
+  if (!left || !right) return 0;
+  if (left.year !== right.year) return left.year - right.year;
+  return Number(left.number || 0) - Number(right.number || 0);
+}
 
 function showConfirm(message){
   return new Promise(resolve => {
@@ -182,6 +205,65 @@ function clearGestionSections() {
   });
   const tradeLimits = document.getElementById('tradeLimitsTable');
   if (tradeLimits) tradeLimits.innerHTML = '';
+}
+
+function showUpdateReport(report) {
+  if (!report || !Array.isArray(report.events) || !report.events.length) return;
+  const dialog = document.getElementById('updateReportDialog');
+  const content = document.getElementById('updateReportContent');
+  const closeBtn = document.getElementById('updateReportClose');
+  if (!dialog || !content || !closeBtn) return;
+  const items = report.events
+    .map(event => `<li><strong>${event.title || 'Evenement'}:</strong> ${event.details || ''}</li>`)
+    .join('');
+  content.innerHTML = `
+    <p><strong>${report.current_update_label || 'Mise a jour'}</strong></p>
+    <ul>${items}</ul>
+  `;
+  closeBtn.onclick = () => dialog.close();
+  dialog.showModal();
+}
+
+async function triggerUpdateAdvance() {
+  try {
+    const payload = {};
+    if (currentSeigneurieId) payload.seigneurie_id = currentSeigneurieId;
+    const res = await fetch('/api/seigneurie/advance_update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert(data.error || 'Mise a jour impossible');
+      return;
+    }
+    await loadAndRender(currentSeigneurieId);
+    showUpdateReport(data.report);
+  } catch {
+    alert('Mise a jour impossible');
+  }
+}
+
+function renderUpdatePanel(updateStatus) {
+  const container = document.getElementById('playerUpdatePanel');
+  if (!container || !updateStatus) return;
+  const blockers = Array.isArray(updateStatus.blockers) ? updateStatus.blockers : [];
+  const tooltip = blockers.map(blocker => blocker.message).filter(Boolean).join('&#10;');
+  container.innerHTML = `
+    <div class="update-panel-card">
+      <div class="update-panel-title">Mise a jour courante</div>
+      <div class="update-panel-value">${updateStatus.currentLabel || formatUpdateStatusLabel(updateStatus.current)}</div>
+      <div class="update-panel-actions">
+        <button id="advanceUpdateBtn" class="control-btn"${updateStatus.canAdvance ? '' : ' disabled'}>Mise a Jour</button>
+        ${blockers.length ? `<span class="update-warning-icon" title="${tooltip}">!</span>` : ''}
+      </div>
+    </div>
+  `;
+  const btn = document.getElementById('advanceUpdateBtn');
+  if (btn) {
+    btn.addEventListener('click', triggerUpdateAdvance);
+  }
 }
 
 async function loadAndRender(seigneurieId) {
@@ -310,19 +392,23 @@ async function loadAndRender(seigneurieId) {
     const advancedSpellDiscountDetails = data.advancedSpellDiscountDetails || [];
     const spellRangeDetails = data.spellRangeDetails || [];
     const spellMaxDetails = data.spellMaxDetails || [];
-    gameState = { s, employment, buildings, infrastructures, bpMap, ipMap, buildingBonuses, buildingBonusDetails, productionDetails, spellSuccess, basicSpellDiscount, advancedSpellDiscount, spellRange, spellMax, spellsCast, landTxMax, navalTxMax, landTransactions, navalTransactions, spellSuccessDetails, basicSpellDiscountDetails, advancedSpellDiscountDetails, spellRangeDetails, spellMaxDetails, inv, capacities, isAdmin, baronyProps };
+    const updateStatus = data.updateStatus || null;
+    gameState = { s, employment, buildings, infrastructures, bpMap, ipMap, buildingBonuses, buildingBonusDetails, productionDetails, spellSuccess, basicSpellDiscount, advancedSpellDiscount, spellRange, spellMax, spellsCast, landTxMax, navalTxMax, landTransactions, navalTransactions, spellSuccessDetails, basicSpellDiscountDetails, advancedSpellDiscountDetails, spellRangeDetails, spellMaxDetails, inv, capacities, isAdmin, baronyProps, updateStatus };
 
     await renderTradeRoutes(barony.id);
 
     const summary = document.getElementById('summary');
     summary.innerHTML = `
-      <div id="infoTables" class="resource-tables">
-        <div class="resource-table-container">
-          <table id="generalInfoTable" class="admin-table"></table>
+      <div class="summary-header-row">
+        <div id="infoTables" class="resource-tables summary-info-tables">
+          <div class="resource-table-container">
+            <table id="generalInfoTable" class="admin-table"></table>
+          </div>
+          <div class="resource-table-container">
+            <table id="deJureTable" class="admin-table"></table>
+          </div>
         </div>
-        <div class="resource-table-container">
-          <table id="deJureTable" class="admin-table"></table>
-        </div>
+        <div id="playerUpdatePanel" class="summary-update-panel"></div>
       </div>
       <div id="popAndTx" class="resource-tables">
         <div id="populationSummary" class="resource-table-container"></div>
@@ -364,6 +450,7 @@ async function loadAndRender(seigneurieId) {
       <tr><td>Comté</td><td>${barony.county_name || 'Aucun'}</td></tr>
       <tr><td>Baronnie</td><td>${barony.name || 'Aucune'}</td></tr>
     `;
+    renderUpdatePanel(updateStatus);
 
     const popSummary = document.getElementById('populationSummary');
     let employedHtml = employment.employed;
@@ -3037,10 +3124,11 @@ async function renderPendingTransactions() {
       : '/api/trade_transactions';
     const res = await fetch(url);
     const txs = res.ok ? await res.json() : [];
-    table.innerHTML = '<tr><th>Ressources</th><th>Origine</th><th>Date</th><th>Raison</th><th></th></tr>';
+    table.innerHTML = '<tr><th>Ressources</th><th>Origine</th><th>Mise a jour</th><th>Date</th><th>Raison</th><th></th></tr>';
     txs.forEach(tx => {
       const resSummary = Object.entries(tx.resources || {}).map(([k,v]) => `${v} ${resourceLabels[k] || k}`).join(', ');
       const origin = `${tx.origin_name} (${tx.origin_barony_name})`;
+      const updateLabel = tx.origin_update_label || '';
       const date = `<span class="timeago" datetime="${tx.created_at}"></span>`;
       let status;
       if (tx.state === 'En Attente') {
@@ -3151,6 +3239,123 @@ async function decideTx(id, action) {
   } catch {
     alert('Erreur');
   }
+}
+
+async function renderPendingTransactions() {
+  const table = document.getElementById('pendingTxTable');
+  if (!table) return;
+  try {
+    const url = currentSeigneurieId
+      ? `/api/trade_transactions?seigneurie_id=${currentSeigneurieId}`
+      : '/api/trade_transactions';
+    const res = await fetch(url);
+    const txs = res.ok ? await res.json() : [];
+    table.innerHTML = '<tr><th>Ressources</th><th>Origine</th><th>Mise a jour</th><th>Date</th><th>Raison</th><th></th></tr>';
+    txs.forEach(tx => {
+      const resSummary = Object.entries(tx.resources || {}).map(([k, v]) => `${v} ${resourceLabels[k] || k}`).join(', ');
+      const origin = `${tx.origin_name} (${tx.origin_barony_name})`;
+      const updateLabel = tx.origin_update_label || '';
+      const date = `<span class="timeago" datetime="${tx.created_at}"></span>`;
+      let status;
+      if (tx.state === 'En Attente') {
+        status = `<button class="tx-open" data-id="${tx.id}">...</button>`;
+      } else if (tx.state === 'Approuvée' && !tx.received) {
+        status = '<span title="Les ressources seront recues lors de votre prochaine mise a jour.">En attente de reception</span>';
+      } else {
+        const label = tx.state === 'Approuvée' ? 'Approuvée' : 'Refusée';
+        status = `<span title="${tx.decision_time ? new Date(tx.decision_time).toLocaleString() : ''}">${label}</span>`;
+      }
+      table.innerHTML += `<tr><td>${resSummary}</td><td>${origin}</td><td>${updateLabel}</td><td>${date}</td><td>${tx.reason || ''}</td><td>${status}</td></tr>`;
+    });
+    let rows = txs.length;
+    while (rows < 3) {
+      table.innerHTML += '<tr>' + '<td>&nbsp;</td>'.repeat(6) + '</tr>';
+      rows++;
+    }
+    timeago.render(table.querySelectorAll('.timeago'), 'fr');
+    table.querySelectorAll('.tx-open').forEach(btn => {
+      btn.addEventListener('click', () => openTransactionPopup(btn.dataset.id));
+    });
+  } catch {
+    table.innerHTML = '<tr><td colspan="6">Erreur</td></tr>';
+  }
+}
+
+async function openTransactionPopup(id) {
+  try {
+    const res = await fetch(`/api/trade_transactions/${id}`);
+    if (!res.ok) throw new Error('Erreur');
+    const tx = await res.json();
+    const dialog = document.getElementById('txDialog');
+    const content = document.getElementById('txContent');
+    const buttons = document.getElementById('txButtons');
+    const refuseBtn = document.getElementById('txRefuse');
+    const acceptBtn = document.getElementById('txAccept');
+    const closeBtn = document.getElementById('txClose');
+    const items = Object.entries(tx.resources || {}).map(([k, v]) => `<li>${v} ${resourceLabels[k] || k}</li>`).join('');
+    const typeLabel = tx.type === 'naval' ? 'cargaison' : 'caravane';
+    const currentUpdate = gameState.updateStatus && gameState.updateStatus.current;
+    const originUpdate = { year: Number(tx.origin_update_year), number: Number(tx.origin_update_number) };
+    const canAcceptNow = !currentUpdate || compareUpdateStatus(currentUpdate, originUpdate) >= 0;
+    refuseBtn.style.display = 'none';
+    acceptBtn.style.display = 'none';
+    closeBtn.style.display = 'none';
+
+    if (tx.state === 'Refusée' && Number(tx.origin_id) === Number(currentSeigneurieId)) {
+      let claim = { returned: tx.resources, lost: {} };
+      if (!tx.returned) {
+        try {
+          const cRes = await fetch(`/api/trade_transactions/${id}/claim`, { method: 'POST' });
+          if (cRes.ok) {
+            claim = await cRes.json();
+            await loadAndRender(currentSeigneurieId);
+          }
+        } catch {}
+      }
+      const retItems = Object.entries(claim.returned || {}).map(([k, v]) => `<li>${v} ${resourceLabels[k] || k}</li>`).join('');
+      let lossHtml = '';
+      if (claim.lost && Object.keys(claim.lost).length) {
+        const lossItems = Object.entries(claim.lost).map(([k, v]) => `<li>${v} ${resourceLabels[k] || k}</li>`).join('');
+        lossHtml = `<p>Pertes :</p><ul>${lossItems}</ul>`;
+      }
+      content.innerHTML = `
+        <p>Votre ${typeLabel} a destination de ${tx.dest_name} a ete refusee.</p>
+        <p>Les ressources suivantes vous ont ete retournees :</p>
+        <ul>${retItems}</ul>
+        ${lossHtml}`;
+      buttons.style.display = '';
+      closeBtn.style.display = '';
+      closeBtn.onclick = () => dialog.close();
+    } else {
+      const waitingMessage = !canAcceptNow
+        ? `<p><strong>Blocage :</strong> vous ne pourrez l'accepter qu'a partir de ${tx.origin_update_label || formatUpdateStatusLabel(originUpdate)}.</p>`
+        : '';
+      const receivedMessage = tx.state === 'Approuvée' && !tx.received
+        ? '<p>Cette transaction a ete approuvee. Les ressources seront ajoutees lors de votre prochaine mise a jour.</p>'
+        : '';
+      content.innerHTML = `
+        <p>Vous avez recu une ${typeLabel} de ${tx.origin_name} de la Baronnie de ${tx.origin_barony_name}.</p>
+        <p><strong>Mise a jour d'envoi :</strong> ${tx.origin_update_label || formatUpdateStatusLabel(originUpdate)}</p>
+        <p><strong>Raison :</strong> ${tx.reason || 'Aucune raison'}</p>
+        <p>Elle contient :</p>
+        <ul>${items}</ul>
+        ${waitingMessage}
+        ${receivedMessage}
+        <p>En cas de refus, les ressources seront retournees a l'envoyeur.</p>`;
+      buttons.style.display = '';
+      if (tx.state === 'En Attente' && Number(tx.destination_id) === Number(currentSeigneurieId) && canAcceptNow) {
+        refuseBtn.style.display = '';
+        acceptBtn.style.display = '';
+        refuseBtn.onclick = async () => { dialog.close(); await decideTx(id, 'refuse'); };
+        acceptBtn.onclick = async () => { dialog.close(); await decideTx(id, 'accept'); };
+      } else {
+        closeBtn.style.display = '';
+        closeBtn.onclick = () => dialog.close();
+      }
+    }
+    dialog.showModal();
+    timeago.render(dialog.querySelectorAll('.timeago'), 'fr');
+  } catch {}
 }
 
 async function setupAdminSelector(selectedId){

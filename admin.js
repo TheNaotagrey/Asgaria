@@ -3055,9 +3055,9 @@ async function loadSeigneuries(){
   const seigneuriesById = seigneuries.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableSeigneuries'), seigneuriesById, {
     endpoint:'seigneuries',
-    fields:['baronnie_id','seigneur_id','population',...inventaireFields],
+    fields:['baronnie_id','seigneur_id','population','update_year','update_number',...inventaireFields],
     selects:{baronnie_id:baroniesSelect, seigneur_id:seigneursSelect},
-    labels:{baronnie_id:'Baronnie', seigneur_id:'Seigneur', population:'Population',...inventaireLabels},
+    labels:{baronnie_id:'Baronnie', seigneur_id:'Seigneur', population:'Population', update_year:'Année MJ', update_number:'No MJ', ...inventaireLabels},
     beforeSave:(payload,item)=>{ if(item && item.inventaire_id) payload.inventaire_id = item.inventaire_id; },
     deleteConfig: defaultDeleteConfig('la seigneurie', 'baronnie_id')
   });
