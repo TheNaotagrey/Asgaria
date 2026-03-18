@@ -298,11 +298,8 @@ CREATE TABLE IF NOT EXISTS seigneuries (
   buildings TEXT DEFAULT '{}',
   infrastructures TEXT DEFAULT '{}',
   spells_cast INTEGER DEFAULT 0,
-  spell_month TEXT,
   land_transactions INTEGER DEFAULT 0,
-  land_transaction_month TEXT,
   naval_transactions INTEGER DEFAULT 0,
-  naval_transaction_month TEXT,
   FOREIGN KEY(baronnie_id) REFERENCES baronies(id),
   FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id),
   FOREIGN KEY(inventaire_id) REFERENCES inventaire(id)
@@ -814,20 +811,11 @@ db.serialize(() => {
       if (!rows.some(r => r.name === 'spells_cast')) {
         db.run("ALTER TABLE seigneuries ADD COLUMN spells_cast INTEGER DEFAULT 0");
       }
-      if (!rows.some(r => r.name === 'spell_month')) {
-        db.run("ALTER TABLE seigneuries ADD COLUMN spell_month TEXT");
-      }
       if (!rows.some(r => r.name === 'land_transactions')) {
         db.run("ALTER TABLE seigneuries ADD COLUMN land_transactions INTEGER DEFAULT 0");
       }
-      if (!rows.some(r => r.name === 'land_transaction_month')) {
-        db.run("ALTER TABLE seigneuries ADD COLUMN land_transaction_month TEXT");
-      }
       if (!rows.some(r => r.name === 'naval_transactions')) {
         db.run("ALTER TABLE seigneuries ADD COLUMN naval_transactions INTEGER DEFAULT 0");
-      }
-      if (!rows.some(r => r.name === 'naval_transaction_month')) {
-        db.run("ALTER TABLE seigneuries ADD COLUMN naval_transaction_month TEXT");
       }
     }
   });
