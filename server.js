@@ -504,6 +504,20 @@ function computeShortestPath(startId, endId, adjacency) {
   return { path, distance: dist[endId] };
 }
 
+function computePathDistance(path, adjacency) {
+  if (!Array.isArray(path) || path.length < 2) return 0;
+  let total = 0;
+  for (let i = 0; i < path.length - 1; i += 1) {
+    const current = path[i];
+    const next = path[i + 1];
+    const neighbors = adjacency[current] || [];
+    const edge = neighbors.find(item => parseInt(item.id, 10) === next);
+    if (!edge) return null;
+    total += parseInt(edge.distance, 10) || 1;
+  }
+  return total;
+}
+
 function normalizeTradeRoutePathInput(rawPath, startId, endId) {
   let parsed = parseTradeRoutePath(rawPath);
   if (!parsed.length) return { fullPath: [], storedPath: [] };
@@ -4008,9 +4022,10 @@ app.delete('/api/trade_lines/:id', requireAdmin, (req, res) => {
   });
 });
 
-app.post('/api/trade_routes/build', (req, res) => {
+app.post('/api/users/me/trade_links/build', (req, res) => {
   if (!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
   const targetId = parseInt(req.body.barony_id, 10);
+  const routeType = req.body.type === 'naval' ? 'naval' : 'land';
   if (!targetId) return res.status(400).json({ error: 'ID invalide' });
   getSeigneurie(req, 'seigneuries.id as id, seigneuries.baronnie_id, seigneuries.inventaire_id', (err, srow) => {
     if (err) return handleError(res, err);
@@ -4020,27 +4035,53 @@ app.post('/api/trade_routes/build', (req, res) => {
     db.get('SELECT seigneur_id, name FROM baronies WHERE id=?', [targetId], (err2, brow) => {
       if (err2) return handleError(res, err2);
       if (!brow || !brow.seigneur_id) return res.status(400).json({ error: 'Baronnie invalide' });
-      getTradeAdjacency((err3, adjacency) => {
-        if (err3) return handleError(res, err3);
-        const computed = computeShortestPath(startId, targetId, adjacency);
-        if (!computed || computed.distance == null) return res.status(400).json({ error: 'Inaccessible' });
-        const cost = computed.distance * 3;
+      const finalizeBuild = (cost, sql, storedPath, responsePath, distance) => {
         db.get('SELECT or_ FROM inventaire WHERE id=?', [srow.inventaire_id], (err4, inv) => {
           if (err4) return handleError(res, err4);
           if (!inv || (inv.or_ || 0) < cost) return res.status(400).json({ error: 'Ressources insuffisantes' });
           consumeResources(db, srow.id, { or_: cost }, err5 => {
             if (err5) return handleError(res, err5);
-            const payload = {
-              barony_id_1: startId,
-              barony_id_2: targetId,
-              path: JSON.stringify(computed.path.slice(1, -1))
-            };
-            db.run('INSERT INTO trade_routes (barony_id_1, barony_id_2, path) VALUES (?,?,?)', [payload.barony_id_1, payload.barony_id_2, payload.path], function(err6) {
+            db.run(sql, [startId, targetId, JSON.stringify(storedPath)], function(err6) {
               if (err6) return handleError(res, err6);
-              res.json({ id: this.lastID, cost, distance: computed.distance, path: computed.path });
+              res.json({ id: this.lastID, cost, distance, type: routeType, path: responsePath });
             });
           });
         });
+      };
+      if (routeType === 'naval') {
+        const requestedPath = parseTradeLinePath(req.body.path);
+        if (!requestedPath.length) {
+          return res.status(400).json({ error: 'Le chemin maritime est requis' });
+        }
+        getTradeLineAdjacency((err3, adjacency) => {
+          if (err3) return handleError(res, err3);
+          getBaronyMaritimeZones((errZones, baronyZoneMap) => {
+            if (errZones) return handleError(res, errZones);
+            const validationError = validateTradeLinePath(requestedPath, startId, targetId, adjacency, baronyZoneMap);
+            if (validationError) return res.status(400).json({ error: validationError });
+            const distance = computePathDistance(requestedPath, adjacency);
+            if (distance == null) return res.status(400).json({ error: 'Chemin maritime invalide' });
+            finalizeBuild(distance * 3, 'INSERT INTO trade_lines (barony_id_1, barony_id_2, path) VALUES (?,?,?)', requestedPath, requestedPath, distance);
+          });
+        });
+        return;
+      }
+      getTradeAdjacency((err3, adjacency) => {
+        if (err3) return handleError(res, err3);
+        let normalizedPath = parseTradeRoutePath(req.body.path);
+        if (!normalizedPath.length) {
+          const computed = computeShortestPath(startId, targetId, adjacency);
+          if (!computed || computed.distance == null) return res.status(400).json({ error: 'Inaccessible' });
+          normalizedPath = computed.path;
+        }
+        const normalized = normalizeTradeRoutePathInput(normalizedPath, startId, targetId);
+        if (normalized.error) return res.status(400).json({ error: normalized.error });
+        const fullPath = normalized.fullPath.length ? normalized.fullPath : normalizedPath;
+        const validationError = validateTradeRoutePath(fullPath, startId, targetId, adjacency);
+        if (validationError) return res.status(400).json({ error: validationError });
+        const distance = computePathDistance(fullPath, adjacency);
+        if (distance == null) return res.status(400).json({ error: 'Chemin invalide' });
+        finalizeBuild(distance * 3, 'INSERT INTO trade_routes (barony_id_1, barony_id_2, path) VALUES (?,?,?)', normalized.storedPath, fullPath, distance);
       });
     });
   });

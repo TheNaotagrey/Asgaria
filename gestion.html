@@ -93,6 +93,21 @@
       <button id="tradeSend" class="control-btn">Envoyer</button>
     </div>
   </dialog>
+  <dialog id="tradeRouteDialog" class="confirm-dialog">
+    <h3 id="tradeRouteDialogTitle">Nouvelle liaison commerciale</h3>
+    <p id="tradeRouteDialogTarget"></p>
+    <label for="tradeRouteMethod" style="display:block;margin-top:10px">Type de liaison</label>
+    <select id="tradeRouteMethod" style="width:100%;margin-top:4px"></select>
+    <div id="tradeRoutePathContainer" style="margin-top:12px">
+      <strong>Chemin</strong>
+      <div id="tradeRoutePathSteps" style="margin-top:8px"></div>
+    </div>
+    <p id="tradeRouteHint" style="margin-top:10px"></p>
+    <div class="dialog-buttons">
+      <button id="tradeRouteCancel" class="control-btn">Annuler</button>
+      <button id="tradeRouteSave" class="control-btn">Construire</button>
+    </div>
+  </dialog>
   <dialog id="txDialog" class="confirm-dialog">
     <div id="txContent"></div>
     <div id="txButtons" class="dialog-buttons">

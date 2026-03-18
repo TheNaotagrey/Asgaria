@@ -29,7 +29,7 @@ Ce dépôt propose un serveur Express/Node.js avec une base SQLite et plusieurs 
 - Les tables `barony_connections` et `maritime_zone_connections` incluent une colonne `distance` (par défaut 1) pour pondérer les distances entre baronnies ou zones maritimes.
 - **admin.js** : interface d'administration des empires, royaumes, duchés, etc.
 - L'onglet "Routes commerciales" d'**admin.js** inclut un import Excel (`.xlsx/.xls`) des paires de baronnies avec création en masse des routes manquantes via l'API serveur.
-- **gestion.js** : gestion des seigneuries, ressources et sorts côté joueur.
+- **gestion.js** : gestion des seigneuries, ressources et sorts côté joueur, y compris l’interface de commerce qui affiche désormais les chemins terrestres/maritimes, prévisualise les trajets au survol et permet de construire des liaisons avec choix explicite du chemin.
 - **profile.js** : modification du profil utilisateur.
 - **organigramme.js** : affiche la page d’organigramme féodal des seigneurs (hiérarchie vassale, interactions et navigation).
 - **renderHeader.js** : insère le fragment HTML du header commun côté client.
@@ -47,6 +47,7 @@ Ce dépôt propose un serveur Express/Node.js avec une base SQLite et plusieurs 
 - Garder ce fichier à jour : toute modification importante de l'architecture, des dépendances ou des relations entre scripts doit être répercutée ici.
 - Ajouter ou supprimer des scripts majeurs nécessite d'actualiser la section "Scripts et relations principales".
 - Les développements se font en JavaScript (CommonJS côté serveur, scripts front-end sans bundler) avec Node.js ≥14.
+- L'API publique, c'est-à-dire l'API accessible sans connexion et documentée dans `Documentation/API_PUBLIQUE.md`, est strictement en lecture seule : elle ne doit servir qu'à récupérer des données (`fetch`) et ne doit jamais créer, modifier ou supprimer des données.
 - Après toute modification du code, exécuter les vérifications disponibles (`npm test`, même si aucun test n'est défini) et corriger les erreurs le cas échéant.
 - En général, pour chaque modification où c'est applicable, fournir au minimum un test/check exécuté et une capture d'écran de validation de l'interface impactée.
 - Après toute modification de l'API publique (routes, paramètres, schémas JSON, tables/champs exposés), mettre à jour `Documentation/API_PUBLIQUE.md` dans le même changement.
