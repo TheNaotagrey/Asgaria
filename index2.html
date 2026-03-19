@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Carte des baronnies</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <h1>Carte des baronnies</h1>
+    <nav class="tabs">
+      <a href="index2.html">Baronnies</a>
+      <a href="index2.html?mode=sea">Carte Maritime</a>
+    </nav>
+    <div id="controls" class="controls-row">
+      <button id="randomBtn" class="control-btn">Couleurs aléatoires</button>
+      <label for="filterSelect">Filtre :</label>
+      <select id="filterSelect" class="control-btn"></select>
+      <span id="pixelLoading" class="loading-indicator" style="display:none;"></span>
+      <span id="authArea" class="auth-area"></span>
+    </div>
+  </header>
+  <main>
+    <div id="mapContainer" class="map-container">
+      <div id="mapSearchOverlay" class="organigramme-search-overlay"></div>
+      <div id="cultureRanking" class="culture-ranking" style="display:none;">
+        <table class="culture-ranking-table">
+          <thead>
+            <tr class="culture-ranking-title-row">
+              <th colspan="2">Classement des cultures</th>
+            </tr>
+            <tr>
+              <th>Culture</th>
+              <th>Pointage</th>
+            </tr>
+          </thead>
+          <tbody id="cultureRankingBody"></tbody>
+        </table>
+      </div>
+      <div id="panZoomGroup" class="panzoom-group">
+        <img id="baseMap" src="Asgaria.png" alt="Carte d’Asgaria" class="base-map">
+        <canvas id="pixelCanvas" class="pixel-canvas"></canvas>
+        <img id="idOverlayMap" src="Asgaria_ID_only.png" alt="Numéros des baronnies" class="id-overlay-map">
+      </div>
+    </div>
+    <aside id="infoPanel" class="info-panel" style="display:none;">
+      <h2 id="baronyTitle"></h2>
+      <div class="info-row seigneur-line" id="infoOwnerLine"></div>
+      <div class="info-row" id="infoReligionLine"></div>
+      <div class="info-row" id="infoCultureLine"></div>
+      <section class="info-group" id="tradeRoutesSection" style="display:none;">
+        <h3>Routes commerciales</h3>
+        <div id="tradeRoutesList"></div>
+        <h3>Lignes commerciales</h3>
+        <div id="tradeLinesList"></div>
+      </section>
+      <section class="info-group" id="feudalSection">
+        <h3>Hiérarchie féodale</h3>
+        <table class="info-table" id="infoFeudalTable">
+          <thead>
+            <tr>
+              <th></th>
+              <th>De Jure</th>
+              <th>De Facto</th>
+            </tr>
+          </thead>
+          <tbody id="infoFeudalBody"></tbody>
+        </table>
+        <table class="info-table" id="infoDuchyPietyTable" style="display:none;">
+          <thead>
+            <tr>
+              <th>Religion</th>
+              <th>Points</th>
+            </tr>
+          </thead>
+          <tbody id="infoDuchyPietyBody"></tbody>
+        </table>
+      </section>
+      <section class="info-group" id="religiousBuildingsSection">
+        <h3>Bâtiments religieux</h3>
+        <ul id="infoReligiousList"></ul>
+      </section>
+      <section class="info-group" id="canonicalOwnedSection">
+        <h3>Terres canoniques</h3>
+        <ul id="canonicalOwnedList"></ul>
+      </section>
+      <section class="info-group" id="canonicalParentSection">
+        <h3>Terres canonique de:</h3>
+        <ul id="canonicalParentList"></ul>
+      </section>
+      <section class="info-group" id="titleSubtitlesSection" style="display:none;">
+        <h3>Sous-titres</h3>
+        <ul id="titleSubtitlesList"></ul>
+      </section>
+    </aside>
+    <aside id="seaInfoPanel" class="info-panel" style="display:none;">
+      <h2>Zone maritime sélectionnée</h2>
+      <div class="info-row"><span class="info-label">ID :</span><span id="seaInfoId"></span></div>
+      <div class="info-row"><span class="info-label">Nom :</span><span id="seaInfoName"></span></div>
+      <div class="info-row"><span class="info-label">Seigneur :</span><span id="seaInfoSeigneur"></span></div>
+    </aside>
+    <aside id="seigneurInfoPanel" class="info-panel" style="display:none;">
+      <div class="info-header">
+        <h2 id="seigneurInfoTitle">Seigneur</h2>
+      </div>
+      <div class="info-row" id="seigneurInfoIdentity"></div>
+      <div class="info-row" id="seigneurInfoReligion"></div>
+      <div class="info-row seigneur-line" id="seigneurOverlordLine"></div>
+      <section class="info-group" id="seigneurTitlesSection">
+        <h3>Titres</h3>
+        <ul id="seigneurTitlesList"></ul>
+      </section>
+      <section class="info-group" id="seigneurVassalsSection">
+        <h3>Vassaux</h3>
+        <ul id="seigneurVassalList"></ul>
+      </section>
+    </aside>
+    <aside id="tradeRoutePanel" class="info-panel" style="display:none;">
+      <h2 id="tradeRoutePanelTitle"></h2>
+      <section class="info-group" id="tradeRouteConnectedSection">
+        <h3>Baronnies connectées</h3>
+        <ul id="tradeRouteConnectedList"></ul>
+      </section>
+      <section class="info-group" id="tradeRoutePathSection">
+        <h3>Chemin</h3>
+        <ul id="tradeRoutePathList"></ul>
+      </section>
+    </aside>
+    <div id="legend" class="legend" style="display:none;"></div>
+  </main>
+  <script src="viewModel.js"></script>
+  <script src="src/bfs2.js"></script>
+  <script src="src/mapFilters2.js"></script>
+  <script src="src/mapCore2.js"></script>
+  <script src="src/mapInfoPanel2.js"></script>
+  <script src="viewer2.js"></script>
+  <dialog id="authDialog">
+    <form id="loginForm" method="dialog">
+      <h3>Connexion</h3>
+      <input type="email" name="email" placeholder="Email" required>
+      <input type="password" name="password" placeholder="Mot de passe" required>
+      <button type="submit" class="control-btn">Connexion</button>
+      <p><a href="#" id="showRegister">Créer un compte</a></p>
+    </form>
+    <form id="registerForm" method="dialog" style="display:none;flex-direction:column;">
+      <h3>Créer un compte</h3>
+      <input type="email" name="email" placeholder="Email" required>
+      <input type="password" name="password" placeholder="Mot de passe" required>
+      <input type="text" name="first_name" placeholder="Prénom réel" required>
+      <input type="text" name="last_name" placeholder="Nom de famille réel" required>
+      <small>Utilisez vos vrais prénom et nom (pas de personnage).</small>
+      <button type="submit" class="control-btn">Créer</button>
+      <p><a href="#" id="showLogin">Déjà un compte ?</a></p>
+    </form>
+  </dialog>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/timeago.js/4.0.2/timeago.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/timeago.js/4.0.2/locale/fr.min.js"></script>
+  <script src="auth.js"></script>
+  </body>
+</html>

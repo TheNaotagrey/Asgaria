@@ -63,6 +63,29 @@ let currentUser = null;
 let currentSeigneurieId = null;
 const params = new URLSearchParams(location.search);
 let transactionToOpen = params.get('transactionId');
+const updateLabels = {
+  1: 'Fevrier',
+  2: 'Mars',
+  3: 'Avril',
+  4: 'Mai',
+  5: 'Juin',
+  6: 'Juillet',
+  7: 'Aout',
+  8: 'Septembre',
+  9: 'Octobre',
+  10: 'Hiver'
+};
+
+function formatUpdateStatusLabel(update) {
+  if (!update || !update.year || !update.number) return '';
+  return `${updateLabels[update.number] || 'Mise a jour'} ${update.year}`;
+}
+
+function compareUpdateStatus(left, right) {
+  if (!left || !right) return 0;
+  if (left.year !== right.year) return left.year - right.year;
+  return Number(left.number || 0) - Number(right.number || 0);
+}
 
 function showConfirm(message){
   return new Promise(resolve => {
@@ -146,7 +169,7 @@ async function init() {
     if (newRouteBtn && newRouteBtn.contains(e.target)) return;
     newRouteMode = false;
     eligibleTargets = {};
-    await updateTradeMap(currentTradeBaronyId, currentTradeRoutes);
+    await updateTradeMap(currentTradeBaronyId, tradeLinksState);
   });
 }
 
@@ -182,6 +205,65 @@ function clearGestionSections() {
   });
   const tradeLimits = document.getElementById('tradeLimitsTable');
   if (tradeLimits) tradeLimits.innerHTML = '';
+}
+
+function showUpdateReport(report) {
+  if (!report || !Array.isArray(report.events) || !report.events.length) return;
+  const dialog = document.getElementById('updateReportDialog');
+  const content = document.getElementById('updateReportContent');
+  const closeBtn = document.getElementById('updateReportClose');
+  if (!dialog || !content || !closeBtn) return;
+  const items = report.events
+    .map(event => `<li><strong>${event.title || 'Evenement'}:</strong> ${event.details || ''}</li>`)
+    .join('');
+  content.innerHTML = `
+    <p><strong>${report.current_update_label || 'Mise a jour'}</strong></p>
+    <ul>${items}</ul>
+  `;
+  closeBtn.onclick = () => dialog.close();
+  dialog.showModal();
+}
+
+async function triggerUpdateAdvance() {
+  try {
+    const payload = {};
+    if (currentSeigneurieId) payload.seigneurie_id = currentSeigneurieId;
+    const res = await fetch('/api/seigneurie/advance_update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert(data.error || 'Mise a jour impossible');
+      return;
+    }
+    await loadAndRender(currentSeigneurieId);
+    showUpdateReport(data.report);
+  } catch {
+    alert('Mise a jour impossible');
+  }
+}
+
+function renderUpdatePanel(updateStatus) {
+  const container = document.getElementById('playerUpdatePanel');
+  if (!container || !updateStatus) return;
+  const blockers = Array.isArray(updateStatus.blockers) ? updateStatus.blockers : [];
+  const tooltip = blockers.map(blocker => blocker.message).filter(Boolean).join('&#10;');
+  container.innerHTML = `
+    <div class="update-panel-card">
+      <div class="update-panel-title">Mise a jour courante</div>
+      <div class="update-panel-value">${updateStatus.currentLabel || formatUpdateStatusLabel(updateStatus.current)}</div>
+      <div class="update-panel-actions">
+        <button id="advanceUpdateBtn" class="control-btn"${updateStatus.canAdvance ? '' : ' disabled'}>Mise a Jour</button>
+        ${blockers.length ? `<span class="update-warning-icon" title="${tooltip}">!</span>` : ''}
+      </div>
+    </div>
+  `;
+  const btn = document.getElementById('advanceUpdateBtn');
+  if (btn) {
+    btn.addEventListener('click', triggerUpdateAdvance);
+  }
 }
 
 async function loadAndRender(seigneurieId) {
@@ -310,19 +392,23 @@ async function loadAndRender(seigneurieId) {
     const advancedSpellDiscountDetails = data.advancedSpellDiscountDetails || [];
     const spellRangeDetails = data.spellRangeDetails || [];
     const spellMaxDetails = data.spellMaxDetails || [];
-    gameState = { s, employment, buildings, infrastructures, bpMap, ipMap, buildingBonuses, buildingBonusDetails, productionDetails, spellSuccess, basicSpellDiscount, advancedSpellDiscount, spellRange, spellMax, spellsCast, landTxMax, navalTxMax, landTransactions, navalTransactions, spellSuccessDetails, basicSpellDiscountDetails, advancedSpellDiscountDetails, spellRangeDetails, spellMaxDetails, inv, capacities, isAdmin, baronyProps };
+    const updateStatus = data.updateStatus || null;
+    gameState = { s, employment, buildings, infrastructures, bpMap, ipMap, buildingBonuses, buildingBonusDetails, productionDetails, spellSuccess, basicSpellDiscount, advancedSpellDiscount, spellRange, spellMax, spellsCast, landTxMax, navalTxMax, landTransactions, navalTransactions, spellSuccessDetails, basicSpellDiscountDetails, advancedSpellDiscountDetails, spellRangeDetails, spellMaxDetails, inv, capacities, isAdmin, baronyProps, updateStatus };
 
     await renderTradeRoutes(barony.id);
 
     const summary = document.getElementById('summary');
     summary.innerHTML = `
-      <div id="infoTables" class="resource-tables">
-        <div class="resource-table-container">
-          <table id="generalInfoTable" class="admin-table"></table>
+      <div class="summary-header-row">
+        <div id="infoTables" class="resource-tables summary-info-tables">
+          <div class="resource-table-container">
+            <table id="generalInfoTable" class="admin-table"></table>
+          </div>
+          <div class="resource-table-container">
+            <table id="deJureTable" class="admin-table"></table>
+          </div>
         </div>
-        <div class="resource-table-container">
-          <table id="deJureTable" class="admin-table"></table>
-        </div>
+        <div id="playerUpdatePanel" class="summary-update-panel"></div>
       </div>
       <div id="popAndTx" class="resource-tables">
         <div id="populationSummary" class="resource-table-container"></div>
@@ -364,6 +450,7 @@ async function loadAndRender(seigneurieId) {
       <tr><td>Comté</td><td>${barony.county_name || 'Aucun'}</td></tr>
       <tr><td>Baronnie</td><td>${barony.name || 'Aucune'}</td></tr>
     `;
+    renderUpdatePanel(updateStatus);
 
     const popSummary = document.getElementById('populationSummary');
     let employedHtml = employment.employed;
@@ -2238,7 +2325,7 @@ async function handleTradeMapSelect(id) {
     return;
   }
   try {
-    const res = await fetch('/api/trade_routes/build', {
+    const res = await fetch('/api/users/me/trade_links/build', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ barony_id: target.id })
@@ -2323,6 +2410,609 @@ async function openTradeDialog(baronyId) {
   await ensureTradeData();
   const idNum = parseInt(baronyId, 10);
   const methods = getAvailableMethods(idNum);
+  const bar = tradeBaronies.find(b => b.id === idNum);
+  const name = bar ? bar.seigneur_name : '';
+  const result = await showTradeDialog(name, methods);
+  if (!result) return;
+  await sendTransaction(idNum, result.resources, result.reason, result.method);
+}
+
+let tradeLinksState = [];
+let tradeRouteDialogData = { target: null, methods: [], method: 'land', landSelections: [], seaSelections: [] };
+let tradePreviewState = null;
+let maritimeZonePixelsState = {};
+let maritimeZoneMapState = {};
+
+async function ensureTradeData() {
+  if (tradeBaronies && Object.keys(maritimeZoneMapState).length) return;
+  try {
+    const [barRes, seiRes, zoneRes] = await Promise.all([
+      fetch('/api/baronies'),
+      fetch('/api/seigneurs'),
+      fetch('/api/maritime_zones')
+    ]);
+    const barData = barRes.ok ? await barRes.json() : [];
+    const seigs = seiRes.ok ? await seiRes.json() : [];
+    const zones = zoneRes.ok ? await zoneRes.json() : [];
+    seigneurNameMap = Object.fromEntries(seigs.map(s => [s.id, s.name]));
+    tradeBaronies = barData.map(b => ({
+      id: b.id,
+      name: b.name,
+      seigneur_id: b.seigneur_id,
+      seigneur_name: seigneurNameMap[b.seigneur_id]
+    }));
+    maritimeZoneMapState = Object.fromEntries(zones.map(z => [z.id, z]));
+  } catch {
+    tradeBaronies = [];
+    maritimeZoneMapState = {};
+  }
+}
+
+function computeShortestTradePath(startId, endId, adjacency) {
+  if (!startId || !endId) return null;
+  if (startId === endId) return { path: [startId], distance: 0 };
+  const dist = { [startId]: 0 };
+  const prev = {};
+  const queue = [{ id: startId, dist: 0 }];
+  while (queue.length) {
+    let bestIndex = 0;
+    for (let i = 1; i < queue.length; i += 1) {
+      if (queue[i].dist < queue[bestIndex].dist) bestIndex = i;
+    }
+    const current = queue.splice(bestIndex, 1)[0];
+    if (!current || current.dist !== dist[current.id]) continue;
+    if (current.id === endId) break;
+    (adjacency[current.id] || []).forEach(next => {
+      const nextId = parseInt(next.id, 10);
+      if (!nextId) return;
+      const weight = parseInt(next.distance, 10) || 1;
+      const nextDist = current.dist + weight;
+      if (dist[nextId] == null || nextDist < dist[nextId]) {
+        dist[nextId] = nextDist;
+        prev[nextId] = current.id;
+        queue.push({ id: nextId, dist: nextDist });
+      }
+    });
+  }
+  if (dist[endId] == null) return null;
+  const path = [];
+  let cursor = endId;
+  while (cursor != null) {
+    path.push(cursor);
+    if (cursor === startId) break;
+    cursor = prev[cursor];
+  }
+  if (path[path.length - 1] !== startId) return null;
+  path.reverse();
+  return { path, distance: dist[endId] };
+}
+
+function computePathDistance(path, adjacency) {
+  if (!Array.isArray(path) || path.length < 2) return 0;
+  let total = 0;
+  for (let i = 0; i < path.length - 1; i += 1) {
+    const edge = (adjacency[path[i]] || []).find(item => parseInt(item.id, 10) === path[i + 1]);
+    if (!edge) return null;
+    total += parseInt(edge.distance, 10) || 1;
+  }
+  return total;
+}
+
+function getTradeBaronyById(id) {
+  return (tradeBaronies || []).find(b => b.id === id) || null;
+}
+
+function formatTradeBaronyLabel(barony) {
+  if (!barony) return '';
+  return `${barony.name || `Baronnie ${barony.id}`} (#${barony.id})`;
+}
+
+function formatTradeZoneLabel(zoneId) {
+  const zone = maritimeZoneMapState[zoneId];
+  return zone ? `${zone.name || `Zone ${zone.id}`} (#${zone.id})` : `Zone ${zoneId}`;
+}
+
+function buildFullLandPath(link) {
+  const stored = Array.isArray(link.path) ? link.path.slice() : [];
+  return link.barony_id_1 === currentTradeBaronyId
+    ? [link.barony_id_1, ...stored, link.barony_id_2]
+    : [link.barony_id_2, ...stored.slice().reverse(), link.barony_id_1];
+}
+
+function buildFullSeaPath(link) {
+  return link.barony_id_1 === currentTradeBaronyId ? link.path.slice() : link.path.slice().reverse();
+}
+
+function getTradeLinkDistance(link) {
+  return link.type === 'land'
+    ? (computePathDistance(buildFullLandPath(link), tradeAdjacency) || 0)
+    : (computePathDistance(buildFullSeaPath(link), seaZoneAdjacency) || 0);
+}
+
+function buildTradeLinkSummary(link) {
+  return (link.type === 'land'
+    ? buildFullLandPath(link).map(id => formatTradeBaronyLabel(getTradeBaronyById(id)))
+    : buildFullSeaPath(link).map(id => formatTradeZoneLabel(id))
+  ).join(' -> ');
+}
+
+async function initTradeMap() {
+  if (tradeMapCore) return;
+  const base = document.getElementById('tradeBaseMap');
+  const canvas = document.getElementById('tradeCanvas');
+  if (!base || !canvas) return;
+  const baseLoaded = base.complete ? Promise.resolve() : new Promise(res => (base.onload = res));
+  await baseLoaded;
+  canvas.width = base.naturalWidth;
+  canvas.height = base.naturalHeight;
+  canvas.style.width = '100%';
+  canvas.style.height = '100%';
+  tradeMapCore = mapCore.init({
+    canvas,
+    enablePan: false,
+    enableZoom: false,
+    staticMap: true,
+    onSelect: handleTradeMapSelect,
+    drawOverlay: ctx => {
+      if (!tradePreviewState || !tradePreviewState.seaPath || !tradePreviewState.seaPath.length) return;
+      ctx.save();
+      ctx.fillStyle = 'rgba(0, 128, 255, 0.45)';
+      tradePreviewState.seaPath.forEach(zoneId => {
+        (maritimeZonePixelsState[zoneId] || []).forEach(([x, y]) => ctx.fillRect(x, y, 1, 1));
+      });
+      ctx.restore();
+    },
+    fetchData: async () => {
+      const [pixels, connections, zoneConns, zoneBars, zonePixels] = await Promise.all([
+        fetch('/api/barony_pixels').then(r => r.json()),
+        fetch('/api/barony_connections').then(r => r.json()),
+        fetch('/api/maritime_zone_connections').then(r => r.json()),
+        fetch('/api/maritime_zone_baronies').then(r => r.json()),
+        fetch('/api/maritime_zone_pixels').then(r => r.json())
+      ]);
+      tradeAdjacency = {};
+      connections.forEach(c => {
+        const dist = parseInt(c.distance, 10) || 1;
+        if (!tradeAdjacency[c.barony_id_1]) tradeAdjacency[c.barony_id_1] = [];
+        if (!tradeAdjacency[c.barony_id_2]) tradeAdjacency[c.barony_id_2] = [];
+        tradeAdjacency[c.barony_id_1].push({ id: c.barony_id_2, distance: dist });
+        tradeAdjacency[c.barony_id_2].push({ id: c.barony_id_1, distance: dist });
+      });
+      seaZoneAdjacency = {};
+      zoneConns.forEach(c => {
+        const dist = parseInt(c.distance, 10) || 1;
+        if (!seaZoneAdjacency[c.zone_id_1]) seaZoneAdjacency[c.zone_id_1] = [];
+        if (!seaZoneAdjacency[c.zone_id_2]) seaZoneAdjacency[c.zone_id_2] = [];
+        seaZoneAdjacency[c.zone_id_1].push({ id: c.zone_id_2, distance: dist });
+        seaZoneAdjacency[c.zone_id_2].push({ id: c.zone_id_1, distance: dist });
+      });
+      zoneBaronies = {};
+      baronyZones = {};
+      zoneBars.forEach(zb => {
+        if (!zoneBaronies[zb.zone_id]) zoneBaronies[zb.zone_id] = [];
+        zoneBaronies[zb.zone_id].push(zb.barony_id);
+        if (!baronyZones[zb.barony_id]) baronyZones[zb.barony_id] = [];
+        baronyZones[zb.barony_id].push(zb.zone_id);
+      });
+      maritimeZonePixelsState = zonePixels || {};
+      seaReachCache = {};
+      return { mapWidth: base.naturalWidth, mapHeight: base.naturalHeight, pixelData: pixels };
+    }
+  });
+  await tradeMapCore.ready;
+}
+
+function setTradePreview(link = null) {
+  tradePreviewState = link ? {
+    landPath: link.type === 'land' ? buildFullLandPath(link) : [currentTradeBaronyId, link.partner_id],
+    seaPath: link.type === 'naval' ? buildFullSeaPath(link) : []
+  } : null;
+  if (!tradeMapCore) return;
+  tradeMapCore.setSelectedBaronies(tradePreviewState ? tradePreviewState.landPath : []);
+  tradeMapCore.drawAll();
+}
+
+async function updateTradeMap(baronyId, links) {
+  await initTradeMap();
+  if (!tradeMapCore) return;
+  const normalizedLinks = Array.isArray(links) ? links : [];
+  const bg = [...mapCore.terrainColor, 100];
+  const landColor = [128, 0, 128, 100];
+  const seaColor = [0, 128, 255, 100];
+  const currentColor = [255, 237, 0, 180];
+  const colorMap = {};
+  const patternMap = {};
+  Object.keys(tradeMapCore.pixelData).forEach(id => { colorMap[id] = [...bg]; });
+  if (baronyId) {
+    const landSet = new Set(normalizedLinks.filter(link => link.type === 'land').map(link => link.partner_id));
+    const seaSet = new Set(normalizedLinks.filter(link => link.type === 'naval').map(link => link.partner_id));
+    landSet.forEach(id => { colorMap[String(id)] = [...landColor]; });
+    seaSet.forEach(id => {
+      if (landSet.has(id)) {
+        delete colorMap[String(id)];
+        patternMap[String(id)] = [landColor, seaColor];
+      } else {
+        colorMap[String(id)] = [...seaColor];
+      }
+    });
+    colorMap[String(baronyId)] = [...currentColor];
+  }
+  tradeMapCore.setColorMap(colorMap);
+  tradeMapCore.setCanonicalPatterns(patternMap);
+}
+
+function getAvailableMethods(targetId) {
+  return tradeLinksState
+    .filter(link => link.partner_id === targetId)
+    .filter(link => (
+      (link.type === 'land' && (!gameState.landTxMax || gameState.landTransactions < gameState.landTxMax)) ||
+      (link.type === 'naval' && (!gameState.navalTxMax || gameState.navalTransactions < gameState.navalTxMax))
+    ))
+    .map(link => link.type);
+}
+
+function getBuildMethods(targetId) {
+  const methods = [];
+  const landPath = computeShortestTradePath(currentTradeBaronyId, targetId, tradeAdjacency);
+  if (landPath && landPath.path && landPath.path.length >= 2) methods.push('land');
+  if ((baronyZones[currentTradeBaronyId] || []).length && (baronyZones[targetId] || []).length) methods.push('naval');
+  return methods;
+}
+
+function buildTradeRoutePath(selections) {
+  return Array.isArray(selections) && selections.length ? selections.slice(0, -1) : [];
+}
+
+function isTradeRoutePathComplete(startId, endId, selections) {
+  return !!(startId && endId && Array.isArray(selections) && selections.length && selections[selections.length - 1] === endId);
+}
+
+function isTradeLinePathComplete(startId, endId, selections) {
+  if (!startId || !endId || !Array.isArray(selections) || !selections.length) return false;
+  const startZones = new Set(baronyZones[startId] || []);
+  const endZones = new Set(baronyZones[endId] || []);
+  return startZones.has(selections[0]) && endZones.has(selections[selections.length - 1]);
+}
+
+function autoPopulateTradeRouteDialog() {
+  const target = tradeRouteDialogData.target;
+  if (!target) return;
+  if (tradeRouteDialogData.method === 'land') {
+    const computed = computeShortestTradePath(currentTradeBaronyId, target.id, tradeAdjacency);
+    tradeRouteDialogData.landSelections = computed && computed.path ? computed.path.slice(1) : [];
+    return;
+  }
+  const startZones = baronyZones[currentTradeBaronyId] || [];
+  const endZones = baronyZones[target.id] || [];
+  let bestPath = null;
+  startZones.forEach(startZone => {
+    endZones.forEach(endZone => {
+      const computed = computeShortestTradePath(startZone, endZone, seaZoneAdjacency);
+      if (!computed || !computed.path || !computed.path.length) return;
+      if (!bestPath || computed.distance < bestPath.distance) bestPath = computed;
+    });
+  });
+  tradeRouteDialogData.seaSelections = bestPath && bestPath.path ? bestPath.path.slice() : [];
+}
+
+function renderTradeRouteDialogSteps() {
+  const steps = document.getElementById('tradeRoutePathSteps');
+  if (!steps) return;
+  steps.innerHTML = '';
+  const target = tradeRouteDialogData.target;
+  if (!target || !currentTradeBaronyId) return;
+  if (tradeRouteDialogData.method === 'land') {
+    const rendered = tradeRouteDialogData.landSelections.slice();
+    if (!rendered.length || rendered[rendered.length - 1] !== target.id) rendered.push(null);
+    const used = new Set([currentTradeBaronyId]);
+    rendered.forEach((selected, index) => {
+      const previousId = index === 0 ? currentTradeBaronyId : rendered[index - 1];
+      if (!previousId) return;
+      const select = document.createElement('select');
+      select.dataset.index = String(index);
+      select.innerHTML = '<option value=""></option>';
+      (tradeAdjacency[previousId] || []).map(item => item.id).filter(id => !used.has(id)).forEach(id => {
+        const option = document.createElement('option');
+        option.value = String(id);
+        option.textContent = formatTradeBaronyLabel(getTradeBaronyById(id));
+        select.appendChild(option);
+      });
+      if (selected) select.value = String(selected);
+      select.addEventListener('change', event => {
+        const idx = parseInt(event.target.dataset.index, 10);
+        const value = parseInt(event.target.value, 10);
+        const nextSelections = tradeRouteDialogData.landSelections.slice(0, idx);
+        if (value) nextSelections[idx] = value;
+        tradeRouteDialogData.landSelections = nextSelections;
+        renderTradeRouteDialogSteps();
+        updateTradeRouteDialogHint();
+      });
+      steps.appendChild(select);
+      if (selected) used.add(selected);
+    });
+    return;
+  }
+  const rendered = tradeRouteDialogData.seaSelections.slice();
+  const startZones = new Set(baronyZones[currentTradeBaronyId] || []);
+  const endZones = new Set(baronyZones[tradeRouteDialogData.target.id] || []);
+  if (!(rendered.length && endZones.has(rendered[rendered.length - 1]))) rendered.push(null);
+  const used = new Set();
+  rendered.forEach((selected, index) => {
+    const previousId = index === 0 ? null : rendered[index - 1];
+    const select = document.createElement('select');
+    select.dataset.index = String(index);
+    select.innerHTML = '<option value=""></option>';
+    const options = index === 0 ? [...startZones] : (seaZoneAdjacency[previousId] || []).map(item => item.id).filter(id => !used.has(id));
+    options.forEach(id => {
+      const option = document.createElement('option');
+      option.value = String(id);
+      option.textContent = formatTradeZoneLabel(id);
+      select.appendChild(option);
+    });
+    if (selected) select.value = String(selected);
+    select.addEventListener('change', event => {
+      const idx = parseInt(event.target.dataset.index, 10);
+      const value = parseInt(event.target.value, 10);
+      const nextSelections = tradeRouteDialogData.seaSelections.slice(0, idx);
+      if (value) nextSelections[idx] = value;
+      tradeRouteDialogData.seaSelections = nextSelections;
+      renderTradeRouteDialogSteps();
+      updateTradeRouteDialogHint();
+    });
+    steps.appendChild(select);
+    if (selected) used.add(selected);
+  });
+}
+
+function updateTradeRouteDialogHint(message = '') {
+  const hint = document.getElementById('tradeRouteHint');
+  const saveBtn = document.getElementById('tradeRouteSave');
+  if (!hint || !saveBtn) return;
+  const target = tradeRouteDialogData.target;
+  let text = message;
+  let disabled = false;
+  if (!target || !currentTradeBaronyId) {
+    text = 'Aucune destination sélectionnée.';
+    disabled = true;
+  } else if (tradeRouteDialogData.method === 'land') {
+    if (!isTradeRoutePathComplete(currentTradeBaronyId, target.id, tradeRouteDialogData.landSelections)) {
+      text = text || 'Le chemin terrestre doit atteindre la baronnie cible.';
+      disabled = true;
+    } else {
+      const path = [currentTradeBaronyId, ...buildTradeRoutePath(tradeRouteDialogData.landSelections), target.id];
+      const distance = computePathDistance(path, tradeAdjacency) || 0;
+      text = `${distance} segment(s) terrestres, coût ${distance * 3} Or.`;
+    }
+  } else if (!isTradeLinePathComplete(currentTradeBaronyId, target.id, tradeRouteDialogData.seaSelections)) {
+    text = text || 'Le chemin maritime doit partir d’une zone locale et finir sur une zone de destination.';
+    disabled = true;
+  } else {
+    const distance = computePathDistance(tradeRouteDialogData.seaSelections, seaZoneAdjacency) || 0;
+    text = `${distance} segment(s) maritimes, coût ${distance * 3} Or.`;
+  }
+  hint.textContent = text;
+  saveBtn.disabled = disabled;
+}
+
+function ensureTradeRouteDialog() {
+  const dialog = document.getElementById('tradeRouteDialog');
+  const methodSelect = document.getElementById('tradeRouteMethod');
+  const cancelBtn = document.getElementById('tradeRouteCancel');
+  const saveBtn = document.getElementById('tradeRouteSave');
+  if (!dialog || dialog.dataset.ready) return;
+  if (methodSelect) {
+    methodSelect.addEventListener('change', () => {
+      tradeRouteDialogData.method = methodSelect.value === 'naval' ? 'naval' : 'land';
+      autoPopulateTradeRouteDialog();
+      renderTradeRouteDialogSteps();
+      updateTradeRouteDialogHint();
+    });
+  }
+  if (cancelBtn) cancelBtn.addEventListener('click', () => dialog.close());
+  if (saveBtn) {
+    saveBtn.addEventListener('click', async () => {
+      const target = tradeRouteDialogData.target;
+      if (!target) return;
+      const payload = { barony_id: target.id, type: tradeRouteDialogData.method };
+      if (tradeRouteDialogData.method === 'land') {
+        if (!isTradeRoutePathComplete(currentTradeBaronyId, target.id, tradeRouteDialogData.landSelections)) {
+          updateTradeRouteDialogHint('Le chemin terrestre doit être complet.');
+          return;
+        }
+        payload.path = buildTradeRoutePath(tradeRouteDialogData.landSelections);
+      } else {
+        if (!isTradeLinePathComplete(currentTradeBaronyId, target.id, tradeRouteDialogData.seaSelections)) {
+          updateTradeRouteDialogHint('Le chemin maritime doit être complet.');
+          return;
+        }
+        payload.path = tradeRouteDialogData.seaSelections.slice();
+      }
+      try {
+        const res = await fetch('/api/users/me/trade_links/build', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(err.error || 'Construction impossible');
+          return;
+        }
+        dialog.close();
+        await renderTradeRoutes(currentTradeBaronyId);
+      } catch {
+        alert('Construction impossible');
+      }
+    });
+  }
+  dialog.dataset.ready = 'true';
+}
+
+function openTradeRouteDialog(target) {
+  const dialog = document.getElementById('tradeRouteDialog');
+  const targetText = document.getElementById('tradeRouteDialogTarget');
+  const methodSelect = document.getElementById('tradeRouteMethod');
+  if (!dialog || !target || !methodSelect) return;
+  ensureTradeRouteDialog();
+  tradeRouteDialogData.target = target;
+  tradeRouteDialogData.methods = getBuildMethods(target.id);
+  if (!tradeRouteDialogData.methods.length) {
+    alert('Aucun trajet valide vers cette baronnie.');
+    return;
+  }
+  tradeRouteDialogData.method = tradeRouteDialogData.methods.includes('land') ? 'land' : tradeRouteDialogData.methods[0];
+  tradeRouteDialogData.landSelections = [];
+  tradeRouteDialogData.seaSelections = [];
+  if (targetText) targetText.textContent = `Destination : ${formatTradeBaronyLabel(target)}${target.seigneur_name ? `, gérée par ${target.seigneur_name}` : ''}`;
+  methodSelect.innerHTML = tradeRouteDialogData.methods.map(method => `<option value="${method}">${method === 'land' ? 'Route terrestre' : 'Ligne maritime'}</option>`).join('');
+  methodSelect.value = tradeRouteDialogData.method;
+  methodSelect.disabled = tradeRouteDialogData.methods.length <= 1;
+  autoPopulateTradeRouteDialog();
+  renderTradeRouteDialogSteps();
+  updateTradeRouteDialogHint();
+  dialog.showModal();
+}
+
+async function startTradeRouteCreation() {
+  if (newRouteMode) {
+    newRouteMode = false;
+    eligibleTargets = {};
+    await updateTradeMap(currentTradeBaronyId, tradeLinksState);
+    return;
+  }
+  if (!currentTradeBaronyId) return;
+  await ensureTradeData();
+  eligibleTargets = {};
+  tradeBaronies.forEach(b => {
+    if (!b.seigneur_id || b.id === currentTradeBaronyId) return;
+    const methods = getBuildMethods(b.id);
+    if (!methods.length) return;
+    eligibleTargets[b.id] = { ...b, methods };
+  });
+  if (!Object.keys(eligibleTargets).length) {
+    alert('Aucune baronnie disponible');
+    return;
+  }
+  newRouteMode = true;
+  const cm = { ...tradeMapCore.colorMap };
+  Object.keys(eligibleTargets).forEach(id => { cm[id] = [0, 170, 255, 100]; });
+  tradeMapCore.setColorMap(cm);
+  tradeMapCore.currentSelectedId = null;
+}
+
+async function handleTradeMapSelect(id) {
+  if (!id) return;
+  if (!newRouteMode) {
+    const idNum = parseInt(id, 10);
+    const methods = getAvailableMethods(idNum);
+    if (!methods.length) {
+      if (tradeMapCore && tradeMapCore.colorMap[id]) {
+        tradeMapCore.colorMap[id][3] = 100;
+        tradeMapCore.currentSelectedId = null;
+        tradeMapCore.drawAll();
+      }
+      return;
+    }
+    await ensureTradeData();
+    const bar = tradeBaronies.find(b => b.id === idNum);
+    const result = await showTradeDialog(bar ? bar.seigneur_name : '', methods);
+    if (result) {
+      await sendTransaction(idNum, result.resources, result.reason, result.method);
+      await loadAndRender(currentSeigneurieId);
+      await renderTradeRoutes(currentTradeBaronyId);
+    }
+    tradeMapCore.drawAll();
+    return;
+  }
+  if (!eligibleTargets[id]) return;
+  const target = eligibleTargets[id];
+  newRouteMode = false;
+  eligibleTargets = {};
+  await updateTradeMap(currentTradeBaronyId, tradeLinksState);
+  openTradeRouteDialog(target);
+}
+
+function renderTradeLimits() {
+  const table = document.getElementById('tradeLimitsTable');
+  if (!table || !gameState) return;
+  table.innerHTML =
+    '<tr><th>Type</th><th>Présent</th><th>Max/mois</th></tr>' +
+    `<tr><td>Terrestres</td><td>${gameState.landTransactions || 0}</td><td>${gameState.landTxMax || 0}</td></tr>` +
+    `<tr><td>Maritimes</td><td>${gameState.navalTransactions || 0}</td><td>${gameState.navalTxMax || 0}</td></tr>`;
+}
+
+async function renderTradeRoutes(baronyId) {
+  const container = document.getElementById('tradeRoutes');
+  if (!container) return;
+  renderTradeLimits();
+  container.textContent = '';
+  if (!baronyId) {
+    container.textContent = 'Aucune baronnie sélectionnée';
+    await updateTradeMap(null, []);
+    return;
+  }
+  currentTradeBaronyId = baronyId;
+  try {
+    await ensureTradeData();
+    const [landRes, seaRes] = await Promise.all([
+      fetch(`/api/trade_routes?barony_id=${baronyId}`),
+      fetch(`/api/trade_lines?barony_id=${baronyId}`)
+    ]);
+    const landRoutes = landRes.ok ? await landRes.json() : [];
+    const seaRoutes = seaRes.ok ? await seaRes.json() : [];
+    const landLinks = (Array.isArray(landRoutes) ? landRoutes : []).map(route => {
+      const partnerId = route.barony_id_1 === baronyId ? route.barony_id_2 : route.barony_id_1;
+      const partner = getTradeBaronyById(partnerId) || { id: partnerId };
+      return { ...route, type: 'land', partner_id: partnerId, partner_name: partner.name || '', seigneur_name: partner.seigneur_name || '', path: Array.isArray(route.path) ? route.path : [] };
+    });
+    const seaLinks = (Array.isArray(seaRoutes) ? seaRoutes : []).map(line => {
+      const partnerId = line.barony_id_1 === baronyId ? line.barony_id_2 : line.barony_id_1;
+      const partner = getTradeBaronyById(partnerId) || { id: partnerId };
+      return { ...line, type: 'naval', partner_id: partnerId, partner_name: partner.name || '', seigneur_name: partner.seigneur_name || '', path: Array.isArray(line.path) ? line.path : [] };
+    });
+    tradeLinksState = [...landLinks, ...seaLinks].sort((a, b) => a.partner_id - b.partner_id || a.type.localeCompare(b.type));
+    setTradePreview(null);
+    await updateTradeMap(baronyId, tradeLinksState);
+    if (!tradeLinksState.length) {
+      container.textContent = 'Aucune route commerciale';
+      return;
+    }
+    const rows = tradeLinksState.map(link => {
+      const limitReached = link.type === 'land'
+        ? (gameState.landTxMax !== 0 && gameState.landTransactions >= gameState.landTxMax)
+        : (gameState.navalTxMax !== 0 && gameState.navalTransactions >= gameState.navalTxMax);
+      const pathLength = link.type === 'land' ? buildFullLandPath(link).length : buildFullSeaPath(link).length;
+      return `<tr class="trade-link-row" data-link-id="${link.id}" data-link-type="${link.type}">
+        <td>${link.type === 'land' ? 'Terre' : 'Mer'}</td>
+        <td>${link.partner_id}</td>
+        <td>${link.partner_name || ''}</td>
+        <td>${link.seigneur_name || ''}</td>
+        <td>${getTradeLinkDistance(link)}</td>
+        <td title="${buildTradeLinkSummary(link).replace(/"/g, '&quot;')}">${pathLength}</td>
+        <td><button class="trade-btn control-btn" data-id="${link.partner_id}" data-method="${link.type}"${limitReached ? ' disabled' : ''}>Commercer</button></td>
+      </tr>`;
+    }).join('');
+    container.innerHTML = `<table class="admin-table"><tr><th>Type</th><th>#</th><th>Baronnie</th><th>Propriétaire</th><th>Distance</th><th>Chemin</th><th></th></tr>${rows}</table>`;
+    container.querySelectorAll('.trade-link-row').forEach(row => {
+      row.addEventListener('mouseenter', () => {
+        const link = tradeLinksState.find(item => item.id === parseInt(row.dataset.linkId, 10) && item.type === row.dataset.linkType);
+        setTradePreview(link || null);
+      });
+      row.addEventListener('mouseleave', () => setTradePreview(null));
+    });
+    container.querySelectorAll('.trade-btn').forEach(btn => {
+      if (!btn.disabled) btn.addEventListener('click', () => openTradeDialog(btn.dataset.id, btn.dataset.method));
+    });
+  } catch {
+    container.textContent = 'Erreur de chargement';
+    await updateTradeMap(baronyId, []);
+  }
+}
+
+async function openTradeDialog(baronyId, forcedMethod = null) {
+  await ensureTradeData();
+  const idNum = parseInt(baronyId, 10);
+  const methods = forcedMethod ? [forcedMethod] : getAvailableMethods(idNum);
   const bar = tradeBaronies.find(b => b.id === idNum);
   const name = bar ? bar.seigneur_name : '';
   const result = await showTradeDialog(name, methods);
@@ -2434,10 +3124,11 @@ async function renderPendingTransactions() {
       : '/api/trade_transactions';
     const res = await fetch(url);
     const txs = res.ok ? await res.json() : [];
-    table.innerHTML = '<tr><th>Ressources</th><th>Origine</th><th>Date</th><th>Raison</th><th></th></tr>';
+    table.innerHTML = '<tr><th>Ressources</th><th>Origine</th><th>Mise a jour</th><th>Date</th><th>Raison</th><th></th></tr>';
     txs.forEach(tx => {
       const resSummary = Object.entries(tx.resources || {}).map(([k,v]) => `${v} ${resourceLabels[k] || k}`).join(', ');
       const origin = `${tx.origin_name} (${tx.origin_barony_name})`;
+      const updateLabel = tx.origin_update_label || '';
       const date = `<span class="timeago" datetime="${tx.created_at}"></span>`;
       let status;
       if (tx.state === 'En Attente') {
@@ -2548,6 +3239,123 @@ async function decideTx(id, action) {
   } catch {
     alert('Erreur');
   }
+}
+
+async function renderPendingTransactions() {
+  const table = document.getElementById('pendingTxTable');
+  if (!table) return;
+  try {
+    const url = currentSeigneurieId
+      ? `/api/trade_transactions?seigneurie_id=${currentSeigneurieId}`
+      : '/api/trade_transactions';
+    const res = await fetch(url);
+    const txs = res.ok ? await res.json() : [];
+    table.innerHTML = '<tr><th>Ressources</th><th>Origine</th><th>Mise a jour</th><th>Date</th><th>Raison</th><th></th></tr>';
+    txs.forEach(tx => {
+      const resSummary = Object.entries(tx.resources || {}).map(([k, v]) => `${v} ${resourceLabels[k] || k}`).join(', ');
+      const origin = `${tx.origin_name} (${tx.origin_barony_name})`;
+      const updateLabel = tx.origin_update_label || '';
+      const date = `<span class="timeago" datetime="${tx.created_at}"></span>`;
+      let status;
+      if (tx.state === 'En Attente') {
+        status = `<button class="tx-open" data-id="${tx.id}">...</button>`;
+      } else if (tx.state === 'Approuvée' && !tx.received) {
+        status = '<span title="Les ressources seront recues lors de votre prochaine mise a jour.">En attente de reception</span>';
+      } else {
+        const label = tx.state === 'Approuvée' ? 'Approuvée' : 'Refusée';
+        status = `<span title="${tx.decision_time ? new Date(tx.decision_time).toLocaleString() : ''}">${label}</span>`;
+      }
+      table.innerHTML += `<tr><td>${resSummary}</td><td>${origin}</td><td>${updateLabel}</td><td>${date}</td><td>${tx.reason || ''}</td><td>${status}</td></tr>`;
+    });
+    let rows = txs.length;
+    while (rows < 3) {
+      table.innerHTML += '<tr>' + '<td>&nbsp;</td>'.repeat(6) + '</tr>';
+      rows++;
+    }
+    timeago.render(table.querySelectorAll('.timeago'), 'fr');
+    table.querySelectorAll('.tx-open').forEach(btn => {
+      btn.addEventListener('click', () => openTransactionPopup(btn.dataset.id));
+    });
+  } catch {
+    table.innerHTML = '<tr><td colspan="6">Erreur</td></tr>';
+  }
+}
+
+async function openTransactionPopup(id) {
+  try {
+    const res = await fetch(`/api/trade_transactions/${id}`);
+    if (!res.ok) throw new Error('Erreur');
+    const tx = await res.json();
+    const dialog = document.getElementById('txDialog');
+    const content = document.getElementById('txContent');
+    const buttons = document.getElementById('txButtons');
+    const refuseBtn = document.getElementById('txRefuse');
+    const acceptBtn = document.getElementById('txAccept');
+    const closeBtn = document.getElementById('txClose');
+    const items = Object.entries(tx.resources || {}).map(([k, v]) => `<li>${v} ${resourceLabels[k] || k}</li>`).join('');
+    const typeLabel = tx.type === 'naval' ? 'cargaison' : 'caravane';
+    const currentUpdate = gameState.updateStatus && gameState.updateStatus.current;
+    const originUpdate = { year: Number(tx.origin_update_year), number: Number(tx.origin_update_number) };
+    const canAcceptNow = !currentUpdate || compareUpdateStatus(currentUpdate, originUpdate) >= 0;
+    refuseBtn.style.display = 'none';
+    acceptBtn.style.display = 'none';
+    closeBtn.style.display = 'none';
+
+    if (tx.state === 'Refusée' && Number(tx.origin_id) === Number(currentSeigneurieId)) {
+      let claim = { returned: tx.resources, lost: {} };
+      if (!tx.returned) {
+        try {
+          const cRes = await fetch(`/api/trade_transactions/${id}/claim`, { method: 'POST' });
+          if (cRes.ok) {
+            claim = await cRes.json();
+            await loadAndRender(currentSeigneurieId);
+          }
+        } catch {}
+      }
+      const retItems = Object.entries(claim.returned || {}).map(([k, v]) => `<li>${v} ${resourceLabels[k] || k}</li>`).join('');
+      let lossHtml = '';
+      if (claim.lost && Object.keys(claim.lost).length) {
+        const lossItems = Object.entries(claim.lost).map(([k, v]) => `<li>${v} ${resourceLabels[k] || k}</li>`).join('');
+        lossHtml = `<p>Pertes :</p><ul>${lossItems}</ul>`;
+      }
+      content.innerHTML = `
+        <p>Votre ${typeLabel} a destination de ${tx.dest_name} a ete refusee.</p>
+        <p>Les ressources suivantes vous ont ete retournees :</p>
+        <ul>${retItems}</ul>
+        ${lossHtml}`;
+      buttons.style.display = '';
+      closeBtn.style.display = '';
+      closeBtn.onclick = () => dialog.close();
+    } else {
+      const waitingMessage = !canAcceptNow
+        ? `<p><strong>Blocage :</strong> vous ne pourrez l'accepter qu'a partir de ${tx.origin_update_label || formatUpdateStatusLabel(originUpdate)}.</p>`
+        : '';
+      const receivedMessage = tx.state === 'Approuvée' && !tx.received
+        ? '<p>Cette transaction a ete approuvee. Les ressources seront ajoutees lors de votre prochaine mise a jour.</p>'
+        : '';
+      content.innerHTML = `
+        <p>Vous avez recu une ${typeLabel} de ${tx.origin_name} de la Baronnie de ${tx.origin_barony_name}.</p>
+        <p><strong>Mise a jour d'envoi :</strong> ${tx.origin_update_label || formatUpdateStatusLabel(originUpdate)}</p>
+        <p><strong>Raison :</strong> ${tx.reason || 'Aucune raison'}</p>
+        <p>Elle contient :</p>
+        <ul>${items}</ul>
+        ${waitingMessage}
+        ${receivedMessage}
+        <p>En cas de refus, les ressources seront retournees a l'envoyeur.</p>`;
+      buttons.style.display = '';
+      if (tx.state === 'En Attente' && Number(tx.destination_id) === Number(currentSeigneurieId) && canAcceptNow) {
+        refuseBtn.style.display = '';
+        acceptBtn.style.display = '';
+        refuseBtn.onclick = async () => { dialog.close(); await decideTx(id, 'refuse'); };
+        acceptBtn.onclick = async () => { dialog.close(); await decideTx(id, 'accept'); };
+      } else {
+        closeBtn.style.display = '';
+        closeBtn.onclick = () => dialog.close();
+      }
+    }
+    dialog.showModal();
+    timeago.render(dialog.querySelectorAll('.timeago'), 'fr');
+  } catch {}
 }
 
 async function setupAdminSelector(selectedId){

@@ -19,20 +19,28 @@ Ce dépôt propose un serveur Express/Node.js avec une base SQLite et plusieurs 
 - **script.js** : éditeur de carte permettant de modifier les baronnies et d'enregistrer les pixels.
 - **src/mapCore.js** : fonctions communes de rendu/zoom utilisées par `viewer.js` et `script.js`.
 - **src/mapFilters.js** : gestion des filtres et de la coloration de la carte, partagée par `viewer.js` et `script.js`.
+- **viewModel.js** : construit un modèle relationnel unifié (titres, liens de jure/de facto, terres canoniques, sanctuaires, connexions entre baronnies) et peut enrichir les entités avec des couleurs exploitables côté UI.
+- **index2.html** : variante temporaire de la page carte (baronnies/maritime) pour valider l’architecture basée sur `viewModel.js`.
+- **viewer2.js** : variante temporaire de `viewer.js` qui reconstruit les index (titres, relations canoniques et sanctuaires) via `viewModel.js`.
+- **src/mapCore2.js**, **src/mapFilters2.js**, **src/bfs2.js**, **src/mapInfoPanel2.js** : pile temporaire dédiée à `index2.html`, avec séparation claire entre rendu/selection (`mapCore2`), filtres/legende (`mapFilters2`), parcours de graphe (`bfs2`) et contenu des panneaux (`mapInfoPanel2`).
 - **src/duchyPiety.js** : moteur partagé de calcul de la piété ducale (points détaillés, départage des égalités et religion gagnante), utilisé par `viewer.js` et `src/mapFilters.js`.
 - **src/crudRouter.js** : générateur de routes CRUD génériques utilisé par `server.js` pour réduire la duplication.
 - La base de données inclut désormais une table `sanctuaries` (avec un statut actif/inactif), une table `canonical_lands` (relation entre deux baronnies) et les colonnes `priory_religion_id`, `church_religion_id`, `cathedral_religion_id` et `vacant` (baronnie vacante) dans la table `baronies`, `defacto_county_id` dans la table `viscounties`, ainsi que `player` et `bishop` dans la table `seigneurs`. La table `duchies` inclut aussi `banquet_religion_id` (religion gagnante de l'Enchère au Banquet, nullable).
 - Les tables `barony_connections` et `maritime_zone_connections` incluent une colonne `distance` (par défaut 1) pour pondérer les distances entre baronnies ou zones maritimes.
 - **admin.js** : interface d'administration des empires, royaumes, duchés, etc.
 - L'onglet "Routes commerciales" d'**admin.js** inclut un import Excel (`.xlsx/.xls`) des paires de baronnies avec création en masse des routes manquantes via l'API serveur.
-- **gestion.js** : gestion des seigneuries, ressources et sorts côté joueur.
+- **gestion.js** : gestion des seigneuries, ressources et sorts côté joueur, y compris l’interface de commerce qui affiche désormais les chemins terrestres/maritimes, prévisualise les trajets au survol et permet de construire des liaisons avec choix explicite du chemin.
+- **src/updateCycle.js** : logique partagée du calendrier des "Mises à Jour" joueur (10 phases par an, libellés, comparaison, progression et dates de déblocage), utilisée par `server.js` et couverte par des tests.
 - **profile.js** : modification du profil utilisateur.
 - **organigramme.js** : affiche la page d’organigramme féodal des seigneurs (hiérarchie vassale, interactions et navigation).
 - **renderHeader.js** : insère le fragment HTML du header commun côté client.
 - **handleError.js** et **logger.js** : gestion des erreurs et du logging.
-- Les pages HTML (`index.html`, `mapEditor.html`, `admin.html`, `gestion.html`, `profile.html`, `organigramme.html`) chargent ces scripts selon leur rôle.
+- Les pages HTML (`index.html`, `index2.html`, `mapEditor.html`, `admin.html`, `gestion.html`, `profile.html`, `organigramme.html`) chargent ces scripts selon leur rôle.
 - Les scripts client communiquent avec l'API du serveur via `fetch`.
-- La base de données contient également une table `trade_transactions` (origine, destination, ressources, type, état, raison, décision, retour) pour enregistrer les échanges entre seigneuries. L'origine et la destination y sont stockées via les identifiants de seigneurie, les noms des seigneurs ou baronnies étant résolus dynamiquement. Les effets `land_transaction_max_per_month` et `naval_transaction_max_per_month` permettent d'augmenter les limites mensuelles de transactions.
+- La base de données contient également une table `trade_transactions` (origine, destination, ressources, type, état, raison, décision, retour, `origin_update_year`, `origin_update_number`, `received`) pour enregistrer les échanges entre seigneuries. L'origine et la destination y sont stockées via les identifiants de seigneurie, les noms des seigneurs ou baronnies étant résolus dynamiquement. Les colonnes `origin_update_year`, `origin_update_number` et `received` lient chaque envoi à la mise à jour de l'émetteur et différencient les transactions approuvées déjà reçues de celles encore en attente de réception. Les effets `land_transaction_max_per_month` et `naval_transaction_max_per_month` permettent d'augmenter les limites mensuelles de transactions.
+- La base de données utilise une table `players` pour les données communes aux joueurs (identifiant, lien au seigneur actuel, population, inventaire, bâtiments, infrastructures, compteurs génériques et progression de mise à jour) et une table `seigneuries_info` pour les propriétés propres aux joueurs seigneurs (`player_id`, `baronnie_id`, `tax_rate`, `spells_cast`). Une vue SQL `seigneuries` assemble ces deux tables pour conserver les lectures et l’interface d’administration centrées sur les seigneuries.
+- La progression asynchrone des joueurs est suivie dans `players` via `update_year` et `update_number` pour les 10 mises à jour annuelles (février à hiver). Les compteurs de période (`spells_cast`, `land_transactions`, `naval_transactions`) se réinitialisent à chaque mise à jour joueur.
+- `server.js` expose `POST /api/seigneurie/advance_update`, qui valide côté serveur les blocages (par exemple surcharge de population employée), applique la production, la famine, les pertes par capacité maximale, réinitialise les compteurs de mise à jour et distribue les transactions commerciales approuvées devenues recevables.
 - La table `trade_routes` inclut désormais un identifiant propre et un chemin (liste ordonnée d'identifiants de baronnies) pour définir la route commerciale.
 - L'API serveur expose aussi `POST /api/trade_routes/import` (admin) pour importer des paires de baronnies, ignorer les routes déjà existantes et créer les chemins par défaut calculés côté serveur.
 - La table `trade_lines` stocke les lignes commerciales maritimes (baronnies d'origine et de destination, chemin composé de zones maritimes).
@@ -43,6 +51,7 @@ Ce dépôt propose un serveur Express/Node.js avec une base SQLite et plusieurs 
 - Garder ce fichier à jour : toute modification importante de l'architecture, des dépendances ou des relations entre scripts doit être répercutée ici.
 - Ajouter ou supprimer des scripts majeurs nécessite d'actualiser la section "Scripts et relations principales".
 - Les développements se font en JavaScript (CommonJS côté serveur, scripts front-end sans bundler) avec Node.js ≥14.
+- L'API publique, c'est-à-dire l'API accessible sans connexion et documentée dans `Documentation/API_PUBLIQUE.md`, est strictement en lecture seule : elle ne doit servir qu'à récupérer des données (`fetch`) et ne doit jamais créer, modifier ou supprimer des données.
 - Après toute modification du code, exécuter les vérifications disponibles (`npm test`, même si aucun test n'est défini) et corriger les erreurs le cas échéant.
 - En général, pour chaque modification où c'est applicable, fournir au minimum un test/check exécuté et une capture d'écran de validation de l'interface impactée.
 - Après toute modification de l'API publique (routes, paramètres, schémas JSON, tables/champs exposés), mettre à jour `Documentation/API_PUBLIQUE.md` dans le même changement.
