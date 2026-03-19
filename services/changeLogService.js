@@ -3,7 +3,9 @@ const logger = require('../logger');
 const TABLE_META = {
   baronies: { label: 'Baronnie', article: 'la', nameField: 'name', fieldLabels: { viscounty_id: 'le vicomté', county_id: 'le comté', religion_pop_id: 'la religion (population)', culture_id: 'la culture', priory_religion_id: 'le prieuré', church_religion_id: "l'église", cathedral_religion_id: 'la cathédrale', seigneur_id: 'le seigneur' } },
   seigneurs: { label: 'Seigneur', article: 'le', nameField: 'name', fieldLabels: { overlord_id: 'le suzerain', religion_id: 'la religion' } },
+  players: { label: 'Joueur', article: 'le' },
   seigneuries: { label: 'Seigneurie', article: 'la' },
+  seigneuries_info: { label: 'Infos seigneurie', article: 'les' },
   religions: { label: 'Religion', article: 'la', nameField: 'name' },
   cultures: { label: 'Culture', article: 'la', nameField: 'name' },
   empires: { label: 'Empire', article: "l'", nameField: 'name' },
@@ -56,6 +58,12 @@ const LOOKUP_META = {
   },
   seigneuries: {
     baronnie_id: { table: 'baronies' },
+    seigneur_id: { table: 'seigneurs' }
+  },
+  seigneuries_info: {
+    baronnie_id: { table: 'baronies' }
+  },
+  players: {
     seigneur_id: { table: 'seigneurs' }
   }
 };

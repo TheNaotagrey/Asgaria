@@ -27,7 +27,7 @@ app.set('trust proxy', 1);
 const VALID_TABLES = new Set([
   'users','religions','cultures','seigneurs','empires','kingdoms','archduchies',
   'duchies','marquisates','counties','viscounties','baronies','barony_pixels',
-  'canonical_lands','inventaire','seigneuries','transactions','trade_transactions','barony_properties',
+  'canonical_lands','inventaire','players','seigneuries_info','transactions','trade_transactions','barony_properties',
   'building_properties','infrastructure_properties','barony_connections','trade_routes','trade_lines','tags','spells',
   'sanctuaries','maritime_zones','maritime_zone_pixels','maritime_zone_connections','maritime_zone_baronies','notifications'
 ]);
@@ -43,7 +43,7 @@ const AUTH_TABLES = new Set([
 ]);
 
 const ADMIN_TABLES = new Set([
-  'users','seigneuries','inventaire','transactions','trade_transactions','barony_properties','notifications'
+  'users','players','seigneuries_info','inventaire','transactions','trade_transactions','barony_properties','notifications'
 ]);
 
 app.set('db', db);
@@ -286,23 +286,29 @@ CREATE TABLE IF NOT EXISTS inventaire (
   prestige INTEGER DEFAULT 0,
   renommee INTEGER DEFAULT 0
 );
-CREATE TABLE IF NOT EXISTS seigneuries (
+CREATE TABLE IF NOT EXISTS players (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  baronnie_id INTEGER,
   seigneur_id INTEGER,
+  player_type TEXT DEFAULT 'seigneurie',
   population INTEGER,
   update_year INTEGER,
   update_number INTEGER,
-  tax_rate INTEGER DEFAULT 5,
   inventaire_id INTEGER,
   buildings TEXT DEFAULT '{}',
   infrastructures TEXT DEFAULT '{}',
-  spells_cast INTEGER DEFAULT 0,
   land_transactions INTEGER DEFAULT 0,
   naval_transactions INTEGER DEFAULT 0,
-  FOREIGN KEY(baronnie_id) REFERENCES baronies(id),
   FOREIGN KEY(seigneur_id) REFERENCES seigneurs(id),
   FOREIGN KEY(inventaire_id) REFERENCES inventaire(id)
+);
+CREATE TABLE IF NOT EXISTS seigneuries_info (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  player_id INTEGER UNIQUE,
+  baronnie_id INTEGER,
+  tax_rate INTEGER DEFAULT 5,
+  spells_cast INTEGER DEFAULT 0,
+  FOREIGN KEY(player_id) REFERENCES players(id),
+  FOREIGN KEY(baronnie_id) REFERENCES baronies(id)
 );
 CREATE TABLE IF NOT EXISTS transactions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -310,7 +316,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   resource TEXT,
   amount INTEGER,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY(seigneurie_id) REFERENCES seigneuries(id)
+  FOREIGN KEY(seigneurie_id) REFERENCES players(id)
 );
 CREATE TABLE IF NOT EXISTS trade_transactions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -326,8 +332,8 @@ CREATE TABLE IF NOT EXISTS trade_transactions (
   decision_time TEXT,
   received INTEGER DEFAULT 0,
   returned INTEGER DEFAULT 0,
-  FOREIGN KEY(origin_id) REFERENCES seigneuries(id),
-  FOREIGN KEY(destination_id) REFERENCES seigneuries(id)
+  FOREIGN KEY(origin_id) REFERENCES players(id),
+  FOREIGN KEY(destination_id) REFERENCES players(id)
 );
 CREATE TABLE IF NOT EXISTS barony_properties (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -415,6 +421,24 @@ CREATE TABLE IF NOT EXISTS admin_change_logs (
   user_last_name TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+CREATE VIEW IF NOT EXISTS seigneuries AS
+SELECT
+  p.id,
+  si.baronnie_id,
+  p.seigneur_id,
+  p.population,
+  si.tax_rate,
+  p.inventaire_id,
+  p.buildings,
+  p.infrastructures,
+  si.spells_cast,
+  p.land_transactions,
+  p.naval_transactions,
+  p.update_year,
+  p.update_number
+FROM players p
+JOIN seigneuries_info si ON si.player_id = p.id
+WHERE COALESCE(p.player_type, 'seigneurie') = 'seigneurie';
 `;
 
 function parseTradeRoutePath(raw) {
@@ -730,6 +754,7 @@ function enforceDefaultAdmins(callback, attempt = 0) {
   });
 }
 
+function initializeDatabaseSchema() {
 db.serialize(() => {
   db.exec(initSql);
   db.all("PRAGMA table_info(seigneurs)", (err, rows) => {
@@ -791,31 +816,44 @@ db.serialize(() => {
       }
     }
   });
-  db.all("PRAGMA table_info(seigneuries)", (err, rows) => {
+  db.all("PRAGMA table_info(players)", (err, rows) => {
     if (!err && rows) {
+      if (!rows.some(r => r.name === 'player_type')) {
+        db.run("ALTER TABLE players ADD COLUMN player_type TEXT DEFAULT 'seigneurie'");
+      }
       if (!rows.some(r => r.name === 'update_year')) {
-        db.run("ALTER TABLE seigneuries ADD COLUMN update_year INTEGER");
+        db.run("ALTER TABLE players ADD COLUMN update_year INTEGER");
       }
       if (!rows.some(r => r.name === 'update_number')) {
-        db.run("ALTER TABLE seigneuries ADD COLUMN update_number INTEGER");
+        db.run("ALTER TABLE players ADD COLUMN update_number INTEGER");
       }
       if (!rows.some(r => r.name === 'buildings')) {
-        db.run("ALTER TABLE seigneuries ADD COLUMN buildings TEXT DEFAULT '{}' ");
+        db.run("ALTER TABLE players ADD COLUMN buildings TEXT DEFAULT '{}' ");
       }
       if (!rows.some(r => r.name === 'infrastructures')) {
-        db.run("ALTER TABLE seigneuries ADD COLUMN infrastructures TEXT DEFAULT '{}' ");
-      }
-      if (!rows.some(r => r.name === 'tax_rate')) {
-        db.run("ALTER TABLE seigneuries ADD COLUMN tax_rate INTEGER DEFAULT 5");
-      }
-      if (!rows.some(r => r.name === 'spells_cast')) {
-        db.run("ALTER TABLE seigneuries ADD COLUMN spells_cast INTEGER DEFAULT 0");
+        db.run("ALTER TABLE players ADD COLUMN infrastructures TEXT DEFAULT '{}' ");
       }
       if (!rows.some(r => r.name === 'land_transactions')) {
-        db.run("ALTER TABLE seigneuries ADD COLUMN land_transactions INTEGER DEFAULT 0");
+        db.run("ALTER TABLE players ADD COLUMN land_transactions INTEGER DEFAULT 0");
       }
       if (!rows.some(r => r.name === 'naval_transactions')) {
-        db.run("ALTER TABLE seigneuries ADD COLUMN naval_transactions INTEGER DEFAULT 0");
+        db.run("ALTER TABLE players ADD COLUMN naval_transactions INTEGER DEFAULT 0");
+      }
+    }
+  });
+  db.all("PRAGMA table_info(seigneuries_info)", (err, rows) => {
+    if (!err && rows) {
+      if (!rows.some(r => r.name === 'player_id')) {
+        db.run('ALTER TABLE seigneuries_info ADD COLUMN player_id INTEGER');
+      }
+      if (!rows.some(r => r.name === 'baronnie_id')) {
+        db.run('ALTER TABLE seigneuries_info ADD COLUMN baronnie_id INTEGER');
+      }
+      if (!rows.some(r => r.name === 'tax_rate')) {
+        db.run('ALTER TABLE seigneuries_info ADD COLUMN tax_rate INTEGER DEFAULT 5');
+      }
+      if (!rows.some(r => r.name === 'spells_cast')) {
+        db.run('ALTER TABLE seigneuries_info ADD COLUMN spells_cast INTEGER DEFAULT 0');
       }
     }
   });
@@ -1049,6 +1087,28 @@ db.serialize(() => {
   });
   enforceDefaultAdmins();
 });
+}
+
+db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='seigneuries'", (err, legacySeigneuries) => {
+  if (err) {
+    logger.error('Failed to inspect legacy seigneuries table', err);
+    return initializeDatabaseSchema();
+  }
+  db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='players'", (err2, playersTable) => {
+    if (err2) {
+      logger.error('Failed to inspect players table', err2);
+      return initializeDatabaseSchema();
+    }
+    if (legacySeigneuries && !playersTable) {
+      db.run('ALTER TABLE seigneuries RENAME TO players', (renameErr) => {
+        if (renameErr) logger.error('Failed to rename seigneuries to players', renameErr);
+        initializeDatabaseSchema();
+      });
+      return;
+    }
+    initializeDatabaseSchema();
+  });
+});
 
 // accept large pixel blobs
 app.use(express.json({ limit: '50mb' }));
@@ -1278,7 +1338,33 @@ app.get('/api/organigramme_access', (req, res) => {
 
   const defaultUpdate = getLatestUnlockedUpdate(new Date());
   db.run(
-    'UPDATE seigneuries SET update_year=COALESCE(update_year, ?), update_number=COALESCE(update_number, ?) WHERE update_year IS NULL OR update_number IS NULL',
+    `INSERT OR IGNORE INTO seigneuries_info (player_id)
+     SELECT id
+     FROM players
+     WHERE COALESCE(player_type, 'seigneurie')='seigneurie'`
+  );
+  db.all("PRAGMA table_info(players)", (err, rows) => {
+    if (err || !rows) return;
+    const hasLegacyInfo = rows.some(r => r.name === 'baronnie_id') && rows.some(r => r.name === 'tax_rate') && rows.some(r => r.name === 'spells_cast');
+    if (!hasLegacyInfo) return;
+    db.run(
+      `UPDATE seigneuries_info
+       SET baronnie_id=(SELECT p.baronnie_id FROM players p WHERE p.id=seigneuries_info.player_id),
+           tax_rate=COALESCE((SELECT p.tax_rate FROM players p WHERE p.id=seigneuries_info.player_id), 5),
+           spells_cast=COALESCE((SELECT p.spells_cast FROM players p WHERE p.id=seigneuries_info.player_id), 0)
+       WHERE player_id IN (SELECT id FROM players WHERE COALESCE(player_type, 'seigneurie')='seigneurie')`,
+      [],
+      (insertErr) => {
+        if (insertErr) logger.error('Failed to sync seigneuries_info from legacy players columns', insertErr);
+      }
+    );
+  });
+  db.run(
+    "UPDATE players SET player_type='seigneurie' WHERE player_type IS NULL OR player_type=''",
+    []
+  );
+  db.run(
+    'UPDATE players SET update_year=COALESCE(update_year, ?), update_number=COALESCE(update_number, ?) WHERE update_year IS NULL OR update_number IS NULL',
     [defaultUpdate.year, defaultUpdate.number]
   );
   db.run(
@@ -1516,7 +1602,7 @@ app.delete('/api/seigneurs/:id', requireAdmin, (req, res) => {
     if (err) return handleError(res, err);
     if (!seigneur) return res.status(404).json({ error: 'Seigneur introuvable.' });
     const references = [
-      { table: 'seigneuries', column: 'seigneur_id', label: 'seigneurie(s)' },
+      { table: 'players', column: 'seigneur_id', label: 'seigneurie(s)' },
       { table: 'empires', column: 'seigneur_id', label: 'empire(s)' },
       { table: 'kingdoms', column: 'seigneur_id', label: 'royaume(s)' },
       { table: 'archduchies', column: 'seigneur_id', label: 'archiduché(s)' },
@@ -1558,28 +1644,37 @@ app.use('/api/inventaire', crudRoutes('inventaire', inventaireFields));
 
 app.get('/api/seigneuries', requireAdmin, (req, res) => {
   const invSelect = inventaireFields.map(f => `i.${f}`).join(',');
-  db.all(`SELECT s.id, s.baronnie_id, s.seigneur_id, s.population, s.inventaire_id, s.buildings, s.infrastructures, ${invSelect} FROM seigneuries s JOIN inventaire i ON s.inventaire_id=i.id`, [], (err, rows) => {
+  db.all(`SELECT s.id, s.baronnie_id, s.seigneur_id, s.population, s.update_year, s.update_number, s.inventaire_id, s.buildings, s.infrastructures, ${invSelect} FROM seigneuries s JOIN inventaire i ON s.inventaire_id=i.id`, [], (err, rows) => {
     if (err) return handleError(res, err);
     res.json(rows);
   });
 });
 
 app.post('/api/seigneuries', requireAdmin, (req, res) => {
-  const seigFields = ['baronnie_id','seigneur_id','population'];
-  const seigValues = seigFields.map(f => sanitize(req.body[f]));
+  const defaultUpdate = getLatestUnlockedUpdate(new Date());
+  const playerFields = ['seigneur_id','population','update_year','update_number'];
+  const playerValues = [
+    sanitize(req.body.seigneur_id),
+    sanitize(req.body.population),
+    sanitize(req.body.update_year) ?? defaultUpdate.year,
+    sanitize(req.body.update_number) ?? defaultUpdate.number
+  ];
+  const baronnieId = sanitize(req.body.baronnie_id);
   const invValues = inventaireFields.map(f => sanitize(req.body[f]) || 0);
   const invPlace = inventaireFields.map(() => '?').join(',');
   db.run(`INSERT INTO inventaire (${inventaireFields.join(',')}) VALUES (${invPlace})`, invValues, function(err){
     if (err) return handleError(res, err);
     const invId = this.lastID;
-  db.run('INSERT INTO seigneuries (baronnie_id,seigneur_id,population,inventaire_id,buildings,infrastructures) VALUES (?,?,?,?,?,?)',
-    [...seigValues, invId, '{}', '{}'], function(err2){
+  db.run("INSERT INTO players (seigneur_id,population,update_year,update_number,player_type,inventaire_id,buildings,infrastructures) VALUES (?,?,?,?, 'seigneurie',?,?,?)",
+    [...playerValues, invId, '{}', '{}'], function(err2){
       if (err2) return handleError(res, err2);
       const seigneurieId = this.lastID;
-      db.get('SELECT * FROM seigneuries WHERE id=?', [seigneurieId], (err3, seigRow) => {
-        db.get('SELECT * FROM inventaire WHERE id=?', [invId], (err4, invRow) => {
-          if (err3 || err4) {
-            recordChange(req, { table: 'seigneuries', action: 'create', before: null, after: { id: seigneurieId, ...Object.fromEntries(seigFields.map((f, i) => [f, seigValues[i]])), inventaire_id: invId } });
+      db.run('INSERT INTO seigneuries_info (player_id, baronnie_id) VALUES (?,?)', [seigneurieId, baronnieId], (err3) => {
+        if (err3) return handleError(res, err3);
+        db.get('SELECT * FROM seigneuries WHERE id=?', [seigneurieId], (err4, seigRow) => {
+        db.get('SELECT * FROM inventaire WHERE id=?', [invId], (err5, invRow) => {
+          if (err4 || err5) {
+            recordChange(req, { table: 'seigneuries', action: 'create', before: null, after: { id: seigneurieId, ...Object.fromEntries(playerFields.map((f, i) => [f, playerValues[i]])), baronnie_id: baronnieId, inventaire_id: invId } });
             recordChange(req, { table: 'inventaire', action: 'create', before: null, after: { id: invId, ...Object.fromEntries(inventaireFields.map((f, i) => [f, invValues[i]])) } });
             return res.json({ id: seigneurieId, inventaire_id: invId });
           }
@@ -1588,6 +1683,7 @@ app.post('/api/seigneuries', requireAdmin, (req, res) => {
             recordChange(req, { table: 'inventaire', action: 'create', before: null, after: invRow })
           ]).finally(() => res.json({ id: seigneurieId, inventaire_id: invId }));
         });
+        });
       });
     });
   });
@@ -1595,17 +1691,24 @@ app.post('/api/seigneuries', requireAdmin, (req, res) => {
 
 app.put('/api/seigneuries/:id', requireAdmin, (req, res) => {
   const id = req.params.id;
-  const seigFields = ['baronnie_id','seigneur_id','population'];
-  const seigSet = seigFields.map(f => `${f}=?`).join(',');
-  const seigValues = seigFields.map(f => sanitize(req.body[f]));
+  const playerFields = ['seigneur_id','population','update_year','update_number'];
+  const playerSet = playerFields.map(f => `${f}=?`).join(',');
+  const playerValues = playerFields.map(f => sanitize(req.body[f]));
+  const infoFields = ['baronnie_id'];
+  const infoSet = infoFields.map(f => `${f}=?`).join(',');
+  const infoValues = infoFields.map(f => sanitize(req.body[f]));
   db.get('SELECT * FROM seigneuries WHERE id=?', [id], (err, seigRow) => {
     if (err) return handleError(res, err);
     if (!seigRow) return res.status(404).json({ error: 'Introuvable' });
     db.get('SELECT * FROM inventaire WHERE id=?', [seigRow.inventaire_id], (err2, invRow) => {
       if (err2) return handleError(res, err2);
       const seigAfter = { ...seigRow };
-      seigFields.forEach((f, idx) => { seigAfter[f] = seigValues[idx]; });
-      const seigChanges = diffRecords(seigRow, seigAfter, seigFields);
+      [...playerFields, ...infoFields].forEach((f, idx) => {
+        const values = idx < playerFields.length ? playerValues : infoValues;
+        const field = idx < playerFields.length ? playerFields[idx] : infoFields[idx - playerFields.length];
+        seigAfter[field] = values[idx < playerFields.length ? idx : idx - playerFields.length];
+      });
+      const seigChanges = diffRecords(seigRow, seigAfter, [...playerFields, ...infoFields]);
       const invValues = inventaireFields.map(f => sanitize(req.body[f]) || 0);
       const invAfter = invRow ? { ...invRow } : null;
       inventaireFields.forEach((f, idx) => {
@@ -1621,7 +1724,10 @@ app.put('/api/seigneuries/:id', requireAdmin, (req, res) => {
       const runUpdates = (cb) => {
         const tasks = [];
         if (hasSeigChanges) {
-          tasks.push((next) => db.run(`UPDATE seigneuries SET ${seigSet} WHERE id=?`, [...seigValues, id], next));
+          tasks.push((next) => db.run(`UPDATE players SET ${playerSet} WHERE id=?`, [...playerValues, id], (err3) => {
+            if (err3) return next(err3);
+            db.run(`UPDATE seigneuries_info SET ${infoSet} WHERE player_id=?`, [...infoValues, id], next);
+          }));
         }
         if (hasInvChanges && invAfter) {
           tasks.push((next) => db.run(`UPDATE inventaire SET ${invSet} WHERE id=?`, [...invValues, invAfter.id], next));
@@ -1683,7 +1789,12 @@ app.delete('/api/seigneuries/:id', requireAdmin, (req, res) => {
           let inventaireChanges = 0;
           db.serialize(() => {
             db.run('BEGIN');
-            db.run('DELETE FROM seigneuries WHERE id=?', [id], function (errDel) {
+            db.run('DELETE FROM seigneuries_info WHERE player_id=?', [id], function (errInfoDel) {
+              if (errInfoDel) {
+                db.run('ROLLBACK');
+                return handleError(res, errInfoDel);
+              }
+              db.run('DELETE FROM players WHERE id=?', [id], function (errDel) {
               if (errDel) {
                 db.run('ROLLBACK');
                 return handleError(res, errDel);
@@ -1709,6 +1820,7 @@ app.delete('/api/seigneuries/:id', requireAdmin, (req, res) => {
                   res.json({ changes: seigneurieChanges, inventaire_changes: inventaireChanges });
                 });
               });
+            });
             });
           });
         });
@@ -2118,7 +2230,7 @@ app.post('/api/tax_rate', (req, res) => {
   getSeigneurie(req, 'seigneuries.id, seigneuries.update_year, seigneuries.update_number', (err, row) => {
     if (err) return handleError(res, err);
     if (!row) return res.status(400).json({ error: 'Seigneurie introuvable' });
-    db.run('UPDATE seigneuries SET tax_rate=? WHERE id=?', [rate, row.id], err2 => {
+    db.run('UPDATE seigneuries_info SET tax_rate=? WHERE player_id=?', [rate, row.id], err2 => {
       if (err2) return handleError(res, err2);
       res.json({ tax_rate: rate });
     });
@@ -2300,11 +2412,12 @@ app.post('/api/seigneurie/advance_update', (req, res) => {
             [...inventaireFields.map((field) => inventoryState[field] || 0), srow.inventaire_id]
           );
           await dbRunAsync(
-            `UPDATE seigneuries
-             SET population=?, update_year=?, update_number=?, spells_cast=0, land_transactions=0, naval_transactions=0
+            `UPDATE players
+             SET population=?, update_year=?, update_number=?, land_transactions=0, naval_transactions=0
              WHERE id=?`,
             [srow.population || 0, nextUpdate.year, nextUpdate.number, srow.id]
           );
+          await dbRunAsync('UPDATE seigneuries_info SET spells_cast=0 WHERE player_id=?', [srow.id]);
 
           await new Promise((resolve, reject) => {
             deliverApprovedTransactions(
@@ -2406,7 +2519,7 @@ app.post('/api/admin/seigneurie_update', requireAdmin, (req,res) => {
         const tasks = [];
         if(Object.keys(seigChanges).length){
           tasks.push((cb) => db.run(
-            'UPDATE seigneuries SET population=?, buildings=?, infrastructures=? WHERE id=?',
+            'UPDATE players SET population=?, buildings=?, infrastructures=? WHERE id=?',
             [seigAfter.population, seigAfter.buildings, seigAfter.infrastructures, id],
             cb
           ));
@@ -2665,7 +2778,7 @@ app.post('/api/cast_spell', (req,res)=>{
             }
             function finish() {
               casts += 1;
-              db.run('UPDATE seigneuries SET spells_cast=? WHERE id=?', [casts, seigneurieId], err7 => {
+              db.run('UPDATE seigneuries_info SET spells_cast=? WHERE player_id=?', [casts, seigneurieId], err7 => {
                 if (err7) return handleError(res, err7);
                 res.json({ success, randomLuxury });
               });
@@ -3263,7 +3376,7 @@ app.post('/api/building', (req,res)=>{
           }
         });
         buildings[bId] = { ...existing, ...uses, ...(props || {}), built: newBuilt, active: newActive };
-        db.run('UPDATE seigneuries SET buildings=? WHERE id=?', [JSON.stringify(buildings), srow.id], function(err4){
+        db.run('UPDATE players SET buildings=? WHERE id=?', [JSON.stringify(buildings), srow.id], function(err4){
           if(err4) return handleError(res, err4);
           db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err5, inventaire)=>{
             if(err5) return handleError(res, err5);
@@ -3307,7 +3420,7 @@ app.post('/api/infrastructure', (req,res)=>{
           }
         });
         infrastructures[iId] = { ...existing, ...uses, ...(props || {}), built: newBuilt };
-        db.run('UPDATE seigneuries SET infrastructures=? WHERE id=?', [JSON.stringify(infrastructures), srow.id], function(err4){
+        db.run('UPDATE players SET infrastructures=? WHERE id=?', [JSON.stringify(infrastructures), srow.id], function(err4){
           if(err4) return handleError(res, err4);
           db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err5, inventaire)=>{
             if(err5) return handleError(res, err5);
@@ -3379,7 +3492,7 @@ app.post('/api/building/activate', (req,res)=>{
           const employment = { employed: Math.max(employed - slaves, 0), slaves };
           binfo.active = qty;
           buildings[id] = binfo;
-          db.run('UPDATE seigneuries SET buildings=? WHERE id=?', [JSON.stringify(buildings), srow.id], function(err4){
+          db.run('UPDATE players SET buildings=? WHERE id=?', [JSON.stringify(buildings), srow.id], function(err4){
             if(err4) return handleError(res, err4);
             res.json({ building: { id, built, active: qty }, employment, employmentDetails });
           });
@@ -3468,7 +3581,7 @@ app.post('/api/building/destroy', (req,res)=>{
           if(employed > totalPop) return res.status(400).json({ error: 'Travailleurs insuffisants' });
           if(slaves) employmentDetails.push({ label: 'Esclaves', amount: -slaves, source: slaves });
           const employment = { employed: Math.max(employed - slaves, 0), slaves };
-          db.run('UPDATE seigneuries SET buildings=? WHERE id=?', [JSON.stringify(buildings), srow.id], function(err4){
+          db.run('UPDATE players SET buildings=? WHERE id=?', [JSON.stringify(buildings), srow.id], function(err4){
             if(err4) return handleError(res, err4);
             res.json({ building: { id, built, active }, employment, employmentDetails });
           });
@@ -3563,7 +3676,7 @@ app.post('/api/infrastructure/destroy', (req,res)=>{
           if(employed > totalPop) return res.status(400).json({ error: 'Travailleurs insuffisants' });
           if(slaves) employmentDetails.push({ label: 'Esclaves', amount: -slaves, source: slaves });
           const employment = { employed: Math.max(employed - slaves, 0), slaves };
-          db.run('UPDATE seigneuries SET infrastructures=? WHERE id=?', [JSON.stringify(infrastructures), srow.id], function(err4){
+          db.run('UPDATE players SET infrastructures=? WHERE id=?', [JSON.stringify(infrastructures), srow.id], function(err4){
             if(err4) return handleError(res, err4);
             res.json({ infrastructure: { id, built: updated.built }, employment, employmentDetails });
           });
@@ -3616,7 +3729,7 @@ app.post('/api/infrastructure/instant_production', (req,res)=>{
               if(err5) return handleError(res, err5);
               if (upm > 0) entry[key] = remaining - qty; else delete entry[key];
               infra[iId] = entry;
-              db.run('UPDATE seigneuries SET infrastructures=? WHERE id=?', [JSON.stringify(infra), srow.id], function(err6){
+              db.run('UPDATE players SET infrastructures=? WHERE id=?', [JSON.stringify(infra), srow.id], function(err6){
                 if(err6) return handleError(res, err6);
                 db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err7, inventaire)=>{
                   if(err7) return handleError(res, err7);
@@ -3737,7 +3850,7 @@ app.post('/api/infrastructure/assign_workers', (req,res) => {
           const employment = { employed: Math.max(employed - slaves, 0), slaves };
           const newEntry = typeof existing === 'object' ? { ...existing, [`effect_${idx}_workers`]: qty } : { built, [`effect_${idx}_workers`]: qty };
           infrastructures[iId] = newEntry;
-          db.run('UPDATE seigneuries SET infrastructures=? WHERE id=?', [JSON.stringify(infrastructures), srow.id], function(err5){
+          db.run('UPDATE players SET infrastructures=? WHERE id=?', [JSON.stringify(infrastructures), srow.id], function(err5){
             if(err5) return handleError(res, err5);
             res.json({ infrastructures, employment, employmentDetails });
           });
@@ -3906,7 +4019,7 @@ app.post('/api/send_transaction', (req, res) => {
                 const newCount = count + 1;
                 const field = txType === 'naval' ? 'naval_transactions' : 'land_transactions';
                 const originUpdate = normalizeSeigneurieUpdate(srow);
-                db.run(`UPDATE seigneuries SET ${field}=? WHERE id=?`, [newCount, seigneurieId], err7 => {
+                db.run(`UPDATE players SET ${field}=? WHERE id=?`, [newCount, seigneurieId], err7 => {
                   if (err7) return handleError(res, err7);
                   db.run('INSERT INTO trade_transactions (origin_id, destination_id, origin_update_year, origin_update_number, resources, type, state, reason) VALUES (?,?,?,?,?,?,?,?)', [seigneurieId, dest.id, originUpdate.year, originUpdate.number, JSON.stringify(resources), txType, 'En Attente', reason], function(err8) {
                     if (err8) return handleError(res, err8);
