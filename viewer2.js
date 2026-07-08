@@ -7,7 +7,7 @@
 
   let mapWidth = 0;
   let mapHeight = 0;
-  const terrainColor = mapCore.terrainColor;
+  const terrainColor = mapCore2.terrainColor;
   const playerColor = [82, 190, 128];
   const npcColor = [231, 76, 60];
 
@@ -109,6 +109,7 @@
   let searchController = null;
   let searchInput = null;
   let selectedTitle = null;
+  let selectedEntity = null;
   let handleFilterChange = null;
   let defactoParentCache = new Map();
   const defaultFeudalSectionTitle = feudalSection?.querySelector('h3')?.textContent || 'Hiérarchie féodale';
@@ -144,16 +145,77 @@
     kingdom: 'Royaumes',
     empire: 'Empires'
   };
+  let infoPanelController = null;
+
+  function getInfoPanelController() {
+    if (infoPanelController) return infoPanelController;
+    infoPanelController = mapInfoPanel2.init({
+      getState: () => ({
+        baronyLookup,
+        baronyMeta,
+        seigneurMap,
+        religionMap,
+        cultureMapInfo,
+        countyMap,
+        duchyMap,
+        kingdomMap,
+        viscountyMap,
+        marquisateMap,
+        archduchyMap,
+        empireMap,
+        seigneurToViscounty,
+        seigneurToCounty,
+        seigneurToMarquisate,
+        seigneurToDuchy,
+        seigneurToArchduchy,
+        seigneurToKingdom,
+        seigneurToEmpire,
+        titleHierarchy,
+        titleTypeConfig
+      }),
+      actions: {
+        clearSelectedTitle: () => { selectedTitle = null; },
+        getBaronyEntity,
+        getBaronyIdsForEntity,
+        getSeigneurEntity,
+        getTitleEntity,
+        getTitleMap,
+        handleSelect,
+        restoreDefaultTitlePanelLayout,
+        selectEntity,
+        showTitleInfo
+      },
+      elements: {
+        infoPanel,
+        baronyTitle,
+        infoOwnerLine,
+        infoReligionLine,
+        infoCultureLine,
+        tradeRoutesSection,
+        feudalSection,
+        religiousSection,
+        canonicalOwnedSection,
+        canonicalParentSection,
+        titleSubtitlesSection,
+        titleSubtitlesList,
+        seaInfoPanel,
+        seigneurInfoPanel,
+        seigneurInfoTitle,
+        seigneurInfoIdentity,
+        seigneurInfoReligion,
+        seigneurOverlordLine,
+        seigneurTitlesSection,
+        seigneurTitlesList,
+        seigneurVassalsSection,
+        seigneurVassalList,
+        tradeRoutePanel
+      }
+    });
+    return infoPanelController;
+  }
 
   function setLine(elem, text) {
-    if (!elem) return;
-    if (text) {
-      elem.style.display = 'block';
-      elem.textContent = text;
-    } else {
-      elem.style.display = 'none';
-      elem.textContent = '';
-    }
+    return getInfoPanelController().setLine(elem, text);
   }
 
   function isVacantBarony(info) {
@@ -161,104 +223,136 @@
   }
 
   function setLabeledLine(elem, label, value) {
-    if (!elem) return;
-    elem.innerHTML = '';
-    if (value) {
-      elem.style.display = 'block';
-      const labelSpan = document.createElement('span');
-      labelSpan.className = 'info-label';
-      labelSpan.textContent = label;
-      elem.appendChild(labelSpan);
-      elem.appendChild(document.createTextNode(' '));
-      const span = document.createElement('span');
-      span.textContent = value;
-      elem.appendChild(span);
-    } else {
-      elem.style.display = 'none';
-    }
+    return getInfoPanelController().setLabeledLine(elem, label, value);
   }
 
   function setSeigneurLine(elem, seigneurId, label, suffixText) {
-    if (!elem) return;
-    elem.innerHTML = '';
-    if (seigneurId && seigneurMap[seigneurId]) {
-      elem.style.display = 'flex';
-      if (label) {
-        const labelSpan = document.createElement('span');
-        labelSpan.className = 'info-label';
-        labelSpan.textContent = label;
-        elem.appendChild(labelSpan);
-        elem.appendChild(document.createTextNode(' '));
-      }
-      elem.appendChild(createSeigneurButton(seigneurId));
-      if (suffixText) {
-        elem.appendChild(document.createTextNode(` ${suffixText}`));
-      }
-      return;
-    }
-    if (suffixText) {
-      elem.style.display = 'flex';
-      if (label) {
-        const labelSpan = document.createElement('span');
-        labelSpan.className = 'info-label';
-        labelSpan.textContent = label;
-        elem.appendChild(labelSpan);
-        elem.appendChild(document.createTextNode(' '));
-      }
-      elem.appendChild(document.createTextNode(suffixText));
-      return;
-    }
-    elem.style.display = 'none';
+    return getInfoPanelController().setSeigneurLine(elem, seigneurId, label, suffixText);
   }
 
   function createSeigneurButton(seigneurId) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'seigneur-link';
-    btn.textContent = seigneurMap[seigneurId]?.name || `Seigneur #${seigneurId}`;
-    btn.addEventListener('click', () => showSeigneurInfo(seigneurId));
-    return btn;
+    return getInfoPanelController().createSeigneurButton(seigneurId);
   }
 
   function showBaronyDetails(baronyId) {
-    if (!baronyId) return;
-    if (core && typeof core.selectBarony === 'function') {
-      core.selectBarony(baronyId);
-    } else {
-      handleSelect(baronyId);
-    }
+    return getInfoPanelController().showBaronyDetails(baronyId);
   }
 
   function createBaronyButton(baronyId) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'barony-link';
-    const label = baronyMeta[baronyId]?.name || baronyLookup[baronyId]?.name || `Baronnie #${baronyId}`;
-    btn.textContent = `${label} (#${baronyId})`;
-    btn.addEventListener('click', () => showBaronyDetails(baronyId));
-    return btn;
+    return getInfoPanelController().createBaronyButton(baronyId);
   }
 
   function createBaronyLabel(baronyId) {
-    const name = baronyMeta[baronyId]?.name || baronyLookup[baronyId]?.name;
-    return name ? `${name} (#${baronyId})` : `Baronnie #${baronyId}`;
+    return getInfoPanelController().createBaronyLabel(baronyId);
+  }
+
+  function setSelectionMapId(entity) {
+    if (!mapData.selection) mapData.selection = {};
+    mapData.selection.mapId = entity && (entity._type === 'barony' || entity._type === 'seaZone' || baronyMeta[entity.id])
+      ? String(entity.id)
+      : null;
+  }
+
+  function renderGenericEntityInfo(entity) {
+    return getInfoPanelController().renderGenericEntityInfo(entity);
+  }
+
+  function renderSelectedEntity(entity, options = {}) {
+    return getInfoPanelController().renderSelectedEntity(entity, options);
+  }
+
+  function selectEntity(entity, options = {}) {
+    selectedEntity = entity || null;
+    setSelectionMapId(selectedEntity);
+    renderSelectedEntity(selectedEntity, options);
+    highlightEntity(selectedEntity, options);
+    if (filterManager && filterSelect && filterSelect.value === 'distance') {
+      filterManager.applyFilter('distance');
+    }
+  }
+
+  function handleMapClick(click) {
+    if (!click?.id) {
+      selectEntity(null, { source: 'map' });
+      return;
+    }
+    if (click.type === 'seaZone') {
+      selectEntity({ ...(baronyMeta[click.id] || { id: click.id }), id: click.id, _type: 'seaZone' }, { source: 'map' });
+      return;
+    }
+    const barony = getBaronyEntity(click.id);
+    const filterDefinition = mapFilters2.getFilterDefinition(filterSelect?.value);
+    const target = filterDefinition?.selectEntityForBaronyClick
+      ? filterDefinition.selectEntityForBaronyClick(barony, { mapData, filterSelect, core })
+      : barony;
+    selectEntity(target || barony, {
+      source: 'map',
+      mode: filterDefinition?.mode || 'dejure'
+    });
   }
 
   function getTitleMap(rankKey) {
     return titleTypeConfig[rankKey]?.map?.() || {};
   }
 
+  function getVm() {
+    return mapData?.viewModel || core?.getViewModel?.() || null;
+  }
+
+  function getVmBarony(baronyInfo) {
+    if (!baronyInfo?.id) return null;
+    return getVm()?.baronies?.byId?.[String(baronyInfo.id)] || null;
+  }
+
+  function getBaronyEntity(baronyId) {
+    return getVm()?.getEntity?.('barony', baronyId) || baronyMeta[baronyId] || baronyLookup[baronyId] || null;
+  }
+
+  function getTitleEntity(rankKey, titleId, mode = 'dejure') {
+    const entity = getVm()?.getEntity?.(rankKey, titleId) || getTitleMap(rankKey)[titleId] || null;
+    if (entity) {
+      entity._selectionMode = mode;
+      if (!entity._type) entity._type = rankKey;
+    }
+    return entity;
+  }
+
+  function getSeigneurEntity(seigneurId) {
+    const entity = getVm()?.getEntity?.('seigneur', seigneurId) || seigneurMap[seigneurId] || null;
+    if (entity && !entity._type) entity._type = 'seigneur';
+    return entity;
+  }
+
+  function highlightBaronies(ids = []) {
+    if (core?.highlightBaronies) core.highlightBaronies(ids);
+  }
+
+  function getBaronyIdsForEntity(entity, mode = 'dejure') {
+    if (!entity) return [];
+    if (entity._type === 'seaZone') return [entity.id];
+    if (entity._type === 'barony' || baronyMeta[entity.id]) return [entity.id];
+    if (entity._type === 'seigneur') {
+      return Object.values(baronyLookup).filter(b => String(b.seigneur_id) === String(entity.id)).map(b => b.id);
+    }
+    if (entity._type === 'religion') {
+      return Object.values(baronyMeta).filter(b => String(b.religion_pop_id) === String(entity.id)).map(b => b.id);
+    }
+    if (entity._type === 'culture') {
+      return Object.values(baronyMeta).filter(b => String(b.culture_id) === String(entity.id)).map(b => b.id);
+    }
+    if (titleHierarchy.includes(entity._type)) {
+      return getBaroniesForTitle(entity._type, entity.id, mode);
+    }
+    return [];
+  }
+
+  function highlightEntity(entity, options = {}) {
+    const mode = options.mode || entity?._selectionMode || 'dejure';
+    highlightBaronies(getBaronyIdsForEntity(entity, mode));
+  }
+
   function createTitleButton(rankKey, titleId, options = {}) {
-    const { mode = 'dejure', includeRank = false, forceFilterMode = null } = options;
-    const map = getTitleMap(rankKey);
-    const info = map[titleId];
-    const label = info?.name || `${titleTypeConfig[rankKey]?.label || 'Titre'} #${titleId}`;
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'barony-link';
-    btn.textContent = includeRank ? `${titleTypeConfig[rankKey]?.label || 'Titre'} ${label}` : label;
-    btn.addEventListener('click', () => showTitleInfo(rankKey, titleId, mode, { forceFilterMode }));
-    return btn;
+    return getInfoPanelController().createTitleButton(rankKey, titleId, options);
   }
 
   function getTargetTitleMode(forceFilterMode) {
@@ -295,74 +389,19 @@
   }
 
   function setSeigneurList(section, list, ids) {
-    if (!section || !list) return;
-    list.innerHTML = '';
-    if (ids && ids.length > 0) {
-      section.style.display = 'block';
-      ids.forEach(id => {
-        const li = document.createElement('li');
-        li.appendChild(createSeigneurButton(id));
-        list.appendChild(li);
-      });
-    } else {
-      section.style.display = 'none';
-    }
+    return getInfoPanelController().setSeigneurList(section, list, ids);
   }
 
   function showSeigneurInfo(seigneurId) {
-    if (!seigneurInfoPanel) return;
-    const seigneur = seigneurMap[seigneurId];
-    if (!seigneur) return;
-    selectedTitle = null;
-    if (infoPanel) infoPanel.style.display = 'none';
-    if (seaInfoPanel) seaInfoPanel.style.display = 'none';
-    hideTradeRoutePanel();
-    seigneurInfoPanel.style.display = 'block';
-    if (seigneurInfoTitle) seigneurInfoTitle.textContent = seigneur.name;
-    if (seigneurInfoIdentity) setLine(seigneurInfoIdentity, '');
-    const religionName = seigneur.religion_id ? (religionMap[seigneur.religion_id]?.name || '') : '';
-    setLabeledLine(seigneurInfoReligion, 'Religion:', religionName);
-    setSeigneurLine(seigneurOverlordLine, seigneur.overlord_id, 'Suzerain:');
-
-    const titles = [];
-    (seigneurToEmpire[seigneurId] || []).forEach(empireId => {
-      if (empireId && empireMap[empireId]) titles.push({ rankKey: 'empire', id: empireId, mode: 'dejure' });
-    });
-    (seigneurToKingdom[seigneurId] || []).forEach(kingdomId => {
-      if (kingdomId && kingdomMap[kingdomId]) titles.push({ rankKey: 'kingdom', id: kingdomId, mode: 'dejure' });
-    });
-    (seigneurToArchduchy[seigneurId] || []).forEach(archduchyId => {
-      if (archduchyId && archduchyMap[archduchyId]) titles.push({ rankKey: 'archduchy', id: archduchyId, mode: 'dejure' });
-    });
-    (seigneurToDuchy[seigneurId] || []).forEach(duchyId => {
-      if (duchyId && duchyMap[duchyId]) titles.push({ rankKey: 'duchy', id: duchyId, mode: 'dejure' });
-    });
-    (seigneurToMarquisate[seigneurId] || []).forEach(marquisateId => {
-      if (marquisateId && marquisateMap[marquisateId]) titles.push({ rankKey: 'marquisate', id: marquisateId, mode: 'dejure' });
-    });
-    (seigneurToCounty[seigneurId] || []).forEach(countyId => {
-      if (countyId && countyMap[countyId]) titles.push({ rankKey: 'county', id: countyId, mode: 'dejure' });
-    });
-    (seigneurToViscounty[seigneurId] || []).forEach(viscountyId => {
-      if (viscountyId && viscountyMap[viscountyId]) titles.push({ rankKey: 'viscounty', id: viscountyId, mode: 'dejure' });
-    });
-    const ownedBaronies = Object.values(baronyLookup)
-      .filter(b => b.seigneur_id === seigneurId)
-      .map(b => ({ id: b.id, name: b.name }));
-    setTitleList(seigneurTitlesSection, seigneurTitlesList, titles, ownedBaronies);
-
-    const vassals = Object.values(seigneurMap)
-      .filter(s => s.overlord_id === seigneurId)
-      .map(s => s.id);
-    setSeigneurList(seigneurVassalsSection, seigneurVassalList, vassals);
+    return getInfoPanelController().showSeigneurInfo(seigneurId);
   }
 
   function hideSeigneurInfo() {
-    if (seigneurInfoPanel) seigneurInfoPanel.style.display = 'none';
+    return getInfoPanelController().hideSeigneurInfo();
   }
 
   function hideTradeRoutePanel() {
-    if (tradeRoutePanel) tradeRoutePanel.style.display = 'none';
+    return getInfoPanelController().hideTradeRoutePanel();
   }
 
   function attachSearchBar() {
@@ -389,11 +428,14 @@
           return;
         }
         if (match.titleRankKey && match.titleId) {
-          showTitleInfo(match.titleRankKey, match.titleId, match.titleMode || 'dejure');
+          selectEntity(getTitleEntity(match.titleRankKey, match.titleId, match.titleMode || 'dejure'), {
+            source: 'search',
+            mode: match.titleMode || 'dejure'
+          });
           return;
         }
         const targetId = match.seigneurId || match.id;
-        if (targetId) showSeigneurInfo(targetId);
+        if (targetId) selectEntity(getSeigneurEntity(targetId), { source: 'search' });
       }
     });
   }
@@ -461,28 +503,11 @@
   }
 
   function setList(section, list, items) {
-    if (!section || !list) return;
-    list.innerHTML = '';
-    if (items && items.length > 0) {
-      section.style.display = 'block';
-      items.forEach(text => {
-        const li = document.createElement('li');
-        li.textContent = text;
-        list.appendChild(li);
-      });
-    } else {
-      section.style.display = 'none';
-    }
+    return getInfoPanelController().setList(section, list, items);
   }
 
   function setTradeRouteInfoMode(active) {
-    if (infoReligionLine) infoReligionLine.style.display = active ? 'none' : '';
-    if (infoCultureLine) infoCultureLine.style.display = active ? 'none' : '';
-    if (feudalSection) feudalSection.style.display = active ? 'none' : '';
-    if (religiousSection) religiousSection.style.display = active ? 'none' : '';
-    if (canonicalOwnedSection) canonicalOwnedSection.style.display = active ? 'none' : '';
-    if (canonicalParentSection) canonicalParentSection.style.display = active ? 'none' : '';
-    if (tradeRoutesSection) tradeRoutesSection.style.display = active ? 'block' : 'none';
+    return getInfoPanelController().setTradeRouteInfoMode(active);
   }
 
   function parseTradeRoutePath(raw) {
@@ -663,11 +688,9 @@
     const route = tradeRouteById[routeId];
     if (!route) return;
     selectedTitle = null;
-    if (core && typeof core.selectBarony === 'function') {
-      suppressTradeRoutePanelHide = true;
-      core.selectBarony(null);
-      suppressTradeRoutePanelHide = false;
-    }
+    suppressTradeRoutePanelHide = true;
+    selectEntity(null, { source: 'trade_route' });
+    suppressTradeRoutePanelHide = false;
     if (infoPanel) infoPanel.style.display = 'none';
     if (seaInfoPanel) seaInfoPanel.style.display = 'none';
     hideSeigneurInfo();
@@ -721,11 +744,9 @@
     const line = tradeLineById[lineId];
     if (!line) return;
     selectedTitle = null;
-    if (core && typeof core.selectBarony === 'function') {
-      suppressTradeRoutePanelHide = true;
-      core.selectBarony(null);
-      suppressTradeRoutePanelHide = false;
-    }
+    suppressTradeRoutePanelHide = true;
+    selectEntity(null, { source: 'trade_line' });
+    suppressTradeRoutePanelHide = false;
     if (infoPanel) infoPanel.style.display = 'none';
     if (seaInfoPanel) seaInfoPanel.style.display = 'none';
     hideSeigneurInfo();
@@ -757,51 +778,17 @@
   }
 
   function setTitleList(section, list, titles = [], baronies = []) {
-    if (!section || !list) return;
-    list.innerHTML = '';
-    const hasItems = (titles && titles.length > 0) || (baronies && baronies.length > 0);
-    if (!hasItems) {
-      section.style.display = 'none';
-      return;
-    }
-    section.style.display = 'block';
-    titles.forEach(title => {
-      if (!title || !title.rankKey || !title.id) return;
-      const li = document.createElement('li');
-      const cfg = titleTypeConfig[title.rankKey];
-      if (cfg?.prefix) {
-        li.appendChild(document.createTextNode(`${cfg.prefix} `));
-      }
-      li.appendChild(createTitleButton(title.rankKey, title.id, { mode: title.mode || 'dejure' }));
-      list.appendChild(li);
-    });
-    baronies.forEach(barony => {
-      if (!barony || !barony.id) return;
-      const li = document.createElement('li');
-      li.appendChild(document.createTextNode('Baron de '));
-      li.appendChild(createBaronyButton(barony.id));
-      list.appendChild(li);
-    });
+    return getInfoPanelController().setTitleList(section, list, titles, baronies);
   }
 
   function setBaronyList(section, list, items) {
-    if (!section || !list) return;
-    list.innerHTML = '';
-    if (items && items.length > 0) {
-      section.style.display = 'block';
-      items.forEach(item => {
-        if (!item || !item.id) return;
-        const li = document.createElement('li');
-        li.appendChild(createBaronyButton(item.id));
-        list.appendChild(li);
-      });
-    } else {
-      section.style.display = 'none';
-    }
+    return getInfoPanelController().setBaronyList(section, list, items);
   }
 
   function getBaronyTitleId(baronyInfo, rankKey, mode = 'dejure') {
     if (!baronyInfo) return null;
+    const vmTitle = getVmBarony(baronyInfo)?.[mode]?.[rankKey] || null;
+    if (vmTitle) return vmTitle.id;
     if (mode === 'defacto') return resolveDefactoTitle(baronyInfo, rankKey);
     if (rankKey === 'viscounty') return baronyInfo.viscounty_id;
     if (rankKey === 'county') return baronyInfo.county_id;
@@ -817,6 +804,10 @@
   }
 
   function getBaroniesForTitle(rankKey, titleId, mode = 'dejure') {
+    const vm = getVm();
+    if (vm) {
+      return vm.getBaroniesForTitle(rankKey, titleId, mode).map(barony => barony.id);
+    }
     return Object.values(baronyMeta)
       .filter(info => String(getBaronyTitleId(info, rankKey, mode) || '') === String(titleId))
       .map(info => info.id);
@@ -875,6 +866,12 @@
   }
 
   function getImmediateSubtitles(rankKey, titleId, mode = 'dejure') {
+    const vm = getVm();
+    if (vm) {
+      return vm.getImmediateSubtitles(rankKey, titleId, mode)
+        .map(entity => ({ rankKey: entity._type, id: entity.id }))
+        .sort(compareSubtitleItems);
+    }
     return mode === 'defacto'
       ? getImmediateDefactoSubtitles(rankKey, titleId)
       : getImmediateDejureSubtitles(rankKey, titleId);
@@ -945,14 +942,13 @@
   }
 
   function syncTitleSelectionHighlight() {
-    if (!core || typeof core.setSelectedBaronies !== 'function') return;
     if (!selectedTitle) return;
     const activeTitleFilter = getTitleFilterInfo(filterSelect?.value);
     if (activeTitleFilter && activeTitleFilter.rankKey === selectedTitle.rankKey) {
-      core.setSelectedBaronies(getBaroniesForTitle(selectedTitle.rankKey, selectedTitle.id, activeTitleFilter.mode));
+      highlightBaronies(getBaroniesForTitle(selectedTitle.rankKey, selectedTitle.id, activeTitleFilter.mode));
       return;
     }
-    core.setSelectedBaronies([]);
+    highlightBaronies([]);
   }
 
   function showTitleInfo(rankKey, titleId, mode = 'dejure', options = {}) {
@@ -1728,11 +1724,7 @@
         item.classList.add('legend-item--interactive');
         item.title = 'Cliquer pour sélectionner ce titre';
         item.addEventListener('click', () => {
-          showTitleInfo(titleFilter.rankKey, id, titleFilter.mode, { forceFilterMode: titleFilter.mode });
-          const representativeBarony = getBaroniesForTitle(titleFilter.rankKey, id, titleFilter.mode)[0] || null;
-          if (core && typeof core.selectBarony === 'function') {
-            core.selectBarony(representativeBarony);
-          }
+          selectEntity(getTitleEntity(titleFilter.rankKey, id, titleFilter.mode), { source: 'legend', mode: titleFilter.mode });
         });
       }
       legendDiv.appendChild(item);
@@ -1743,7 +1735,7 @@
   function drawOverlay(ctx) {
     if (mapMode === 'sea') {
       if (!filterSelect || filterSelect.value !== 'baronies') return;
-      const zoneId = core?.currentSelectedId;
+      const zoneId = mapData.selection?.mapId;
       if (!zoneId) return;
       ctx.fillStyle = 'rgba(0,0,255,0.4)';
       (maritimeZoneBaronies[zoneId] || []).forEach(bid => {
@@ -1895,14 +1887,6 @@
       return;
     }
     const info = baronyMeta[id] || {};
-    const titleFilter = getTitleFilterInfo(filterSelect?.value);
-    if (titleFilter) {
-      const titleId = getBaronyTitleId(info, titleFilter.rankKey, titleFilter.mode);
-      if (titleId) {
-        showTitleInfo(titleFilter.rankKey, titleId, titleFilter.mode, { forceFilterMode: titleFilter.mode });
-        return;
-      }
-    }
     selectedTitle = null;
     restoreDefaultTitlePanelLayout();
     if (infoPanel) infoPanel.style.display = 'block';
@@ -1965,9 +1949,6 @@
     if (filterManager && filterSelect && filterSelect.value === 'distance') {
       filterManager.applyFilter('distance');
     }
-    if (core && typeof core.setSelectedBaronies === 'function') {
-      core.setSelectedBaronies(id ? [id] : []);
-    }
   }
 
   async function fetchData() {
@@ -1992,6 +1973,22 @@
         fetch(API_BASE + '/api/archduchies').then(r => r.json()),
         fetch(API_BASE + '/api/empires').then(r => r.json())
       ]);
+      const currentViewModel = viewModel.build({
+        baronies,
+        seigneurs,
+        religions,
+        cultures: [],
+        counties,
+        duchies,
+        kingdoms,
+        viscounties,
+        marquisates,
+        archduchies,
+        empires,
+        canonicalLands: [],
+        sanctuaries: [],
+        baronyConnections: []
+      });
       baronyMeta = {};
       zones.forEach(z => { baronyMeta[z.id] = z; });
       baronyLookup = {};
@@ -2068,6 +2065,8 @@
         seigneurToArchduchy,
         seigneurToKingdom,
         seigneurToEmpire,
+        viewModel: currentViewModel,
+        selection: { mapId: null },
         mapWidth,
         mapHeight,
         mapMode
@@ -2105,6 +2104,22 @@
         console.warn('Impossible de récupérer les baronnies depuis l’organigramme.', err);
       }
     }
+    const currentViewModel = viewModel.build({
+      baronies,
+      seigneurs,
+      religions,
+      cultures,
+      counties,
+      duchies,
+      kingdoms,
+      viscounties,
+      marquisates,
+      archduchies,
+      empires,
+      canonicalLands,
+      sanctuaries,
+      baronyConnections: connections
+    });
     baronyMeta = {};
     baronyLookup = {};
     baronies.forEach(b => { baronyMeta[b.id] = b; baronyLookup[b.id] = b; });
@@ -2208,6 +2223,8 @@
       seigneurToArchduchy,
       seigneurToKingdom,
       seigneurToEmpire,
+      viewModel: currentViewModel,
+      selection: { mapId: null },
       mapWidth,
       mapHeight,
       mapMode
@@ -2232,15 +2249,15 @@
       pixelCanvas.height = mapHeight;
       pixelCanvas.style.width = mapWidth + 'px';
       pixelCanvas.style.height = mapHeight + 'px';
-      core = mapCore.init({
+      core = mapCore2.init({
         canvas: pixelCanvas,
         fetchData,
-        onSelect: handleSelect,
         drawOverlay,
         mapMode
       });
+      core.onMapClick(handleMapClick);
       core.ready.then(() => {
-        filterManager = mapFilters.init(core, mapData, { updateLegend });
+        filterManager = core.createFilterManager(mapFilters2.createRegistry(), { updateLegend });
         if (pendingPixelData && typeof core.setPixelData === 'function') {
           core.setPixelData(pendingPixelData);
           pendingPixelData = null;
@@ -2259,23 +2276,11 @@
               }
               setTradeRouteInfoMode(false);
               hideTradeRoutePanel();
-              if (activeTitleFilter && selectedTitle && selectedTitle.rankKey === activeTitleFilter.rankKey) {
-                showTitleInfo(selectedTitle.rankKey, selectedTitle.id, activeTitleFilter.mode);
-              } else if (selectedTitle) {
-                if (infoPanel) infoPanel.style.display = 'block';
-                if (core && typeof core.setSelectedBaronies === 'function') {
-                  core.setSelectedBaronies([]);
-                }
-              } else {
-                if (infoPanel) infoPanel.style.display = core?.currentSelectedId ? 'block' : 'none';
-                if (core && typeof core.setSelectedBaronies === 'function') {
-                  core.setSelectedBaronies(core?.currentSelectedId ? [core.currentSelectedId] : []);
-                }
-              }
-            } else if (core.currentSelectedId) {
+              if (infoPanel) infoPanel.style.display = selectedEntity ? 'block' : 'none';
+            } else if (selectedEntity && (selectedEntity._type === 'barony' || baronyMeta[selectedEntity.id])) {
               setTradeRouteInfoMode(true);
-              renderTradeRoutesList(core.currentSelectedId);
-              renderTradeLinesList(core.currentSelectedId);
+              renderTradeRoutesList(selectedEntity.id);
+              renderTradeLinesList(selectedEntity.id);
               hideTradeRoutePanel();
             } else if (selectedTradeRouteId || selectedTradeLineId) {
               setTradeRouteInfoMode(false);
@@ -2283,9 +2288,9 @@
               if (tradeRoutePanel) tradeRoutePanel.style.display = 'block';
             }
             filterManager.applyFilter(filterSelect.value);
-            if (selectedTitle) {
-              syncTitleSelectionHighlight();
-            }
+            highlightEntity(selectedEntity, {
+              mode: activeTitleFilter?.mode || selectedEntity?._selectionMode || selectedTitle?.mode || 'dejure'
+            });
             updateCultureRankingPanel();
           };
           filterSelect.addEventListener('change', handleFilterChange);

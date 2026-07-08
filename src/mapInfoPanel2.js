@@ -1,75 +1,18 @@
 (function (global) {
   function init(options = {}) {
-    const {
-      vm,
-      mapMode = 'land',
-      onNavigate = () => {},
-      infoPanel,
-      seaInfoPanel,
-      seigneurInfoPanel,
-      tradeRoutePanel,
-      baronyTitle,
-      infoOwnerLine,
-      infoReligionLine,
-      infoCultureLine,
-      tradeRoutesSection,
-      tradeRoutesList,
-      tradeLinesList,
-      infoFeudalBody,
-      infoDuchyPietyBody,
-      infoReligiousList,
-      canonicalOwnedList,
-      canonicalParentList,
-      titleSubtitlesList,
-      seigneurOverlordLine,
-      seigneurTitlesList,
-      seigneurVassalList,
-      seaInfoId,
-      seaInfoName,
-      seaInfoSeigneur,
-      seigneurInfoTitle,
-      seigneurInfoIdentity,
-      seigneurInfoReligion
-    } = options;
+    const getState = options.getState || (() => ({}));
+    const actions = options.actions || {};
+    const elements = options.elements || {};
 
-    const TITLE_TYPES = ['viscounty', 'county', 'marquisate', 'duchy', 'archduchy', 'kingdom', 'empire'];
-    const TITLE_LABELS = {
-      viscounty: 'Vicomté',
-      county: 'Comté',
-      marquisate: 'Marquisat',
-      duchy: 'Duché',
-      archduchy: 'Archiduché',
-      kingdom: 'Royaume',
-      empire: 'Empire'
-    };
-    const TITLE_PREFIXES = {
-      viscounty: 'Vicomte de',
-      county: 'Comte de',
-      marquisate: 'Marquis de',
-      duchy: 'Duc de',
-      archduchy: 'Archiduc de',
-      kingdom: 'Roi de',
-      empire: 'Empereur de'
-    };
-
-    const feudalSection = infoFeudalBody?.closest('section') || null;
-    const religiousSection = infoReligiousList?.closest('section') || null;
-    const canonicalOwnedSection = canonicalOwnedList?.closest('section') || null;
-    const canonicalParentSection = canonicalParentList?.closest('section') || null;
-    const titleSubtitlesSection = titleSubtitlesList?.closest('section') || null;
-    const seigneurTitlesSection = seigneurTitlesList?.closest('section') || null;
-    const seigneurVassalsSection = seigneurVassalList?.closest('section') || null;
-
-    let tradePromise = null;
-    let tradeMaps = { routesByBarony: {}, linesByBarony: {} };
-
-    function hideAllPanels() {
-      [infoPanel, seaInfoPanel, seigneurInfoPanel, tradeRoutePanel].forEach((panel) => {
-        if (panel) panel.style.display = 'none';
-      });
+    function state() {
+      return getState() || {};
     }
 
-    function setTextLine(elem, text) {
+    function getElement(key, fallbackId) {
+      return elements[key] || (fallbackId ? document.getElementById(fallbackId) : null);
+    }
+
+    function setLine(elem, text) {
       if (!elem) return;
       if (text) {
         elem.style.display = 'block';
@@ -90,71 +33,72 @@
         labelSpan.textContent = label;
         elem.appendChild(labelSpan);
         elem.appendChild(document.createTextNode(' '));
-        const valueSpan = document.createElement('span');
-        valueSpan.textContent = value;
-        elem.appendChild(valueSpan);
+        const span = document.createElement('span');
+        span.textContent = value;
+        elem.appendChild(span);
       } else {
         elem.style.display = 'none';
       }
     }
 
     function createSeigneurButton(seigneurId) {
-      const seigneur = vm.getEntity('seigneur', seigneurId);
+      const { seigneurMap = {} } = state();
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'seigneur-link';
-      btn.textContent = seigneur?.name || `Seigneur #${seigneurId}`;
-      btn.addEventListener('click', () => onNavigate('seigneur', String(seigneurId)));
+      btn.textContent = seigneurMap[seigneurId]?.name || `Seigneur #${seigneurId}`;
+      btn.addEventListener('click', () => {
+        actions.selectEntity?.(actions.getSeigneurEntity?.(seigneurId), { source: 'panel' });
+      });
       return btn;
+    }
+
+    function showBaronyDetails(baronyId) {
+      if (!baronyId) return;
+      actions.selectEntity?.(actions.getBaronyEntity?.(baronyId), { source: 'panel' });
     }
 
     function createBaronyButton(baronyId) {
-      const barony = vm.getEntity('barony', baronyId);
+      const { baronyMeta = {}, baronyLookup = {} } = state();
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'barony-link';
-      const label = barony?.name || `Baronnie #${baronyId}`;
+      const label = baronyMeta[baronyId]?.name || baronyLookup[baronyId]?.name || `Baronnie #${baronyId}`;
       btn.textContent = `${label} (#${baronyId})`;
-      btn.addEventListener('click', () => onNavigate('barony', String(baronyId)));
+      btn.addEventListener('click', () => showBaronyDetails(baronyId));
       return btn;
     }
 
-    function createTitleButton(rankKey, titleId) {
-      const title = vm.getEntity(rankKey, titleId);
+    function createBaronyLabel(baronyId) {
+      const { baronyMeta = {}, baronyLookup = {} } = state();
+      const name = baronyMeta[baronyId]?.name || baronyLookup[baronyId]?.name;
+      return name ? `${name} (#${baronyId})` : `Baronnie #${baronyId}`;
+    }
+
+    function createTitleButton(rankKey, titleId, options = {}) {
+      const { titleTypeConfig = {} } = state();
+      const { mode = 'dejure', includeRank = false, forceFilterMode = null } = options;
+      const map = actions.getTitleMap?.(rankKey) || {};
+      const info = map[titleId];
+      const label = info?.name || `${titleTypeConfig[rankKey]?.label || 'Titre'} #${titleId}`;
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'barony-link';
-      btn.textContent = title?.name || `${TITLE_LABELS[rankKey] || 'Titre'} #${titleId}`;
-      btn.addEventListener('click', () => onNavigate(rankKey, String(titleId)));
+      btn.textContent = includeRank ? `${titleTypeConfig[rankKey]?.label || 'Titre'} ${label}` : label;
+      btn.addEventListener('click', () => {
+        actions.selectEntity?.(actions.getTitleEntity?.(rankKey, titleId, forceFilterMode || mode), {
+          source: 'panel',
+          mode: forceFilterMode || mode
+        });
+      });
       return btn;
-    }
-
-    function createFeudalLevelCell(label) {
-      const cell = document.createElement('td');
-      cell.style.padding = '4px 6px';
-      const strong = document.createElement('strong');
-      strong.style.margin = '0';
-      strong.textContent = label;
-      cell.appendChild(strong);
-      return cell;
-    }
-
-    function createFeudalTitleCell(rankKey, title) {
-      const cell = document.createElement('td');
-      cell.style.padding = '4px 6px';
-      if (title?.id) {
-        const btn = createTitleButton(rankKey, title.id);
-        btn.style.margin = '0';
-        cell.appendChild(btn);
-      }
-      return cell;
     }
 
     function setSeigneurLine(elem, seigneurId, label, suffixText) {
+      const { seigneurMap = {} } = state();
       if (!elem) return;
       elem.innerHTML = '';
-      const seigneur = vm.getEntity('seigneur', seigneurId);
-      if (seigneur) {
+      if (seigneurId && seigneurMap[seigneurId]) {
         elem.style.display = 'flex';
         if (label) {
           const labelSpan = document.createElement('span');
@@ -163,7 +107,7 @@
           elem.appendChild(labelSpan);
           elem.appendChild(document.createTextNode(' '));
         }
-        elem.appendChild(createSeigneurButton(seigneur.id));
+        elem.appendChild(createSeigneurButton(seigneurId));
         if (suffixText) elem.appendChild(document.createTextNode(` ${suffixText}`));
         return;
       }
@@ -182,12 +126,27 @@
       elem.style.display = 'none';
     }
 
+    function setSeigneurList(section, list, ids) {
+      if (!section || !list) return;
+      list.innerHTML = '';
+      if (ids && ids.length > 0) {
+        section.style.display = 'block';
+        ids.forEach(id => {
+          const li = document.createElement('li');
+          li.appendChild(createSeigneurButton(id));
+          list.appendChild(li);
+        });
+      } else {
+        section.style.display = 'none';
+      }
+    }
+
     function setList(section, list, items) {
       if (!section || !list) return;
       list.innerHTML = '';
       if (items && items.length > 0) {
         section.style.display = 'block';
-        items.forEach((text) => {
+        items.forEach(text => {
           const li = document.createElement('li');
           li.textContent = text;
           list.appendChild(li);
@@ -197,59 +156,26 @@
       }
     }
 
-    function setBaronyList(section, list, baronies) {
-      if (!section || !list) return;
-      list.innerHTML = '';
-      if (baronies && baronies.length > 0) {
-        section.style.display = 'block';
-        baronies.forEach((barony) => {
-          const baronyId = barony?.id;
-          if (!baronyId) return;
-          const li = document.createElement('li');
-          li.appendChild(createBaronyButton(baronyId));
-          list.appendChild(li);
-        });
-      } else {
-        section.style.display = 'none';
-      }
-    }
-
-    function setSeigneurList(section, list, seigneurs) {
-      if (!section || !list) return;
-      list.innerHTML = '';
-      if (seigneurs && seigneurs.length > 0) {
-        section.style.display = 'block';
-        seigneurs.forEach((seigneur) => {
-          const sid = seigneur?.id;
-          if (!sid) return;
-          const li = document.createElement('li');
-          li.appendChild(createSeigneurButton(sid));
-          list.appendChild(li);
-        });
-      } else {
-        section.style.display = 'none';
-      }
-    }
-
     function setTitleList(section, list, titles = [], baronies = []) {
+      const { titleTypeConfig = {} } = state();
       if (!section || !list) return;
       list.innerHTML = '';
-      const hasItems = titles.length || baronies.length;
+      const hasItems = (titles && titles.length > 0) || (baronies && baronies.length > 0);
       if (!hasItems) {
         section.style.display = 'none';
         return;
       }
       section.style.display = 'block';
-      titles.forEach((title) => {
-        if (!title?.id || !title?.rankKey) return;
+      titles.forEach(title => {
+        if (!title || !title.rankKey || !title.id) return;
         const li = document.createElement('li');
-        const prefix = TITLE_PREFIXES[title.rankKey];
-        if (prefix) li.appendChild(document.createTextNode(`${prefix} `));
-        li.appendChild(createTitleButton(title.rankKey, title.id));
+        const cfg = titleTypeConfig[title.rankKey];
+        if (cfg?.prefix) li.appendChild(document.createTextNode(`${cfg.prefix} `));
+        li.appendChild(createTitleButton(title.rankKey, title.id, { mode: title.mode || 'dejure' }));
         list.appendChild(li);
       });
-      baronies.forEach((barony) => {
-        if (!barony?.id) return;
+      baronies.forEach(barony => {
+        if (!barony || !barony.id) return;
         const li = document.createElement('li');
         li.appendChild(document.createTextNode('Baron de '));
         li.appendChild(createBaronyButton(barony.id));
@@ -257,332 +183,199 @@
       });
     }
 
+    function setBaronyList(section, list, items) {
+      if (!section || !list) return;
+      list.innerHTML = '';
+      if (items && items.length > 0) {
+        section.style.display = 'block';
+        items.forEach(item => {
+          if (!item || !item.id) return;
+          const li = document.createElement('li');
+          li.appendChild(createBaronyButton(item.id));
+          list.appendChild(li);
+        });
+      } else {
+        section.style.display = 'none';
+      }
+    }
+
+    function hideSeigneurInfo() {
+      const seigneurInfoPanel = getElement('seigneurInfoPanel', 'seigneurInfoPanel');
+      if (seigneurInfoPanel) seigneurInfoPanel.style.display = 'none';
+    }
+
+    function hideTradeRoutePanel() {
+      const tradeRoutePanel = getElement('tradeRoutePanel', 'tradeRoutePanel');
+      if (tradeRoutePanel) tradeRoutePanel.style.display = 'none';
+    }
+
     function setTradeRouteInfoMode(active) {
+      const infoReligionLine = getElement('infoReligionLine', 'infoReligionLine');
+      const infoCultureLine = getElement('infoCultureLine', 'infoCultureLine');
+      const feudalSection = getElement('feudalSection', 'feudalSection');
+      const religiousSection = getElement('religiousSection', 'religiousBuildingsSection');
+      const canonicalOwnedSection = getElement('canonicalOwnedSection', 'canonicalOwnedSection');
+      const canonicalParentSection = getElement('canonicalParentSection', 'canonicalParentSection');
+      const tradeRoutesSection = getElement('tradeRoutesSection', 'tradeRoutesSection');
       if (infoReligionLine) infoReligionLine.style.display = active ? 'none' : '';
       if (infoCultureLine) infoCultureLine.style.display = active ? 'none' : '';
       if (feudalSection) feudalSection.style.display = active ? 'none' : '';
       if (religiousSection) religiousSection.style.display = active ? 'none' : '';
       if (canonicalOwnedSection) canonicalOwnedSection.style.display = active ? 'none' : '';
       if (canonicalParentSection) canonicalParentSection.style.display = active ? 'none' : '';
-      if (titleSubtitlesSection) titleSubtitlesSection.style.display = 'none';
       if (tradeRoutesSection) tradeRoutesSection.style.display = active ? 'block' : 'none';
     }
 
-    function parsePath(raw) {
-      if (!raw) return [];
-      if (Array.isArray(raw)) return raw.map((v) => parseInt(v, 10)).filter(Number.isFinite);
-      if (typeof raw === 'string') {
-        try {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed)) return parsed.map((v) => parseInt(v, 10)).filter(Number.isFinite);
-        } catch (err) {
-          const matches = raw.match(/-?\d+/g);
-          return matches ? matches.map((v) => parseInt(v, 10)).filter(Number.isFinite) : [];
-        }
-      }
-      return [];
-    }
+    function renderGenericEntityInfo(entity) {
+      const infoPanel = getElement('infoPanel', 'infoPanel');
+      if (!entity || !infoPanel) return;
+      const baronyTitle = getElement('baronyTitle', 'baronyTitle');
+      const infoOwnerLine = getElement('infoOwnerLine', 'infoOwnerLine');
+      const infoReligionLine = getElement('infoReligionLine', 'infoReligionLine');
+      const infoCultureLine = getElement('infoCultureLine', 'infoCultureLine');
+      const feudalSection = getElement('feudalSection', 'feudalSection');
+      const religiousSection = getElement('religiousSection', 'religiousBuildingsSection');
+      const canonicalOwnedSection = getElement('canonicalOwnedSection', 'canonicalOwnedSection');
+      const canonicalParentSection = getElement('canonicalParentSection', 'canonicalParentSection');
+      const titleSubtitlesSection = getElement('titleSubtitlesSection', 'titleSubtitlesSection');
+      const titleSubtitlesList = getElement('titleSubtitlesList', 'titleSubtitlesList');
+      const titleSubtitlesHeading = titleSubtitlesSection?.querySelector('h3') || null;
 
-    function getTitleFilterInfo(filterValue) {
-      if (!filterValue) return null;
-      if (filterValue === 'duchy_piety_ranking') {
-        return { rankKey: 'duchy', mode: 'dejure', infoMode: 'duchy_piety_ranking' };
-      }
-      const isDefacto = filterValue.endsWith('_defacto');
-      const rankKey = isDefacto ? filterValue.replace('_defacto', '') : filterValue;
-      if (!TITLE_TYPES.includes(rankKey)) return null;
-      return { rankKey, mode: isDefacto ? 'defacto' : 'dejure' };
-    }
-
-    async function ensureTrades() {
-      if (tradePromise) return tradePromise;
-      tradePromise = Promise.all([
-        fetch('/api/trade_routes').then((r) => (r.ok ? r.json() : [])),
-        fetch('/api/trade_lines').then((r) => (r.ok ? r.json() : []))
-      ]).then(([routes, lines]) => {
-        const routesByBarony = {};
-        const linesByBarony = {};
-
-        (routes || []).forEach((route) => {
-          const id = parseInt(route.id, 10);
-          const a = String(route.origin_barony_id || route.barony_id_1 || '');
-          const b = String(route.destination_barony_id || route.barony_id_2 || '');
-          if (!id || !a || !b) return;
-          const path = parsePath(route.path);
-          if (!routesByBarony[a]) routesByBarony[a] = [];
-          if (!routesByBarony[b]) routesByBarony[b] = [];
-          routesByBarony[a].push({ id, other: b, path });
-          routesByBarony[b].push({ id, other: a, path });
-        });
-
-        (lines || []).forEach((line) => {
-          const id = parseInt(line.id, 10);
-          const a = String(line.origin_barony_id || line.barony_id_1 || '');
-          const b = String(line.destination_barony_id || line.barony_id_2 || '');
-          if (!id || !a || !b) return;
-          const path = parsePath(line.path);
-          if (!linesByBarony[a]) linesByBarony[a] = [];
-          if (!linesByBarony[b]) linesByBarony[b] = [];
-          linesByBarony[a].push({ id, other: b, path });
-          linesByBarony[b].push({ id, other: a, path });
-        });
-
-        tradeMaps = { routesByBarony, linesByBarony };
-      }).catch(() => {
-        tradeMaps = { routesByBarony: {}, linesByBarony: {} };
-      });
-      return tradePromise;
-    }
-
-    function baronyLabel(baronyId) {
-      const barony = vm.getEntity('barony', baronyId);
-      return barony?.name ? `${barony.name} (#${barony.id})` : `Baronnie #${baronyId}`;
-    }
-
-    function pathTooltip(path) {
-      const ids = (path || []).filter(Boolean);
-      if (!ids.length) return 'Trajet direct.';
-      return ids.map((id) => baronyLabel(id)).join(' → ');
-    }
-
-    function renderTradeTable(container, entries, buttonClass, emptyText) {
-      if (!container) return;
-      container.innerHTML = '';
-      if (!entries.length) {
-        container.textContent = emptyText;
-        return;
-      }
-      const rows = entries.map((entry) => {
-        const pathClass = buttonClass === 'trade-route-btn' ? 'trade-route-path' : 'trade-line-path';
-        return `
-          <tr>
-            <td><button class="control-btn ${buttonClass}" data-other="${entry.other}" data-path="${entry.path.join(',')}">#${entry.id}</button></td>
-            <td>${baronyLabel(entry.other)}</td>
-            <td class="${pathClass}" title="${pathTooltip(entry.path)}">${entry.path.length}</td>
-          </tr>
-        `;
-      }).join('');
-      container.innerHTML = `<table class="admin-table trade-table"><tr><th>ID</th><th>Destination</th><th>Chemin</th></tr>${rows}</table>`;
-      container.querySelectorAll(`.${buttonClass}`).forEach((btn) => {
-        btn.addEventListener('click', () => onNavigate('barony', btn.dataset.other));
-      });
-    }
-
-    function renderFeudalTableForBarony(barony) {
-      if (!feudalSection || !infoFeudalBody) return;
-      infoFeudalBody.innerHTML = '';
-      const infoFeudalTable = infoFeudalBody.closest('table');
-      if (infoFeudalTable) infoFeudalTable.classList.remove('hide-dejure-column');
-
-      const rows = {
-        viscounty: { rankKey: 'viscounty', level: 'Vicomté' },
-        county: { rankKey: 'county', level: 'Comté' },
-        marquisate: { rankKey: 'marquisate', level: 'Marquisat' },
-        duchy: { rankKey: 'duchy', level: 'Duché' },
-        archduchy: { rankKey: 'archduchy', level: 'Archiduché' },
-        kingdom: { rankKey: 'kingdom', level: 'Royaume' },
-        empire: { rankKey: 'empire', level: 'Empire' }
-      };
-
-      Object.values(rows).forEach((row) => {
-        row.dejure = vm.getBaronyTitleId(barony.id, row.rankKey, 'dejure');
-        row.defacto = vm.getBaronyTitleId(barony.id, row.rankKey, 'defacto');
-      });
-
-      const order = ['kingdom', 'empire', 'archduchy', 'duchy', 'marquisate', 'county', 'viscounty'];
-      const filteredRows = order.map((key) => rows[key]).filter((row) => row.dejure || row.defacto);
-      const hasDejureData = filteredRows.some((row) => row.dejure);
-      if (infoFeudalTable) infoFeudalTable.classList.toggle('hide-dejure-column', !hasDejureData);
-
-      if (!filteredRows.length) {
-        feudalSection.style.display = 'none';
-        return;
-      }
-
-      feudalSection.style.display = 'block';
-      filteredRows.forEach((row) => {
-        const tr = document.createElement('tr');
-        const levelCell = createFeudalLevelCell(row.level);
-        const deJureCell = createFeudalTitleCell(row.rankKey, row.dejure);
-        const deFactoCell = createFeudalTitleCell(row.rankKey, row.defacto);
-
-        tr.appendChild(levelCell);
-        tr.appendChild(deJureCell);
-        tr.appendChild(deFactoCell);
-        infoFeudalBody.appendChild(tr);
-      });
-
-      if (infoDuchyPietyBody) {
-        infoDuchyPietyBody.innerHTML = '';
-        const table = infoDuchyPietyBody.closest('table');
-        if (table) table.style.display = 'none';
-      }
-    }
-
-    function renderTitleHierarchy(rankKey, titleId, mode) {
-      if (!feudalSection || !infoFeudalBody) return;
-      infoFeudalBody.innerHTML = '';
-      const infoFeudalTable = infoFeudalBody.closest('table');
-      if (infoFeudalTable) infoFeudalTable.classList.remove('hide-dejure-column');
-
-      const baronies = vm.getBaroniesForTitle(rankKey, titleId, mode);
-      const sampleBarony = baronies[0] || null;
-      if (!sampleBarony) {
-        feudalSection.style.display = 'none';
-        return;
-      }
-
-      const currentIndex = TITLE_TYPES.indexOf(rankKey);
-      const rows = [];
-      for (let i = currentIndex + 1; i < TITLE_TYPES.length; i += 1) {
-        const parentRank = TITLE_TYPES[i];
-        const dejure = vm.getBaronyTitleId(sampleBarony.id, parentRank, 'dejure');
-        const defacto = vm.getBaronyTitleId(sampleBarony.id, parentRank, 'defacto');
-        if (!dejure && !defacto) continue;
-        rows.push({ rankKey: parentRank, dejure, defacto });
-      }
-
-      if (!rows.length) {
-        feudalSection.style.display = 'none';
-        return;
-      }
-
-      const hasDejureData = rows.some((row) => row.dejure);
-      if (infoFeudalTable) infoFeudalTable.classList.toggle('hide-dejure-column', !hasDejureData);
-
-      feudalSection.style.display = 'block';
-      rows.reverse().forEach((row) => {
-        const tr = document.createElement('tr');
-        const rankCell = createFeudalLevelCell(TITLE_LABELS[row.rankKey]);
-        const dejureCell = createFeudalTitleCell(row.rankKey, row.dejure);
-        const defactoCell = createFeudalTitleCell(row.rankKey, row.defacto);
-
-        tr.appendChild(rankCell);
-        tr.appendChild(dejureCell);
-        tr.appendChild(defactoCell);
-        infoFeudalBody.appendChild(tr);
-      });
-    }
-
-    function renderBarony(barony, payload) {
-      const vacantLabel = barony.vacant ? ' (vacante)' : '';
-      if (baronyTitle) baronyTitle.textContent = `Baronnie: ${barony.name || ''}${vacantLabel} (#${barony.id || ''})`;
-      setSeigneurLine(infoOwnerLine, barony.seigneur?.id, 'Propriétaire:');
-
-      const tradeMode = payload.filter === 'trade_routes';
-      setTradeRouteInfoMode(tradeMode);
-      if (tradeMode) {
-        ensureTrades().then(() => {
-          renderTradeTable(tradeRoutesList, tradeMaps.routesByBarony[String(barony.id)] || [], 'trade-route-btn', 'Aucune route commerciale');
-          renderTradeTable(tradeLinesList, tradeMaps.linesByBarony[String(barony.id)] || [], 'trade-line-btn', 'Aucune ligne commerciale');
-        });
-        return;
-      }
-
-      setLabeledLine(infoReligionLine, 'Religion de la population :', barony.religion?.name || '');
-      setLabeledLine(infoCultureLine, 'Culture:', barony.culture?.name || '');
-
-      renderFeudalTableForBarony(barony);
-
-      const buildings = [];
-      (barony.sanctuaries || []).forEach((sanctuary) => {
-        const isActive = barony.religion?.id && String(barony.religion.id) === String(sanctuary.religion?.id);
-        buildings.push(`Sanctuaire: ${sanctuary.religion?.name || ''} (${isActive ? 'actif' : 'inactif'})`);
-      });
-      if (barony.prioryReligion) buildings.push(`Prieuré: ${barony.prioryReligion.name || ''}`);
-      if (barony.churchReligion) buildings.push(`Église: ${barony.churchReligion.name || ''}`);
-      if (barony.cathedralReligion) buildings.push(`Cathédrale: ${barony.cathedralReligion.name || ''}`);
-      setList(religiousSection, infoReligiousList, buildings);
-
-      setBaronyList(canonicalOwnedSection, canonicalOwnedList, (barony.canonicalFor || []).map((item) => ({ id: item.id })));
-      setBaronyList(canonicalParentSection, canonicalParentList, (barony.canonicalLands || []).map((item) => ({ id: item.id })));
-      if (titleSubtitlesSection) titleSubtitlesSection.style.display = 'none';
-    }
-
-    function renderTitle(rankKey, title, payloadMode = 'dejure') {
-      if (baronyTitle) baronyTitle.textContent = `${TITLE_LABELS[rankKey] || 'Titre'}: ${title.name || ''}`;
-      setSeigneurLine(infoOwnerLine, title.seigneur?.id, 'Détenteur:');
-      if (infoReligionLine) infoReligionLine.style.display = 'none';
-      if (infoCultureLine) infoCultureLine.style.display = 'none';
-      if (tradeRoutesSection) tradeRoutesSection.style.display = 'none';
+      actions.clearSelectedTitle?.();
+      hideSeigneurInfo();
+      hideTradeRoutePanel();
+      const seaInfoPanel = getElement('seaInfoPanel', 'seaInfoPanel');
+      if (seaInfoPanel) seaInfoPanel.style.display = 'none';
+      actions.restoreDefaultTitlePanelLayout?.();
+      infoPanel.style.display = 'block';
+      if (baronyTitle) baronyTitle.textContent = entity.name || entity.label || `${entity._type || 'Entite'} #${entity.id || ''}`;
+      setLine(infoOwnerLine, '');
+      setLine(infoReligionLine, '');
+      setLine(infoCultureLine, '');
+      if (feudalSection) feudalSection.style.display = 'none';
       if (religiousSection) religiousSection.style.display = 'none';
       if (canonicalOwnedSection) canonicalOwnedSection.style.display = 'none';
       if (canonicalParentSection) canonicalParentSection.style.display = 'none';
-
-      renderTitleHierarchy(rankKey, title.id, payloadMode);
-
-      const subtitles = vm.getImmediateSubtitles(rankKey, title.id, payloadMode);
-      const subtitleItems = subtitles.map((item) => ({ rankKey: item._type || item.rankKey, id: item.id }));
-      setTitleList(titleSubtitlesSection, titleSubtitlesList, subtitleItems);
+      const baronyIds = (actions.getBaronyIdsForEntity?.(entity, entity._selectionMode || 'dejure') || []).map(id => ({ id }));
+      setBaronyList(titleSubtitlesSection, titleSubtitlesList, baronyIds);
+      if (titleSubtitlesHeading) titleSubtitlesHeading.textContent = 'Baronnies:';
     }
 
-    function renderSeigneur(seigneur) {
-      if (seigneurInfoTitle) seigneurInfoTitle.textContent = seigneur.name || `Seigneur #${seigneur.id}`;
-      setTextLine(seigneurInfoIdentity, '');
-      setLabeledLine(seigneurInfoReligion, 'Religion:', seigneur.religion?.name || '');
-      setSeigneurLine(seigneurOverlordLine, seigneur.overlord?.id, 'Suzerain:');
-
-      const titles = TITLE_TYPES.flatMap((rankKey) => (seigneur.titles?.[rankKey] || []).map((title) => ({ rankKey, id: title.id })));
-      const baronies = (seigneur.baronies || []).map((barony) => ({ id: barony.id }));
-      setTitleList(seigneurTitlesSection, seigneurTitlesList, titles, baronies);
-      setSeigneurList(seigneurVassalsSection, seigneurVassalList, seigneur.vassals || []);
-    }
-
-    function renderSelection(payload) {
-      if (!payload) return;
-
-      if (payload.type === 'barony') {
-        if (mapMode === 'sea') {
-          hideAllPanels();
-          if (seaInfoPanel) seaInfoPanel.style.display = 'block';
-          if (seaInfoId) seaInfoId.textContent = String(payload.id || '');
-          if (seaInfoName) seaInfoName.textContent = `Zone #${payload.id || ''}`;
-          if (seaInfoSeigneur) seaInfoSeigneur.textContent = '';
-          return;
-        }
-
-        const barony = vm.getEntity('barony', payload.id);
-        if (!barony) return;
-
-        const titleFilter = getTitleFilterInfo(payload.filter || '');
-        if (titleFilter?.rankKey) {
-          const title = vm.getBaronyTitleId(barony.id, titleFilter.rankKey, titleFilter.mode);
-          if (title) {
-            hideAllPanels();
-            if (infoPanel) infoPanel.style.display = 'block';
-            renderTitle(titleFilter.rankKey, title, titleFilter.mode);
-            return;
-          }
-        }
-
-        hideAllPanels();
-        if (infoPanel) infoPanel.style.display = 'block';
-        renderBarony(barony, payload);
+    function renderSelectedEntity(entity, options = {}) {
+      const infoPanel = getElement('infoPanel', 'infoPanel');
+      const seaInfoPanel = getElement('seaInfoPanel', 'seaInfoPanel');
+      if (!entity) {
+        if (infoPanel) infoPanel.style.display = 'none';
+        if (seaInfoPanel) seaInfoPanel.style.display = 'none';
+        hideSeigneurInfo();
+        hideTradeRoutePanel();
         return;
       }
-
-      if (payload.type === 'seigneur') {
-        const seigneur = vm.getEntity('seigneur', payload.id);
-        if (!seigneur) return;
-        hideAllPanels();
-        if (seigneurInfoPanel) seigneurInfoPanel.style.display = 'block';
-        renderSeigneur(seigneur);
+      const { titleHierarchy = [], baronyMeta = {} } = state();
+      if (entity._type === 'seigneur') {
+        showSeigneurInfo(entity.id);
         return;
       }
-
-      if (TITLE_TYPES.includes(payload.type)) {
-        const title = vm.getEntity(payload.type, payload.id);
-        if (!title) return;
-        const titleFilter = getTitleFilterInfo(payload.filter || '');
-        const mode = titleFilter?.rankKey === payload.type ? titleFilter.mode : 'dejure';
-        hideAllPanels();
-        if (infoPanel) infoPanel.style.display = 'block';
-        renderTitle(payload.type, title, mode);
+      if (titleHierarchy.includes(entity._type)) {
+        actions.showTitleInfo?.(entity._type, entity.id, options.mode || entity._selectionMode || 'dejure', {
+          forceFilterMode: options.mode || entity._selectionMode || 'dejure'
+        });
+        return;
       }
+      if (entity._type === 'seaZone' || entity._type === 'barony' || baronyMeta[entity.id]) {
+        actions.handleSelect?.(entity.id);
+        return;
+      }
+      renderGenericEntityInfo(entity);
     }
 
-    return { renderSelection };
+    function showSeigneurInfo(seigneurId) {
+      const {
+        seigneurMap = {},
+        religionMap = {},
+        empireMap = {},
+        kingdomMap = {},
+        archduchyMap = {},
+        duchyMap = {},
+        marquisateMap = {},
+        countyMap = {},
+        viscountyMap = {},
+        seigneurToEmpire = {},
+        seigneurToKingdom = {},
+        seigneurToArchduchy = {},
+        seigneurToDuchy = {},
+        seigneurToMarquisate = {},
+        seigneurToCounty = {},
+        seigneurToViscounty = {},
+        baronyLookup = {}
+      } = state();
+      const seigneurInfoPanel = getElement('seigneurInfoPanel', 'seigneurInfoPanel');
+      if (!seigneurInfoPanel) return;
+      const seigneur = seigneurMap[seigneurId];
+      if (!seigneur) return;
+      const infoPanel = getElement('infoPanel', 'infoPanel');
+      const seaInfoPanel = getElement('seaInfoPanel', 'seaInfoPanel');
+      const seigneurInfoTitle = getElement('seigneurInfoTitle', 'seigneurInfoTitle');
+      const seigneurInfoIdentity = getElement('seigneurInfoIdentity', 'seigneurInfoIdentity');
+      const seigneurInfoReligion = getElement('seigneurInfoReligion', 'seigneurInfoReligion');
+      const seigneurOverlordLine = getElement('seigneurOverlordLine', 'seigneurOverlordLine');
+      const seigneurTitlesSection = getElement('seigneurTitlesSection', 'seigneurTitlesSection');
+      const seigneurTitlesList = getElement('seigneurTitlesList', 'seigneurTitlesList');
+      const seigneurVassalsSection = getElement('seigneurVassalsSection', 'seigneurVassalsSection');
+      const seigneurVassalList = getElement('seigneurVassalList', 'seigneurVassalList');
+
+      actions.clearSelectedTitle?.();
+      if (infoPanel) infoPanel.style.display = 'none';
+      if (seaInfoPanel) seaInfoPanel.style.display = 'none';
+      hideTradeRoutePanel();
+      seigneurInfoPanel.style.display = 'block';
+      if (seigneurInfoTitle) seigneurInfoTitle.textContent = seigneur.name;
+      if (seigneurInfoIdentity) setLine(seigneurInfoIdentity, '');
+      const religionName = seigneur.religion_id ? (religionMap[seigneur.religion_id]?.name || '') : '';
+      setLabeledLine(seigneurInfoReligion, 'Religion:', religionName);
+      setSeigneurLine(seigneurOverlordLine, seigneur.overlord_id, 'Suzerain:');
+
+      const titles = [];
+      (seigneurToEmpire[seigneurId] || []).forEach(id => { if (id && empireMap[id]) titles.push({ rankKey: 'empire', id, mode: 'dejure' }); });
+      (seigneurToKingdom[seigneurId] || []).forEach(id => { if (id && kingdomMap[id]) titles.push({ rankKey: 'kingdom', id, mode: 'dejure' }); });
+      (seigneurToArchduchy[seigneurId] || []).forEach(id => { if (id && archduchyMap[id]) titles.push({ rankKey: 'archduchy', id, mode: 'dejure' }); });
+      (seigneurToDuchy[seigneurId] || []).forEach(id => { if (id && duchyMap[id]) titles.push({ rankKey: 'duchy', id, mode: 'dejure' }); });
+      (seigneurToMarquisate[seigneurId] || []).forEach(id => { if (id && marquisateMap[id]) titles.push({ rankKey: 'marquisate', id, mode: 'dejure' }); });
+      (seigneurToCounty[seigneurId] || []).forEach(id => { if (id && countyMap[id]) titles.push({ rankKey: 'county', id, mode: 'dejure' }); });
+      (seigneurToViscounty[seigneurId] || []).forEach(id => { if (id && viscountyMap[id]) titles.push({ rankKey: 'viscounty', id, mode: 'dejure' }); });
+      const ownedBaronies = Object.values(baronyLookup)
+        .filter(b => b.seigneur_id === seigneurId)
+        .map(b => ({ id: b.id, name: b.name }));
+      setTitleList(seigneurTitlesSection, seigneurTitlesList, titles, ownedBaronies);
+
+      const vassals = Object.values(seigneurMap)
+        .filter(s => s.overlord_id === seigneurId)
+        .map(s => s.id);
+      setSeigneurList(seigneurVassalsSection, seigneurVassalList, vassals);
+    }
+
+    return {
+      createBaronyButton,
+      createBaronyLabel,
+      createSeigneurButton,
+      createTitleButton,
+      hideSeigneurInfo,
+      hideTradeRoutePanel,
+      renderGenericEntityInfo,
+      renderSelectedEntity,
+      setBaronyList,
+      setLabeledLine,
+      setLine,
+      setList,
+      setSeigneurLine,
+      setSeigneurList,
+      setTitleList,
+      setTradeRouteInfoMode,
+      showBaronyDetails,
+      showSeigneurInfo
+    };
   }
 
   global.mapInfoPanel2 = { init };
+  if (typeof module !== 'undefined' && module.exports) module.exports = global.mapInfoPanel2;
 })(typeof window !== 'undefined' ? window : globalThis);
