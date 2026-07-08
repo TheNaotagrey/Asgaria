@@ -28,6 +28,8 @@ app.use((req, res, next) => {
   next();
 });
 
+logger.info(`BOOT diagnostic pid=${process.pid} cwd=${process.cwd()} file=${__filename}`);
+
 const db = new sqlite3.Database('asgaria.db');
 db.configure('busyTimeout', 5000);
 const gunzip = promisify(zlib.gunzip);
