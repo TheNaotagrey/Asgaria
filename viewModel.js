@@ -18,6 +18,11 @@
     canonicalLands: { aliases: ['canonicalLands', 'canonicalLandMap'], type: 'canonicalLand' }
   };
 
+  const COLLECTION_BY_TYPE = Object.keys(ENTITY_CONFIG).reduce((acc, collectionName) => {
+    acc[ENTITY_CONFIG[collectionName].type] = collectionName;
+    return acc;
+  }, {});
+
   const DEFAULT_OPTIONS = {
     includeDefacto: true,
     includeDerivedIndexes: true,
@@ -35,14 +40,28 @@
     return String(value);
   }
 
+  function addDiagnostic(vm, type, message, details = {}) {
+    if (!vm.diagnostics) vm.diagnostics = [];
+    vm.diagnostics.push({ type, message, ...details });
+  }
+
   function getRankIndex(rankKey) {
     return RANK_SEQUENCE.indexOf(rankKey);
+  }
+
+  function isRankKey(rankKey) {
+    return RANK_SEQUENCE.includes(rankKey);
   }
 
   function rankFromCollectionName(name) {
     if (!name || !ENTITY_CONFIG[name]) return null;
     const type = ENTITY_CONFIG[name].type;
     return RANK_SEQUENCE.includes(type) ? type : null;
+  }
+
+  function getCollection(vm, type) {
+    const collectionName = COLLECTION_BY_TYPE[type];
+    return collectionName ? vm[collectionName] : null;
   }
 
   function createCollection(rawData, aliases, type) {
@@ -107,7 +126,7 @@
     });
 
     RANK_SEQUENCE.forEach((rank) => {
-      const col = vm[`${rank}s`];
+      const col = getCollection(vm, rank);
       if (!col || !Array.isArray(col.list)) return;
       col.list.forEach((title) => {
         title.seigneur = null;
@@ -127,6 +146,8 @@
       b.cathedralReligion = null;
       b.viscounty = null;
       b.county = null;
+      b.dejure = {};
+      b.defacto = {};
       b.deJureParents = [];
       b.defactoParent = null;
       b.defactoByRank = {};
@@ -144,52 +165,135 @@
 
     vm.seigneurs.list.forEach((s) => {
       const overlordId = toId(s.overlord_id);
-      if (overlordId && seigneursById[overlordId]) {
-        s.overlord = seigneursById[overlordId];
-        s.overlord.vassals.push(s);
+      if (overlordId) {
+        if (seigneursById[overlordId]) {
+          s.overlord = seigneursById[overlordId];
+          s.overlord.vassals.push(s);
+        } else {
+          addDiagnostic(vm, 'missing_reference', `Seigneur ${s.id} reference un suzerain introuvable ${overlordId}.`, {
+            sourceType: 'seigneur',
+            sourceId: s.id,
+            field: 'overlord_id',
+            targetType: 'seigneur',
+            targetId: overlordId
+          });
+        }
       }
       const religionId = toId(s.religion_id);
-      if (religionId && religionsById[religionId]) {
-        s.religion = religionsById[religionId];
-        s.religion.seigneurs.push(s);
+      if (religionId) {
+        if (religionsById[religionId]) {
+          s.religion = religionsById[religionId];
+          s.religion.seigneurs.push(s);
+        } else {
+          addDiagnostic(vm, 'missing_reference', `Seigneur ${s.id} reference une religion introuvable ${religionId}.`, {
+            sourceType: 'seigneur',
+            sourceId: s.id,
+            field: 'religion_id',
+            targetType: 'religion',
+            targetId: religionId
+          });
+        }
       }
     });
 
     vm.baronies.list.forEach((b) => {
       const sid = toId(b.seigneur_id);
-      if (sid && seigneursById[sid]) {
-        b.seigneur = seigneursById[sid];
-        b.seigneur.baronies.push(b);
+      if (sid) {
+        if (seigneursById[sid]) {
+          b.seigneur = seigneursById[sid];
+          b.seigneur.baronies.push(b);
+        } else {
+          addDiagnostic(vm, 'missing_reference', `Baronnie ${b.id} reference un seigneur introuvable ${sid}.`, {
+            sourceType: 'barony',
+            sourceId: b.id,
+            field: 'seigneur_id',
+            targetType: 'seigneur',
+            targetId: sid
+          });
+        }
       }
 
       const religionId = toId(b.religion_pop_id);
-      if (religionId && religionsById[religionId]) {
-        b.religion = religionsById[religionId];
-        b.religion.baroniesPop.push(b);
+      if (religionId) {
+        if (religionsById[religionId]) {
+          b.religion = religionsById[religionId];
+          b.religion.baroniesPop.push(b);
+        } else {
+          addDiagnostic(vm, 'missing_reference', `Baronnie ${b.id} reference une religion de population introuvable ${religionId}.`, {
+            sourceType: 'barony',
+            sourceId: b.id,
+            field: 'religion_pop_id',
+            targetType: 'religion',
+            targetId: religionId
+          });
+        }
       }
 
       const cultureId = toId(b.culture_id);
-      if (cultureId && culturesById[cultureId]) {
-        b.culture = culturesById[cultureId];
-        b.culture.baronies.push(b);
+      if (cultureId) {
+        if (culturesById[cultureId]) {
+          b.culture = culturesById[cultureId];
+          b.culture.baronies.push(b);
+          if (b.seigneur && !b.culture.seigneurs.includes(b.seigneur)) {
+            b.culture.seigneurs.push(b.seigneur);
+          }
+        } else {
+          addDiagnostic(vm, 'missing_reference', `Baronnie ${b.id} reference une culture introuvable ${cultureId}.`, {
+            sourceType: 'barony',
+            sourceId: b.id,
+            field: 'culture_id',
+            targetType: 'culture',
+            targetId: cultureId
+          });
+        }
       }
 
       const prioryReligionId = toId(b.priory_religion_id);
-      if (prioryReligionId && religionsById[prioryReligionId]) {
-        b.prioryReligion = religionsById[prioryReligionId];
-        b.prioryReligion.priories.push(b);
+      if (prioryReligionId) {
+        if (religionsById[prioryReligionId]) {
+          b.prioryReligion = religionsById[prioryReligionId];
+          b.prioryReligion.priories.push(b);
+        } else {
+          addDiagnostic(vm, 'missing_reference', `Baronnie ${b.id} reference une religion de prieure introuvable ${prioryReligionId}.`, {
+            sourceType: 'barony',
+            sourceId: b.id,
+            field: 'priory_religion_id',
+            targetType: 'religion',
+            targetId: prioryReligionId
+          });
+        }
       }
 
       const churchReligionId = toId(b.church_religion_id);
-      if (churchReligionId && religionsById[churchReligionId]) {
-        b.churchReligion = religionsById[churchReligionId];
-        b.churchReligion.churches.push(b);
+      if (churchReligionId) {
+        if (religionsById[churchReligionId]) {
+          b.churchReligion = religionsById[churchReligionId];
+          b.churchReligion.churches.push(b);
+        } else {
+          addDiagnostic(vm, 'missing_reference', `Baronnie ${b.id} reference une religion d'eglise introuvable ${churchReligionId}.`, {
+            sourceType: 'barony',
+            sourceId: b.id,
+            field: 'church_religion_id',
+            targetType: 'religion',
+            targetId: churchReligionId
+          });
+        }
       }
 
       const cathedralReligionId = toId(b.cathedral_religion_id);
-      if (cathedralReligionId && religionsById[cathedralReligionId]) {
-        b.cathedralReligion = religionsById[cathedralReligionId];
-        b.cathedralReligion.cathedrals.push(b);
+      if (cathedralReligionId) {
+        if (religionsById[cathedralReligionId]) {
+          b.cathedralReligion = religionsById[cathedralReligionId];
+          b.cathedralReligion.cathedrals.push(b);
+        } else {
+          addDiagnostic(vm, 'missing_reference', `Baronnie ${b.id} reference une religion de cathedrale introuvable ${cathedralReligionId}.`, {
+            sourceType: 'barony',
+            sourceId: b.id,
+            field: 'cathedral_religion_id',
+            targetType: 'religion',
+            targetId: cathedralReligionId
+          });
+        }
       }
     });
   }
@@ -197,13 +301,23 @@
   function linkTitleOwners(vm) {
     const seigneursById = vm.seigneurs.byId;
     TITLE_RANKS.forEach((rank) => {
-      const collection = vm[`${rank}s`];
+      const collection = getCollection(vm, rank);
       if (!collection) return;
       collection.list.forEach((title) => {
         const sid = toId(title.seigneur_id);
-        if (!sid || !seigneursById[sid]) return;
-        title.seigneur = seigneursById[sid];
-        seigneursById[sid].titles[rank].push(title);
+        if (!sid) return;
+        if (seigneursById[sid]) {
+          title.seigneur = seigneursById[sid];
+          seigneursById[sid].titles[rank].push(title);
+        } else {
+          addDiagnostic(vm, 'missing_reference', `${rank} ${title.id} reference un seigneur introuvable ${sid}.`, {
+            sourceType: rank,
+            sourceId: title.id,
+            field: 'seigneur_id',
+            targetType: 'seigneur',
+            targetId: sid
+          });
+        }
       });
     });
 
@@ -244,35 +358,103 @@
     };
 
     vm.baronies.list.forEach((barony) => {
-      const viscounty = maps.viscounty[toId(barony.viscounty_id)];
-      const county = maps.county[toId(barony.county_id)];
+      const viscountyId = toId(barony.viscounty_id);
+      const countyId = toId(barony.county_id);
+      const viscounty = maps.viscounty[viscountyId];
+      const county = maps.county[countyId];
       if (viscounty) {
         barony.viscounty = viscounty;
         addDeJureEdge(viscounty, barony);
+      } else if (viscountyId) {
+        addDiagnostic(vm, 'missing_reference', `Baronnie ${barony.id} reference une vicomte introuvable ${viscountyId}.`, {
+          sourceType: 'barony',
+          sourceId: barony.id,
+          field: 'viscounty_id',
+          targetType: 'viscounty',
+          targetId: viscountyId
+        });
       }
       if (county) {
         barony.county = county;
         addDeJureEdge(county, barony);
+      } else if (countyId) {
+        addDiagnostic(vm, 'missing_reference', `Baronnie ${barony.id} reference un comte introuvable ${countyId}.`, {
+          sourceType: 'barony',
+          sourceId: barony.id,
+          field: 'county_id',
+          targetType: 'county',
+          targetId: countyId
+        });
       }
     });
 
     vm.counties.list.forEach((county) => {
-      const duchy = maps.duchy[toId(county.duchy_id)];
-      const marquisate = maps.marquisate[toId(county.marquisate_id)];
+      const duchyId = toId(county.duchy_id);
+      const marquisateId = toId(county.marquisate_id);
+      const duchy = maps.duchy[duchyId];
+      const marquisate = maps.marquisate[marquisateId];
       if (duchy) addDeJureEdge(duchy, county);
+      else if (duchyId) {
+        addDiagnostic(vm, 'missing_reference', `Comte ${county.id} reference un duche introuvable ${duchyId}.`, {
+          sourceType: 'county',
+          sourceId: county.id,
+          field: 'duchy_id',
+          targetType: 'duchy',
+          targetId: duchyId
+        });
+      }
       if (marquisate) addDeJureEdge(marquisate, county);
+      else if (marquisateId) {
+        addDiagnostic(vm, 'missing_reference', `Comte ${county.id} reference un marquisat introuvable ${marquisateId}.`, {
+          sourceType: 'county',
+          sourceId: county.id,
+          field: 'marquisate_id',
+          targetType: 'marquisate',
+          targetId: marquisateId
+        });
+      }
     });
 
     vm.duchies.list.forEach((duchy) => {
-      const kingdom = maps.kingdom[toId(duchy.kingdom_id)];
-      const archduchy = maps.archduchy[toId(duchy.archduchy_id)];
+      const kingdomId = toId(duchy.kingdom_id);
+      const archduchyId = toId(duchy.archduchy_id);
+      const kingdom = maps.kingdom[kingdomId];
+      const archduchy = maps.archduchy[archduchyId];
       if (kingdom) addDeJureEdge(kingdom, duchy);
+      else if (kingdomId) {
+        addDiagnostic(vm, 'missing_reference', `Duche ${duchy.id} reference un royaume introuvable ${kingdomId}.`, {
+          sourceType: 'duchy',
+          sourceId: duchy.id,
+          field: 'kingdom_id',
+          targetType: 'kingdom',
+          targetId: kingdomId
+        });
+      }
       if (archduchy) addDeJureEdge(archduchy, duchy);
+      else if (archduchyId) {
+        addDiagnostic(vm, 'missing_reference', `Duche ${duchy.id} reference un archiduche introuvable ${archduchyId}.`, {
+          sourceType: 'duchy',
+          sourceId: duchy.id,
+          field: 'archduchy_id',
+          targetType: 'archduchy',
+          targetId: archduchyId
+        });
+      }
     });
 
     vm.kingdoms.list.forEach((kingdom) => {
-      const empire = maps.empire[toId(kingdom.empire_id)];
+      const empireId = toId(kingdom.empire_id);
+      const empire = maps.empire[empireId];
       if (empire) addDeJureEdge(empire, kingdom);
+      else if (empireId) {
+        addDiagnostic(vm, 'missing_reference', `Royaume ${kingdom.id} reference un empire introuvable ${empireId}.`, {
+          sourceType: 'kingdom',
+          sourceId: kingdom.id,
+          field: 'empire_id',
+          targetType: 'empire',
+          targetId: empireId
+        });
+      }
     });
   }
 
@@ -355,22 +537,200 @@
     return index;
   }
 
-  function getDeJureChainFromNode(vm, node) {
+  function getDeJureAncestorsFromNode(vm, node) {
     if (!node) return [];
-    const chain = [];
-    let current = node;
+    const ancestors = [];
     const visited = new Set();
-    while (current) {
-      if (!Array.isArray(current.deJureParents) || !current.deJureParents.length) break;
-      const parent = current.deJureParents[0];
-      if (!parent) break;
-      const token = `${parent._type}:${parent.id}`;
-      if (visited.has(token)) break;
-      visited.add(token);
-      chain.push(parent);
-      current = parent;
+
+    function visit(current) {
+      if (!current || !Array.isArray(current.deJureParents)) return;
+      current.deJureParents.forEach((parent) => {
+        if (!parent) return;
+        const parentIndex = getRankIndex(parent._type);
+        const currentIndex = getRankIndex(current._type);
+        if (parentIndex <= currentIndex) {
+          addDiagnostic(vm, 'invalid_hierarchy', `${current._type} ${current.id} a un parent de jure de rang invalide ${parent._type} ${parent.id}.`, {
+            sourceType: current._type,
+            sourceId: current.id,
+            targetType: parent._type,
+            targetId: parent.id,
+            relation: 'dejure'
+          });
+          return;
+        }
+        const token = `${parent._type}:${parent.id}`;
+        if (visited.has(token)) return;
+        visited.add(token);
+        ancestors.push(parent);
+        visit(parent);
+      });
     }
-    return chain;
+
+    visit(node);
+    return ancestors;
+  }
+
+  function detectDeJureCycles(vm) {
+    const allNodes = getAllRankNodes(vm);
+    allNodes.forEach((node) => {
+      const path = [];
+      const visiting = new Set();
+
+      function visit(current) {
+        if (!current || !Array.isArray(current.deJureParents)) return;
+        const currentToken = `${current._type}:${current.id}`;
+        if (visiting.has(currentToken)) {
+          addDiagnostic(vm, 'cycle', `Cycle de jure detecte: ${path.concat(currentToken).join(' -> ')}.`, {
+            relation: 'dejure',
+            nodeType: current._type,
+            nodeId: current.id
+          });
+          return;
+        }
+        visiting.add(currentToken);
+        path.push(currentToken);
+        current.deJureParents.forEach(visit);
+        path.pop();
+        visiting.delete(currentToken);
+      }
+
+      visit(node);
+    });
+  }
+
+  function getAllRankNodes(vm) {
+    return RANK_SEQUENCE.flatMap((rank) => getCollection(vm, rank)?.list || []);
+  }
+
+  function getNodeToken(node) {
+    return node ? `${node._type}:${node.id}` : null;
+  }
+
+  function validateDefactoParent(vm, node, parent) {
+    if (!node || !parent) return false;
+    const nodeIndex = getRankIndex(node._type);
+    const parentIndex = getRankIndex(parent._type);
+    if (nodeIndex < 0 || parentIndex < 0 || parentIndex <= nodeIndex) {
+      addDiagnostic(vm, 'invalid_defacto', `${node._type} ${node.id} a un parent de facto de rang invalide ${parent._type} ${parent.id}.`, {
+        sourceType: node._type,
+        sourceId: node.id,
+        targetType: parent._type,
+        targetId: parent.id
+      });
+      return false;
+    }
+    return true;
+  }
+
+  function getDefactoOverrideSpecs(rank, node) {
+    const specs = [];
+    if (rank === 'barony') {
+      specs.push(['viscounty', 'defacto_viscounty_id', node.defacto_viscounty_id]);
+      specs.push(['county', 'defacto_county_id', node.defacto_county_id]);
+    } else if (rank === 'viscounty') {
+      specs.push(['county', 'defacto_county_id', node.defacto_county_id]);
+    } else if (rank === 'county') {
+      specs.push(['marquisate', 'defacto_marquisate_id', node.defacto_marquisate_id]);
+      specs.push(['duchy', 'defacto_duchy_id', node.defacto_duchy_id]);
+    } else if (rank === 'marquisate') {
+      specs.push(['duchy', 'defacto_duchy_id', node.defacto_duchy_id]);
+    } else if (rank === 'duchy') {
+      specs.push(['archduchy', 'defacto_archduchy_id', node.defacto_archduchy_id]);
+      specs.push(['kingdom', 'defacto_kingdom_id', node.defacto_kingdom_id]);
+    } else if (rank === 'archduchy') {
+      specs.push(['kingdom', 'defacto_kingdom_id', node.defacto_kingdom_id]);
+    } else if (rank === 'kingdom') {
+      specs.push(['empire', 'defacto_empire_id', node.defacto_empire_id]);
+    }
+    return specs;
+  }
+
+  function recordInvalidDefactoOverrides(vm, node) {
+    if (!node || !isRankKey(node._type)) return;
+    getDefactoOverrideSpecs(node._type, node).forEach(([targetRank, field, value]) => {
+      const id = toId(value);
+      if (!id) return;
+      const target = getCollection(vm, targetRank)?.byId?.[id] || null;
+      if (!target) {
+        addDiagnostic(vm, 'missing_reference', `${node._type} ${node.id} reference un parent de facto introuvable ${targetRank} ${id}.`, {
+          sourceType: node._type,
+          sourceId: node.id,
+          field,
+          targetType: targetRank,
+          targetId: id,
+          relation: 'defacto'
+        });
+        return;
+      }
+      validateDefactoParent(vm, node, target);
+    });
+  }
+
+  function detectDefactoCycles(vm, allNodes) {
+    allNodes.forEach((node) => {
+      let cur = node;
+      const visited = new Set();
+      const path = [];
+      while (cur) {
+        const token = getNodeToken(cur);
+        if (!token) break;
+        if (visited.has(token)) {
+          addDiagnostic(vm, 'cycle', `Cycle de facto detecte: ${path.concat(token).join(' -> ')}.`, {
+            relation: 'defacto',
+            nodeType: node._type,
+            nodeId: node.id
+          });
+          return;
+        }
+        visited.add(token);
+        path.push(token);
+        cur = cur.defactoParent || null;
+      }
+    });
+  }
+
+  function getDeJureTitleForBarony(vm, barony, normalizedRank) {
+    if (!barony || !normalizedRank) return null;
+    if (normalizedRank === 'barony') return barony;
+    const candidates = getDeJureAncestorsFromNode(vm, barony)
+      .filter((ancestor) => ancestor._type === normalizedRank);
+    return candidates[0] || null;
+  }
+
+  function getDirectDeJureChildrenForTitle(vm, title) {
+    if (!title || !Array.isArray(title.deJureChildren)) return [];
+    return title.deJureChildren.slice();
+  }
+
+  function getDirectDefactoChildrenForTitle(vm, title) {
+    if (!title || !Array.isArray(title.defactoChildren)) return [];
+    return title.defactoChildren.slice();
+  }
+
+  function dedupeEntities(items) {
+    const seen = new Set();
+    return (items || []).filter((item) => {
+      if (!item) return false;
+      const token = `${item._type}:${item.id}`;
+      if (seen.has(token)) return false;
+      seen.add(token);
+      return true;
+    });
+  }
+
+  function getColorTargetForBaronyFilter(vm, barony, filterKey) {
+    if (!barony || !filterKey) return null;
+    const normalized = String(filterKey).toLowerCase();
+    if (normalized === 'religion') return barony.religion || null;
+    if (normalized === 'seigneur_religion') return barony.seigneur?.religion || null;
+    if (normalized === 'culture') return barony.culture || null;
+    if (normalized === 'priory') return barony.prioryReligion || null;
+    if (normalized === 'church') return barony.churchReligion || null;
+    if (normalized === 'cathedral') return barony.cathedralReligion || null;
+    const mode = normalized.endsWith('_defacto') ? 'defacto' : 'dejure';
+    const rank = normalized.replace('_defacto', '');
+    if (isRankKey(rank)) return vm.getTitleForBarony(barony.id, rank, mode);
+    return null;
   }
 
   function pickClosestHigherOwnedTitle(ownerIndex, seigneur, fromRank, preferredSet) {
@@ -401,29 +761,14 @@
     function pushCandidate(targetRank, idValue) {
       const id = toId(idValue);
       if (!id) return;
-      const map = vm[`${targetRank}s`]?.byId;
+      const map = getCollection(vm, targetRank)?.byId;
       if (!map || !map[id]) return;
       candidates.push(map[id]);
     }
 
-    if (rank === 'barony') {
-      pushCandidate('viscounty', node.defacto_viscounty_id);
-      pushCandidate('county', node.defacto_county_id);
-    } else if (rank === 'viscounty') {
-      pushCandidate('county', node.defacto_county_id);
-    } else if (rank === 'county') {
-      pushCandidate('marquisate', node.defacto_marquisate_id);
-      pushCandidate('duchy', node.defacto_duchy_id);
-    } else if (rank === 'marquisate') {
-      pushCandidate('duchy', node.defacto_duchy_id);
-    } else if (rank === 'duchy') {
-      pushCandidate('archduchy', node.defacto_archduchy_id);
-      pushCandidate('kingdom', node.defacto_kingdom_id);
-    } else if (rank === 'archduchy') {
-      pushCandidate('kingdom', node.defacto_kingdom_id);
-    } else if (rank === 'kingdom') {
-      pushCandidate('empire', node.defacto_empire_id);
-    }
+    getDefactoOverrideSpecs(rank, node).forEach(([targetRank, , idValue]) => {
+      pushCandidate(targetRank, idValue);
+    });
 
     if (!candidates.length) return null;
     const startIndex = getRankIndex(rank);
@@ -447,12 +792,24 @@
     const override = getDefactoOverride(vm, node);
     if (override) return override;
 
-    const deJureChain = getDeJureChainFromNode(vm, node);
+    const deJureChain = getDeJureAncestorsFromNode(vm, node);
     const preferredSet = new Set(deJureChain.map((x) => `${x._type}:${x.id}`));
 
     let seigneur = node.seigneur || null;
     let fallbackWithoutDeJure = null;
+    const visitedSeigneurs = new Set();
     while (seigneur) {
+      const seigneurToken = `seigneur:${seigneur.id}`;
+      if (visitedSeigneurs.has(seigneurToken)) {
+        addDiagnostic(vm, 'cycle', `Cycle de suzerainete detecte pendant la resolution de facto depuis ${node._type} ${node.id}.`, {
+          relation: 'defacto_owner_chain',
+          nodeType: node._type,
+          nodeId: node.id,
+          seigneurId: seigneur.id
+        });
+        break;
+      }
+      visitedSeigneurs.add(seigneurToken);
       const preferred = pickClosestHigherOwnedTitle(ownerIndex, seigneur, rank, preferredSet);
       if (preferred) return preferred;
       if (!fallbackWithoutDeJure) {
@@ -466,21 +823,17 @@
 
   function computeDefactoHierarchy(vm) {
     const ownerIndex = buildOwnerTitleIndex(vm);
-    const allNodes = [
-      ...vm.baronies.list,
-      ...vm.viscounties.list,
-      ...vm.counties.list,
-      ...vm.marquisates.list,
-      ...vm.duchies.list,
-      ...vm.archduchies.list,
-      ...vm.kingdoms.list,
-      ...vm.empires.list
-    ];
+    const allNodes = getAllRankNodes(vm);
+
+    allNodes.forEach((node) => recordInvalidDefactoOverrides(vm, node));
 
     allNodes.forEach((node) => {
-      node.defactoParent = resolveDefactoParent(vm, node, ownerIndex);
+      const parent = resolveDefactoParent(vm, node, ownerIndex);
+      node.defactoParent = parent && validateDefactoParent(vm, node, parent) ? parent : null;
       node.defactoChildren = [];
     });
+
+    detectDefactoCycles(vm, allNodes);
 
     allNodes.forEach((node) => {
       if (node.defactoParent) {
@@ -516,6 +869,17 @@
         cur = parent;
       }
       barony.defactoByRank = map;
+    });
+  }
+
+  function assignBaronyTitleReferences(vm) {
+    vm.baronies.list.forEach((barony) => {
+      barony.dejure = { barony };
+      barony.defacto = { barony };
+      TITLE_RANKS.forEach((rank) => {
+        barony.dejure[rank] = getDeJureTitleForBarony(vm, barony, rank);
+        barony.defacto[rank] = barony.defactoByRank?.[rank] || null;
+      });
     });
   }
 
@@ -633,10 +997,11 @@
     const options = { ...DEFAULT_OPTIONS, ...customOptions };
     const vm = {
       options,
+      diagnostics: [],
       meta: {
         rankSequence: RANK_SEQUENCE.slice(),
         titleRanks: TITLE_RANKS.slice(),
-        sourceShape: 'unknown'
+        sourceShape: null
       }
     };
 
@@ -644,17 +1009,20 @@
       vm[name] = createCollection(rawData, cfg.aliases, cfg.type);
       if (vm[name].list.length && !vm.meta.sourceShape) vm.meta.sourceShape = name;
     });
+    if (!vm.meta.sourceShape) vm.meta.sourceShape = 'unknown';
 
     initReferences(vm);
     linkOwnerAndReligion(vm);
     linkTitleOwners(vm);
     linkDeJureHierarchy(vm);
+    detectDeJureCycles(vm);
     linkSpecialRelations(vm, options);
     linkBaronyConnections(vm, rawData, options);
 
     if (options.includeDefacto) {
       computeDefactoHierarchy(vm);
     }
+    assignBaronyTitleReferences(vm);
 
     if (options.includeOrganigrammes) {
       computeOrganigrammes(vm);
@@ -688,48 +1056,103 @@
     };
 
 
-    vm.getBaronyTitleId = function getBaronyTitleId(baronyId, rankKey, mode = 'dejure') {
+    vm.getTitleForBarony = function getTitleForBarony(baronyId, rankKey, mode = 'dejure') {
       const barony = vm.getEntity('barony', baronyId);
       const normalizedRank = String(rankKey || '').toLowerCase();
       if (!barony || !normalizedRank) return null;
       if (mode === 'defacto') {
         return barony.defactoByRank?.[normalizedRank] || null;
       }
-      if (normalizedRank === 'barony') return barony;
-      if (normalizedRank === 'viscounty') return vm.getEntity('viscounty', barony.viscounty_id);
-      if (normalizedRank === 'county') return vm.getEntity('county', barony.county_id);
-      const county = vm.getEntity('county', barony.county_id);
-      if (normalizedRank === 'marquisate') return vm.getEntity('marquisate', county?.marquisate_id);
-      const duchy = vm.getEntity('duchy', county?.duchy_id);
-      if (normalizedRank === 'duchy') return duchy;
-      if (normalizedRank === 'archduchy') return vm.getEntity('archduchy', duchy?.archduchy_id);
-      const kingdom = vm.getEntity('kingdom', duchy?.kingdom_id);
-      if (normalizedRank === 'kingdom') return kingdom;
-      if (normalizedRank === 'empire') return vm.getEntity('empire', kingdom?.empire_id);
-      return null;
+      return getDeJureTitleForBarony(vm, barony, normalizedRank);
+    };
+
+    vm.getBaronyTitleId = function getBaronyTitleId(baronyId, rankKey, mode = 'dejure') {
+      return vm.getTitleForBarony(baronyId, rankKey, mode);
+    };
+
+    vm.getChildrenForTitle = function getChildrenForTitle(rankKey, titleId, mode = 'dejure') {
+      const title = vm.getEntity(rankKey, titleId);
+      if (!title) return [];
+      if (mode === 'defacto') return getDirectDefactoChildrenForTitle(vm, title);
+      return getDirectDeJureChildrenForTitle(vm, title);
+    };
+
+    vm.getColorForBaronyFilter = function getColorForBaronyFilter(baronyId, filterKey, fallback = '#999999') {
+      const barony = vm.getEntity('barony', baronyId);
+      const target = getColorTargetForBaronyFilter(vm, barony, filterKey);
+      return target?.color || fallback;
+    };
+
+    vm.getBaronyFilterTarget = function getBaronyFilterTarget(baronyId, filterKey) {
+      const barony = vm.getEntity('barony', baronyId);
+      return getColorTargetForBaronyFilter(vm, barony, filterKey);
+    };
+
+    vm.getDeJureAncestors = function getDeJureAncestors(rankOrType, id) {
+      const entity = vm.getEntity(rankOrType, id);
+      return getDeJureAncestorsFromNode(vm, entity);
+    };
+
+    vm.getDefactoAncestors = function getDefactoAncestors(rankOrType, id) {
+      const entity = vm.getEntity(rankOrType, id);
+      const ancestors = [];
+      const visited = new Set();
+      let cur = entity;
+      while (cur && cur.defactoParent) {
+        const parent = cur.defactoParent;
+        const token = getNodeToken(parent);
+        if (!token || visited.has(token)) break;
+        visited.add(token);
+        ancestors.push(parent);
+        cur = parent;
+      }
+      return ancestors;
     };
 
     vm.getBaroniesForTitle = function getBaroniesForTitle(rankKey, titleId, mode = 'dejure') {
+      const normalizedRank = String(rankKey || '').toLowerCase();
+      if (normalizedRank === 'barony') {
+        const barony = vm.getEntity('barony', titleId);
+        return barony ? [barony] : [];
+      }
+      if (!isRankKey(normalizedRank)) return [];
       return vm.baronies.list.filter((barony) => {
-        const title = vm.getBaronyTitleId(barony.id, rankKey, mode);
+        const title = vm.getTitleForBarony(barony.id, normalizedRank, mode);
         return !!title && String(title.id) === String(titleId);
       });
     };
 
     vm.getImmediateSubtitles = function getImmediateSubtitles(rankKey, titleId, mode = 'dejure') {
-      const childRankByRank = {
-        empire: 'kingdom', kingdom: 'duchy', archduchy: 'duchy', duchy: 'county', marquisate: 'county', county: 'barony', viscounty: 'barony'
-      };
-      const childRank = childRankByRank[String(rankKey || '').toLowerCase()];
-      if (!childRank) return [];
-      if (mode === 'defacto') {
-        const childCollection = vm[`${childRank}s`]?.list || [];
-        return childCollection.filter((child) => child.defactoParent && child.defactoParent._type === rankKey && String(child.defactoParent.id) === String(titleId));
+      const normalizedRank = String(rankKey || '').toLowerCase();
+      const children = vm.getChildrenForTitle(normalizedRank, titleId, mode);
+      if (mode === 'defacto') return dedupeEntities(children);
+      if (normalizedRank === 'county' || normalizedRank === 'viscounty') {
+        return dedupeEntities(children.filter((child) => child._type === 'barony'));
       }
-      return vm.getBaroniesForTitle(rankKey, titleId, 'dejure')
-        .map((barony) => vm.getBaronyTitleId(barony.id, childRank, 'dejure'))
-        .filter(Boolean)
-        .filter((value, index, array) => array.findIndex((item) => String(item.id) === String(value.id)) === index);
+      return dedupeEntities(children);
+    };
+
+    vm.getSubtreeForTitle = function getSubtreeForTitle(rankKey, titleId, mode = 'dejure') {
+      const root = vm.getEntity(rankKey, titleId);
+      if (!root) return [];
+      const descendants = [];
+      const visited = new Set();
+
+      function visit(node) {
+        const children = mode === 'defacto'
+          ? getDirectDefactoChildrenForTitle(vm, node)
+          : getDirectDeJureChildrenForTitle(vm, node);
+        children.forEach((child) => {
+          const token = getNodeToken(child);
+          if (!token || visited.has(token)) return;
+          visited.add(token);
+          descendants.push(child);
+          visit(child);
+        });
+      }
+
+      visit(root);
+      return descendants;
     };
 
     vm.getEntityColor = function getEntityColor(rankOrType, id, fallback = '#999999') {

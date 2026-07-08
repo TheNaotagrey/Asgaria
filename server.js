@@ -18,6 +18,16 @@ const { StorageEffect, ResourceProductionEffect, BuildingProductionEffect, Infra
 const { breadthFirst } = require('./src/bfs');
 const { compareUpdatePositions, formatUpdateLabel, getLatestUnlockedUpdate, getNextUpdatePosition, getUnlockDateForUpdate, getUpdateKey, isUpdateUnlocked, normalizeUpdatePosition } = require('./src/updateCycle');
 const app = express();
+
+app.use((req, res, next) => {
+  const started = Date.now();
+  logger.info(`REQ start ${req.method} ${req.originalUrl}`);
+  res.on('finish', () => {
+    logger.info(`REQ done ${req.method} ${req.originalUrl} ${res.statusCode} ${Date.now() - started}ms`);
+  });
+  next();
+});
+
 const db = new sqlite3.Database('asgaria.db');
 db.configure('busyTimeout', 5000);
 const gunzip = promisify(zlib.gunzip);

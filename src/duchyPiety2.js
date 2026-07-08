@@ -170,7 +170,7 @@
     return winners;
   }
 
-  global.duchyPiety2 = {
+  global.duchyPiety = {
     TITLE_BONUS_CONFIG,
     computeDuchyPietyStats,
     buildDuchyPietyWinnersFromStats
