@@ -392,9 +392,6 @@
           targetId: countyId
         });
       }
-      if (viscounty && county) {
-        addDeJureEdge(county, viscounty);
-      }
     });
 
     vm.counties.list.forEach((county) => {
@@ -422,9 +419,6 @@
           targetId: marquisateId
         });
       }
-      if (marquisate && duchy) {
-        addDeJureEdge(duchy, marquisate);
-      }
     });
 
     vm.duchies.list.forEach((duchy) => {
@@ -451,9 +445,6 @@
           targetType: 'archduchy',
           targetId: archduchyId
         });
-      }
-      if (archduchy && kingdom) {
-        addDeJureEdge(kingdom, archduchy);
       }
     });
 

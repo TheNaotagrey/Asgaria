@@ -207,7 +207,7 @@ test('viscounty defacto_county_id resolves the de facto parent', () => {
   assert.strictEqual(vm.getTitleForBarony(100, 'county', 'defacto').id, '20');
 });
 
-test('viewModel infers de jure parents for parallel title branches', () => {
+test('viewModel keeps intermediate titles out of the de jure parent chain', () => {
   const vm = buildVm({
     viscounties: [
       { id: 5, name: 'Vicomte A' }
@@ -232,9 +232,38 @@ test('viewModel infers de jure parents for parallel title branches', () => {
     ]
   });
 
-  assert.strictEqual(vm.getEntity('viscounty', 5).deJureParents[0].id, '10');
-  assert.strictEqual(vm.getEntity('marquisate', 40).deJureParents[0].id, '30');
-  assert.strictEqual(vm.getEntity('archduchy', 50).deJureParents[0].id, '60');
+  assert.deepStrictEqual(vm.getEntity('viscounty', 5).deJureParents, []);
+  assert.deepStrictEqual(vm.getEntity('marquisate', 40).deJureParents, []);
+  assert.deepStrictEqual(vm.getEntity('archduchy', 50).deJureParents, []);
+  assert.strictEqual(vm.getEntity('county', 10).deJureParents.some(parent => parent._type === 'viscounty'), false);
+  assert.strictEqual(vm.getEntity('duchy', 30).deJureParents.some(parent => parent._type === 'marquisate'), false);
+  assert.deepStrictEqual(
+    vm.getImmediateSubtitles('county', 10, 'dejure').map(child => `${child._type}:${child.id}`),
+    ['barony:100']
+  );
+  assert.deepStrictEqual(
+    vm.getImmediateSubtitles('duchy', 30, 'dejure').map(child => `${child._type}:${child.id}`),
+    ['county:10']
+  );
+  assert.deepStrictEqual(
+    vm.getImmediateSubtitles('kingdom', 60, 'dejure').map(child => `${child._type}:${child.id}`),
+    ['duchy:30']
+  );
+  assert.deepStrictEqual(
+    vm.getImmediateSubtitles('viscounty', 5, 'dejure').map(child => `${child._type}:${child.id}`),
+    ['barony:100']
+  );
+  assert.deepStrictEqual(
+    vm.getImmediateSubtitles('marquisate', 40, 'dejure').map(child => `${child._type}:${child.id}`),
+    ['county:10']
+  );
+  assert.deepStrictEqual(
+    vm.getImmediateSubtitles('archduchy', 50, 'dejure').map(child => `${child._type}:${child.id}`),
+    ['duchy:30']
+  );
+  assert.strictEqual(vm.getTitleForBarony(100, 'viscounty', 'dejure').id, '5');
+  assert.strictEqual(vm.getTitleForBarony(100, 'marquisate', 'dejure').id, '40');
+  assert.strictEqual(vm.getTitleForBarony(100, 'archduchy', 'dejure').id, '50');
 });
 
 test('de facto barony rank follows index.html coloring closest-rank preference', () => {
