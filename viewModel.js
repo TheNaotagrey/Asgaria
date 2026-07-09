@@ -40,6 +40,10 @@
     return String(value);
   }
 
+  function toBool(value) {
+    return value === true || value === 1 || value === '1';
+  }
+
   function addDiagnostic(vm, type, message, details = {}) {
     if (!vm.diagnostics) vm.diagnostics = [];
     vm.diagnostics.push({ type, message, ...details });
@@ -105,7 +109,7 @@
       s.religion = null;
       s.baronies = [];
       s.titles = {
-        viscounty: [], county: [], marquisate: [], duchy: [], archduchy: [], kingdom: [], empire: []
+        barony: [], viscounty: [], county: [], marquisate: [], duchy: [], archduchy: [], kingdom: [], empire: []
       };
       s.highestTitle = null;
       s.highestTitleRank = 'barony';
@@ -139,6 +143,7 @@
     });
 
     vm.baronies.list.forEach((b) => {
+      b.vacant = toBool(b.vacant);
       b.religion = null;
       b.culture = null;
       b.prioryReligion = null;
@@ -202,6 +207,7 @@
         if (seigneursById[sid]) {
           b.seigneur = seigneursById[sid];
           b.seigneur.baronies.push(b);
+          b.seigneur.titles.barony.push(b);
         } else {
           addDiagnostic(vm, 'missing_reference', `Baronnie ${b.id} reference un seigneur introuvable ${sid}.`, {
             sourceType: 'barony',
@@ -323,7 +329,7 @@
 
     vm.seigneurs.list.forEach((s) => {
       let highestRankIndex = 0;
-      let highestTitle = null;
+      let highestTitle = (s.titles.barony || [])[0] || null;
       TITLE_RANKS.forEach((rank) => {
         const rankIndex = getRankIndex(rank);
         const titles = s.titles[rank] || [];
@@ -386,6 +392,9 @@
           targetId: countyId
         });
       }
+      if (viscounty && county) {
+        addDeJureEdge(county, viscounty);
+      }
     });
 
     vm.counties.list.forEach((county) => {
@@ -413,6 +422,9 @@
           targetId: marquisateId
         });
       }
+      if (marquisate && duchy) {
+        addDeJureEdge(duchy, marquisate);
+      }
     });
 
     vm.duchies.list.forEach((duchy) => {
@@ -439,6 +451,9 @@
           targetType: 'archduchy',
           targetId: archduchyId
         });
+      }
+      if (archduchy && kingdom) {
+        addDeJureEdge(kingdom, archduchy);
       }
     });
 
@@ -689,7 +704,7 @@
     });
   }
 
-  function getDeJureTitleForBarony(vm, barony, normalizedRank) {
+  function getGraphDeJureTitleForBarony(vm, barony, normalizedRank) {
     if (!barony || !normalizedRank) return null;
     if (normalizedRank === 'barony') return barony;
     const candidates = getDeJureAncestorsFromNode(vm, barony)
@@ -697,9 +712,57 @@
     return candidates[0] || null;
   }
 
+  function getCollectionEntity(vm, rank, id) {
+    const normalizedRank = String(rank || '').toLowerCase();
+    const normalizedId = toId(id);
+    if (!normalizedRank || !normalizedId) return null;
+    return getCollection(vm, normalizedRank)?.byId?.[normalizedId] || null;
+  }
+
+  function getPrimaryDeJureTitleForBarony(vm, barony, normalizedRank) {
+    if (!barony || !normalizedRank) return null;
+    if (normalizedRank === 'barony') return barony;
+
+    const viscounty = barony.viscounty || getCollectionEntity(vm, 'viscounty', barony.viscounty_id);
+    const county = barony.county || getCollectionEntity(vm, 'county', barony.county_id);
+    if (normalizedRank === 'viscounty') return viscounty || null;
+    if (normalizedRank === 'county') return county || null;
+
+    const marquisate = getCollectionEntity(vm, 'marquisate', county?.marquisate_id);
+    if (normalizedRank === 'marquisate') return marquisate || null;
+
+    const duchy = getCollectionEntity(vm, 'duchy', county?.duchy_id);
+    if (normalizedRank === 'duchy') return duchy || null;
+
+    const archduchy = getCollectionEntity(vm, 'archduchy', duchy?.archduchy_id);
+    if (normalizedRank === 'archduchy') return archduchy || null;
+
+    const kingdom = getCollectionEntity(vm, 'kingdom', duchy?.kingdom_id);
+    if (normalizedRank === 'kingdom') return kingdom || null;
+
+    const empire = getCollectionEntity(vm, 'empire', kingdom?.empire_id);
+    if (normalizedRank === 'empire') return empire || null;
+
+    return null;
+  }
+
+  function getDeJureTitleForBarony(vm, barony, normalizedRank) {
+    return getPrimaryDeJureTitleForBarony(vm, barony, normalizedRank)
+      || getGraphDeJureTitleForBarony(vm, barony, normalizedRank);
+  }
+
   function getDirectDeJureChildrenForTitle(vm, title) {
     if (!title || !Array.isArray(title.deJureChildren)) return [];
     return title.deJureChildren.slice();
+  }
+
+  function getClosestDeJureParent(node) {
+    if (!node || !Array.isArray(node.deJureParents)) return null;
+    const nodeIndex = getRankIndex(node._type);
+    return node.deJureParents
+      .filter((parent) => parent && getRankIndex(parent._type) > nodeIndex)
+      .sort((a, b) => getRankIndex(a._type) - getRankIndex(b._type) || String(a.id).localeCompare(String(b.id), undefined, { numeric: true }))
+      [0] || null;
   }
 
   function getDirectDefactoChildrenForTitle(vm, title) {
@@ -722,7 +785,7 @@
     if (!barony || !filterKey) return null;
     const normalized = String(filterKey).toLowerCase();
     if (normalized === 'religion') return barony.religion || null;
-    if (normalized === 'seigneur_religion') return barony.seigneur?.religion || null;
+    if (normalized === 'seigneur_religion') return barony.vacant ? null : barony.seigneur?.religion || null;
     if (normalized === 'culture') return barony.culture || null;
     if (normalized === 'priory') return barony.prioryReligion || null;
     if (normalized === 'church') return barony.churchReligion || null;
@@ -733,7 +796,63 @@
     return null;
   }
 
-  function pickClosestHigherOwnedTitle(ownerIndex, seigneur, fromRank, preferredSet) {
+  function buildDefactoDeJureMap(vm, node) {
+    const map = {};
+    if (!node) return map;
+
+    if (node._type === 'barony') {
+      const viscounty = getPrimaryDeJureTitleForBarony(vm, node, 'viscounty');
+      const county = getPrimaryDeJureTitleForBarony(vm, node, 'county');
+      const marquisate = getPrimaryDeJureTitleForBarony(vm, node, 'marquisate');
+      const duchy = getPrimaryDeJureTitleForBarony(vm, node, 'duchy');
+      const archduchy = getPrimaryDeJureTitleForBarony(vm, node, 'archduchy');
+      const kingdom = getPrimaryDeJureTitleForBarony(vm, node, 'kingdom');
+      const empire = getPrimaryDeJureTitleForBarony(vm, node, 'empire');
+      if (viscounty) map.viscounty = viscounty;
+      if (county) map.county = county;
+      if (marquisate) map.marquisate = marquisate;
+      if (duchy) map.duchy = duchy;
+      if (archduchy) map.archduchy = archduchy;
+      if (kingdom) map.kingdom = kingdom;
+      if (empire) map.empire = empire;
+    } else if (node._type === 'county') {
+      const marquisate = getCollectionEntity(vm, 'marquisate', node.marquisate_id);
+      const duchy = getCollectionEntity(vm, 'duchy', node.duchy_id);
+      const archduchy = getCollectionEntity(vm, 'archduchy', duchy?.archduchy_id);
+      const kingdom = getCollectionEntity(vm, 'kingdom', duchy?.kingdom_id);
+      const empire = getCollectionEntity(vm, 'empire', kingdom?.empire_id);
+      if (marquisate) map.marquisate = marquisate;
+      if (duchy) map.duchy = duchy;
+      if (archduchy) map.archduchy = archduchy;
+      if (kingdom) map.kingdom = kingdom;
+      if (empire) map.empire = empire;
+    } else if (node._type === 'duchy') {
+      const archduchy = getCollectionEntity(vm, 'archduchy', node.archduchy_id);
+      const kingdom = getCollectionEntity(vm, 'kingdom', node.kingdom_id);
+      const empire = getCollectionEntity(vm, 'empire', kingdom?.empire_id);
+      if (archduchy) map.archduchy = archduchy;
+      if (kingdom) map.kingdom = kingdom;
+      if (empire) map.empire = empire;
+    } else if (node._type === 'kingdom') {
+      const empire = getCollectionEntity(vm, 'empire', node.empire_id);
+      if (empire) map.empire = empire;
+    }
+
+    return map;
+  }
+
+  function getHighestOwnedRankIndex(ownerIndex, seigneur) {
+    if (!seigneur) return -1;
+    const owned = ownerIndex[seigneur.id];
+    if (!owned) return -1;
+    for (let i = RANK_SEQUENCE.length - 1; i >= 1; i--) {
+      const rank = RANK_SEQUENCE[i];
+      if ((owned[rank] || []).length > 0) return i;
+    }
+    return -1;
+  }
+
+  function pickClosestHigherOwnedTitle(ownerIndex, seigneur, fromRank, dejureMap) {
     if (!seigneur) return null;
     const startIndex = getRankIndex(fromRank);
     const sid = seigneur.id;
@@ -744,11 +863,33 @@
       const rank = RANK_SEQUENCE[i];
       const candidates = owned[rank] || [];
       if (!candidates.length) continue;
-      if (preferredSet && preferredSet.size) {
-        const preferred = candidates.find((c) => preferredSet.has(`${c._type}:${c.id}`));
-        if (preferred) return preferred;
+      const dejureTitle = dejureMap?.[rank] || null;
+      if (dejureTitle && candidates.some((candidate) => String(candidate.id) === String(dejureTitle.id))) {
+        return dejureTitle;
       }
       return candidates[0];
+    }
+    return null;
+  }
+
+  function pickClosestHigherOwnedTitleFromChain(vm, ownerIndex, seigneur, fromRank, dejureMap, originNode) {
+    let current = seigneur || null;
+    const visitedSeigneurs = new Set();
+    while (current) {
+      const token = `seigneur:${current.id}`;
+      if (visitedSeigneurs.has(token)) {
+        addDiagnostic(vm, 'cycle', `Cycle de suzerainete detecte pendant la resolution de facto depuis ${originNode._type} ${originNode.id}.`, {
+          relation: 'defacto_owner_chain',
+          nodeType: originNode._type,
+          nodeId: originNode.id,
+          seigneurId: current.id
+        });
+        return null;
+      }
+      visitedSeigneurs.add(token);
+      const selected = pickClosestHigherOwnedTitle(ownerIndex, current, fromRank, dejureMap);
+      if (selected) return selected;
+      current = current.overlord || null;
     }
     return null;
   }
@@ -792,33 +933,15 @@
     const override = getDefactoOverride(vm, node);
     if (override) return override;
 
-    const deJureChain = getDeJureAncestorsFromNode(vm, node);
-    const preferredSet = new Set(deJureChain.map((x) => `${x._type}:${x.id}`));
-
-    let seigneur = node.seigneur || null;
-    let fallbackWithoutDeJure = null;
-    const visitedSeigneurs = new Set();
-    while (seigneur) {
-      const seigneurToken = `seigneur:${seigneur.id}`;
-      if (visitedSeigneurs.has(seigneurToken)) {
-        addDiagnostic(vm, 'cycle', `Cycle de suzerainete detecte pendant la resolution de facto depuis ${node._type} ${node.id}.`, {
-          relation: 'defacto_owner_chain',
-          nodeType: node._type,
-          nodeId: node.id,
-          seigneurId: seigneur.id
-        });
-        break;
-      }
-      visitedSeigneurs.add(seigneurToken);
-      const preferred = pickClosestHigherOwnedTitle(ownerIndex, seigneur, rank, preferredSet);
-      if (preferred) return preferred;
-      if (!fallbackWithoutDeJure) {
-        fallbackWithoutDeJure = pickClosestHigherOwnedTitle(ownerIndex, seigneur, rank, null);
-      }
-      seigneur = seigneur.overlord || null;
+    const dejureMap = buildDefactoDeJureMap(vm, node);
+    const seigneur = node.seigneur || null;
+    if (seigneur && getHighestOwnedRankIndex(ownerIndex, seigneur) > getRankIndex(rank)) {
+      const selected = pickClosestHigherOwnedTitle(ownerIndex, seigneur, rank, dejureMap);
+      if (selected) return selected;
+      return null;
     }
 
-    return fallbackWithoutDeJure;
+    return pickClosestHigherOwnedTitleFromChain(vm, ownerIndex, seigneur?.overlord || null, rank, dejureMap, node);
   }
 
   function computeDefactoHierarchy(vm) {
@@ -928,6 +1051,7 @@
       if (!vm.indexes.seigneursByOverlordId[overlordId]) vm.indexes.seigneursByOverlordId[overlordId] = [];
       vm.indexes.seigneursByOverlordId[overlordId].push(s);
       vm.indexes.titlesBySeigneurId[s.id] = {
+        barony: s.titles.barony.slice(),
         viscounty: s.titles.viscounty.slice(),
         county: s.titles.county.slice(),
         marquisate: s.titles.marquisate.slice(),

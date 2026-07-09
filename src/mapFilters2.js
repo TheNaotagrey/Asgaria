@@ -7,7 +7,7 @@
   }
 
   function isVacantEntityBarony(barony) {
-    return !!(barony && (barony.vacant === 1 || barony.vacant === '1' || barony.vacant === true));
+    return !!barony?.vacant;
   }
 
   function getOccupationEntity(barony) {
@@ -24,6 +24,10 @@
     return isVacantEntityBarony(barony)
       ? syntheticEntity('vacant', 'Vacante', '#efe4b0')
       : syntheticEntity('occupied', 'Occupée', '#52be80');
+  }
+
+  function selectClickedBarony(barony) {
+    return barony || null;
   }
 
   function createRegistry() {
@@ -43,23 +47,23 @@
         kind: 'barony',
         straightforward: true,
         colorForBarony: (barony) => barony?.religion?.color || null,
-        selectEntityForBaronyClick: (barony) => barony?.religion || barony,
+        selectEntityForBaronyClick: selectClickedBarony,
         legendEntityForBarony: (barony) => barony?.religion || null
       },
       {
         id: 'seigneur_religion',
         kind: 'barony',
         straightforward: true,
-        colorForBarony: (barony) => barony?.seigneur?.religion?.color || null,
-        selectEntityForBaronyClick: (barony) => barony?.seigneur?.religion || barony,
-        legendEntityForBarony: (barony) => barony?.seigneur?.religion || null
+        colorForBarony: (barony) => barony?.vacant ? null : barony?.seigneur?.religion?.color || null,
+        selectEntityForBaronyClick: selectClickedBarony,
+        legendEntityForBarony: (barony) => barony?.vacant ? null : barony?.seigneur?.religion || null
       },
       {
         id: 'culture',
         kind: 'barony',
         straightforward: true,
         colorForBarony: (barony) => barony?.culture?.color || null,
-        selectEntityForBaronyClick: (barony) => barony?.culture || barony,
+        selectEntityForBaronyClick: selectClickedBarony,
         legendEntityForBarony: (barony) => barony?.culture || syntheticEntity('none', 'Aucune', '#efe4b0')
       },
       {
@@ -67,7 +71,7 @@
         kind: 'barony',
         straightforward: true,
         colorForBarony: (barony) => barony?.prioryReligion?.color || null,
-        selectEntityForBaronyClick: (barony) => barony?.prioryReligion || barony,
+        selectEntityForBaronyClick: selectClickedBarony,
         legendEntityForBarony: (barony) => barony?.prioryReligion || null
       },
       {
@@ -75,7 +79,7 @@
         kind: 'barony',
         straightforward: true,
         colorForBarony: (barony) => barony?.churchReligion?.color || null,
-        selectEntityForBaronyClick: (barony) => barony?.churchReligion || barony,
+        selectEntityForBaronyClick: selectClickedBarony,
         legendEntityForBarony: (barony) => barony?.churchReligion || null
       },
       {
@@ -83,7 +87,7 @@
         kind: 'barony',
         straightforward: true,
         colorForBarony: (barony) => barony?.cathedralReligion?.color || null,
-        selectEntityForBaronyClick: (barony) => barony?.cathedralReligion || barony,
+        selectEntityForBaronyClick: selectClickedBarony,
         legendEntityForBarony: (barony) => barony?.cathedralReligion || null
       },
       {
@@ -91,7 +95,7 @@
         kind: 'barony',
         straightforward: true,
         colorForBarony: (barony) => getOccupationEntity(barony).color,
-        selectEntityForBaronyClick: (barony) => getOccupationEntity(barony),
+        selectEntityForBaronyClick: selectClickedBarony,
         legendEntityForBarony: (barony) => getOccupationEntity(barony)
       },
       {
@@ -99,7 +103,7 @@
         kind: 'barony',
         straightforward: true,
         colorForBarony: (barony) => getVacancyEntity(barony).color,
-        selectEntityForBaronyClick: (barony) => getVacancyEntity(barony),
+        selectEntityForBaronyClick: selectClickedBarony,
         legendEntityForBarony: (barony) => getVacancyEntity(barony)
       },
       ...TITLE_FILTER_RANKS.flatMap((rank) => [titleFilter(rank, 'dejure'), titleFilter(rank, 'defacto')]),
@@ -107,7 +111,13 @@
       { id: 'trade_routes', kind: 'trade_routes' },
       { id: 'canonical', kind: 'canonical' },
       { id: 'sanctuary', kind: 'sanctuary' },
-      { id: 'duchy_piety_ranking', kind: 'duchy_piety_ranking' },
+      {
+        id: 'duchy_piety_ranking',
+        kind: 'duchy_piety_ranking',
+        rank: 'duchy',
+        mode: 'dejure',
+        selectEntityForBaronyClick: (barony) => barony?.dejure?.duchy || barony
+      },
       { id: 'baronies', kind: 'sea_baronies' }
     ];
     return {

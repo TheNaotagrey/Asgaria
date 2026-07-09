@@ -112,6 +112,37 @@ test('viewModel links object references and exposes filter colors', () => {
   assert.strictEqual(vm.getColorForBaronyFilter(100, 'culture'), '#445566');
 });
 
+test('viewModel exposes owned baronies as seigneur barony titles', () => {
+  const vm = buildVm({
+    counties: [],
+    baronies: [
+      { id: 100, name: 'Baronnie A', seigneur_id: 1 },
+      { id: 101, name: 'Baronnie B', seigneur_id: 1 },
+      { id: 102, name: 'Baronnie C', seigneur_id: 2 }
+    ]
+  });
+  const seigneur = vm.getEntity('seigneur', 1);
+
+  assert.deepStrictEqual(seigneur.titles.barony.map(barony => barony.id), ['100', '101']);
+  assert.deepStrictEqual(vm.indexes.titlesBySeigneurId['1'].barony.map(barony => barony.id), ['100', '101']);
+  assert.strictEqual(seigneur.highestTitle, seigneur.titles.barony[0]);
+  assert.strictEqual(seigneur.highestTitleRank, 'barony');
+});
+
+test('viewModel exposes vacant as a normalized boolean on baronies', () => {
+  const vm = buildVm({
+    baronies: [
+      { id: 100, name: 'Vacante', vacant: 1 },
+      { id: 101, name: 'Occupee', vacant: '0' },
+      { id: 102, name: 'Sans valeur' }
+    ]
+  });
+
+  assert.strictEqual(vm.getEntity('barony', 100).vacant, true);
+  assert.strictEqual(vm.getEntity('barony', 101).vacant, false);
+  assert.strictEqual(vm.getEntity('barony', 102).vacant, false);
+});
+
 test('barony defacto_county_id resolves the de facto county', () => {
   const vm = buildVm({
     baronies: [
@@ -136,6 +167,32 @@ test('barony exposes direct dejure and defacto title references', () => {
   assert.strictEqual(barony.defacto.county.id, '20');
 });
 
+test('barony dejure title references prefer the direct county branch over shared viscounty ancestry', () => {
+  const vm = buildVm({
+    baronies: [
+      { id: 100, name: 'Baronnie A', seigneur_id: 1, viscounty_id: 5, county_id: 10 },
+      { id: 101, name: 'Baronnie B', seigneur_id: 1, viscounty_id: 5, county_id: 20 }
+    ],
+    viscounties: [
+      { id: 5, name: 'Vicomte partagee', seigneur_id: 1 }
+    ],
+    counties: [
+      { id: 10, name: 'Comte direct', seigneur_id: 1, duchy_id: 30 },
+      { id: 20, name: 'Comte autre', seigneur_id: 2, duchy_id: 40 }
+    ],
+    duchies: [
+      { id: 30, name: 'Duche direct', seigneur_id: 1, color: '#111111' },
+      { id: 40, name: 'Duche autre', seigneur_id: 2, color: '#222222' }
+    ]
+  });
+  const barony = vm.getEntity('barony', 101);
+
+  assert.strictEqual(barony.dejure.county.id, '20');
+  assert.strictEqual(barony.dejure.duchy.id, '40');
+  assert.strictEqual(vm.getTitleForBarony(101, 'duchy', 'dejure').id, '40');
+  assert.strictEqual(vm.getColorForBaronyFilter(101, 'duchy'), '#222222');
+});
+
 test('viscounty defacto_county_id resolves the de facto parent', () => {
   const vm = buildVm({
     viscounties: [
@@ -148,6 +205,114 @@ test('viscounty defacto_county_id resolves the de facto parent', () => {
 
   assert.strictEqual(vm.getDeFactoParent('viscounty', 5).id, '20');
   assert.strictEqual(vm.getTitleForBarony(100, 'county', 'defacto').id, '20');
+});
+
+test('viewModel infers de jure parents for parallel title branches', () => {
+  const vm = buildVm({
+    viscounties: [
+      { id: 5, name: 'Vicomte A' }
+    ],
+    marquisates: [
+      { id: 40, name: 'Marquisat A' }
+    ],
+    archduchies: [
+      { id: 50, name: 'Archiduche A' }
+    ],
+    kingdoms: [
+      { id: 60, name: 'Royaume A' }
+    ],
+    counties: [
+      { id: 10, name: 'Comte A', seigneur_id: 1, marquisate_id: 40, duchy_id: 30 }
+    ],
+    duchies: [
+      { id: 30, name: 'Duche A', seigneur_id: 2, archduchy_id: 50, kingdom_id: 60 }
+    ],
+    baronies: [
+      { id: 100, name: 'Baronnie A', seigneur_id: 1, viscounty_id: 5, county_id: 10 }
+    ]
+  });
+
+  assert.strictEqual(vm.getEntity('viscounty', 5).deJureParents[0].id, '10');
+  assert.strictEqual(vm.getEntity('marquisate', 40).deJureParents[0].id, '30');
+  assert.strictEqual(vm.getEntity('archduchy', 50).deJureParents[0].id, '60');
+});
+
+test('de facto barony rank follows index.html coloring closest-rank preference', () => {
+  const vm = buildVm({
+    seigneurs: [
+      { id: 1, name: 'Baron', overlord_id: 2 },
+      { id: 2, name: 'Wrong Viscount' },
+      { id: 3, name: 'County Holder' }
+    ],
+    viscounties: [
+      { id: 5, name: 'Expected Vicomte', seigneur_id: 3 },
+      { id: 6, name: 'Owner Chain Vicomte', seigneur_id: 2 }
+    ],
+    counties: [
+      { id: 10, name: 'Comte A', seigneur_id: 3, duchy_id: 30 }
+    ],
+    baronies: [
+      { id: 100, name: 'Baronnie A', seigneur_id: 1, viscounty_id: 5, county_id: 10 }
+    ]
+  });
+  const barony = vm.getEntity('barony', 100);
+  const registry = mapFilters2.createRegistry();
+
+  assert.strictEqual(vm.getTitleForBarony(100, 'viscounty', 'defacto').id, '6');
+  assert.strictEqual(vm.getTitleForBarony(100, 'county', 'defacto'), null);
+  assert.strictEqual(vm.getTitleForBarony(100, 'duchy', 'defacto').id, '30');
+  assert.strictEqual(vm.getBaroniesForTitle('viscounty', 6, 'defacto')[0], barony);
+  assert.strictEqual(registry.byId.viscounty_defacto.selectEntityForBaronyClick(barony, { vm }).id, '6');
+});
+
+test('de facto title references preserve index.html skipped-rank behavior', () => {
+  const vm = buildVm({
+    seigneurs: [
+      { id: 1, name: 'Baron', overlord_id: 2 },
+      { id: 2, name: 'Duc' }
+    ],
+    baronies: [
+      { id: 100, name: 'Baronnie A', seigneur_id: 1, viscounty_id: 5, county_id: 10 }
+    ],
+    viscounties: [
+      { id: 5, name: 'Vicomte A', seigneur_id: 1 }
+    ],
+    counties: [
+      { id: 10, name: 'Comte A', seigneur_id: 3, duchy_id: 30 }
+    ],
+    duchies: [
+      { id: 30, name: 'Duche de jure', seigneur_id: 3 },
+      { id: 40, name: 'Duche de facto', seigneur_id: 2 }
+    ]
+  });
+  const barony = vm.getEntity('barony', 100);
+
+  assert.strictEqual(barony.defacto.viscounty.id, '5');
+  assert.strictEqual(barony.defacto.county, null);
+  assert.strictEqual(barony.defacto.duchy.id, '40');
+});
+
+test('barony de facto references continue through de facto parents of higher titles', () => {
+  const vm = buildVm({
+    baronies: [
+      { id: 100, name: 'Baronnie A', seigneur_id: 1, county_id: 10 }
+    ],
+    counties: [
+      { id: 10, name: 'Comte A', seigneur_id: 1, duchy_id: 30, defacto_duchy_id: 40 }
+    ],
+    duchies: [
+      { id: 30, name: 'Duche de jure', seigneur_id: 1 },
+      { id: 40, name: 'Duche de facto', seigneur_id: 2, defacto_archduchy_id: 50 }
+    ],
+    archduchies: [
+      { id: 50, name: 'Archiduche de facto', seigneur_id: 2 }
+    ]
+  });
+  const barony = vm.getEntity('barony', 100);
+
+  assert.strictEqual(barony.defacto.duchy.id, '40');
+  assert.strictEqual(barony.defacto.archduchy.id, '50');
+  assert.strictEqual(vm.getTitleForBarony(100, 'archduchy', 'defacto').id, '50');
 });
 
 test('county and marquisate de facto overrides resolve upward', () => {
@@ -198,17 +363,19 @@ test('de facto resolution reports owner-chain cycles instead of looping', () => 
   assert.ok(vm.diagnostics.some((diag) => diag.type === 'cycle' && diag.relation === 'defacto_owner_chain'));
 });
 
-test('mapFilters2 lambda filters color and select direct barony references', () => {
+test('mapFilters2 simple lambda filters color by group but select clicked barony', () => {
   const vm = buildVm();
   const barony = vm.getEntity('barony', 100);
   const registry = mapFilters2.createRegistry();
   const ctx = { vm, colorForEntity: (entity) => entity?.color || '#999999' };
 
   assert.strictEqual(registry.byId.religion.colorForBarony(barony, ctx), '#112233');
-  assert.strictEqual(registry.byId.religion.selectEntityForBaronyClick(barony, ctx), barony.religion);
+  assert.strictEqual(registry.byId.religion.selectEntityForBaronyClick(barony, ctx), barony);
   assert.strictEqual(registry.byId.culture.colorForBarony(barony, ctx), '#445566');
-  assert.strictEqual(registry.byId.culture.selectEntityForBaronyClick(barony, ctx), barony.culture);
-  assert.strictEqual(registry.byId.seigneur_religion.selectEntityForBaronyClick(barony, ctx), barony.seigneur.religion || barony);
+  assert.strictEqual(registry.byId.culture.selectEntityForBaronyClick(barony, ctx), barony);
+  assert.strictEqual(registry.byId.seigneur_religion.selectEntityForBaronyClick(barony, ctx), barony);
+  assert.strictEqual(registry.byId.priory.selectEntityForBaronyClick(barony, ctx), barony);
+  assert.strictEqual(registry.byId.occupation.selectEntityForBaronyClick(barony, ctx), barony);
   assert.strictEqual(registry.byId.duchy.selectEntityForBaronyClick(barony, ctx), barony.dejure.duchy);
 });
 
@@ -228,6 +395,16 @@ test('mapFilters2 de facto title filter selects skipped-rank target and falls ba
   assert.strictEqual(registry.byId.empire_defacto.selectEntityForBaronyClick(withoutTarget, ctx), withoutTarget);
 });
 
+test('duchy piety filter selects the de jure duchy for map clicks', () => {
+  const vm = buildVm();
+  const registry = mapFilters2.createRegistry();
+  const barony = vm.getEntity('barony', 100);
+
+  assert.strictEqual(registry.byId.duchy_piety_ranking.kind, 'duchy_piety_ranking');
+  assert.strictEqual(registry.byId.duchy_piety_ranking.mode, 'dejure');
+  assert.strictEqual(registry.byId.duchy_piety_ranking.selectEntityForBaronyClick(barony, { vm }), barony.dejure.duchy);
+});
+
 test('map click pipeline uses active filter while panel selection keeps the direct entity', () => {
   const vm = buildVm();
   const registry = mapFilters2.createRegistry();
@@ -241,9 +418,13 @@ test('map click pipeline uses active filter while panel selection keeps the dire
   }
 
   const mapClickTarget = resolveMapClickTarget(barony, 'county');
+  const duchyPietyTarget = resolveMapClickTarget(barony, 'duchy_piety_ranking');
+  const simpleFilterTarget = resolveMapClickTarget(barony, 'religion');
   const panelSelectionTarget = barony;
 
   assert.strictEqual(mapClickTarget, barony.dejure.county);
+  assert.strictEqual(duchyPietyTarget, barony.dejure.duchy);
+  assert.strictEqual(simpleFilterTarget, barony);
   assert.strictEqual(panelSelectionTarget, barony);
 });
 
@@ -256,6 +437,26 @@ test('mapCore2 filter runtime applies straightforward filters through colorMap a
   assert.deepStrictEqual(captured.colorMap['100'], [17, 34, 51, 255]);
   assert.deepStrictEqual(captured.patterns, {});
   assert.strictEqual(captured.legend['1'].name, 'Religion A');
+});
+
+test('seigneur religion filter leaves vacant baronies uncolored', () => {
+  const vm = buildVm({
+    seigneurs: [
+      { id: 1, name: 'Seigneur A', religion_id: 1 }
+    ],
+    baronies: [
+      { id: 100, name: 'Vacante', seigneur_id: 1, vacant: 1 },
+      { id: 101, name: 'Occupee', seigneur_id: 1, vacant: 0 }
+    ]
+  });
+  const { manager, captured } = createFilterHarness(vm);
+
+  manager.applyFilter('seigneur_religion');
+
+  assert.strictEqual(vm.getColorForBaronyFilter(100, 'seigneur_religion'), '#999999');
+  assert.strictEqual(vm.getColorForBaronyFilter(101, 'seigneur_religion'), '#112233');
+  assert.deepStrictEqual(captured.colorMap['100'], [239, 228, 176, 255]);
+  assert.deepStrictEqual(captured.colorMap['101'], [17, 34, 51, 255]);
 });
 
 test('mapCore2 filter runtime applies de facto title filters from ViewModel references', () => {
@@ -358,6 +559,16 @@ test('index2 pipeline source has no legacy selection API and highlight does not 
     assert.strictEqual(filtersSource.includes(proceduralToken), false, `procedural token still present in mapFilters2: ${proceduralToken}`);
   });
 
+  [
+    'resolveDefactoTitle',
+    'resolveDefactoParent',
+    'getDejureMapForTitle',
+    'defactoParentCache',
+    'refreshTitleConfig'
+  ].forEach((legacyToken) => {
+    assert.strictEqual(viewerSource.includes(legacyToken), false, `legacy hierarchy token still present in viewer2: ${legacyToken}`);
+  });
+
   ['function init', 'applyFilter', 'setColorMap', 'setCanonicalPatterns', 'colorMap'].forEach((runtimeToken) => {
     assert.strictEqual(filtersSource.includes(runtimeToken), false, `runtime token still present in mapFilters2: ${runtimeToken}`);
   });
@@ -381,6 +592,69 @@ test('index2 pipeline source has no legacy selection API and highlight does not 
   ].forEach((renderToken) => {
     assert.strictEqual(highlightSource.includes(renderToken), false, `highlight should not render/select/filter: ${renderToken}`);
   });
+});
+
+test('index2 selection classifies entities by explicit type before barony id fallback', () => {
+  const viewerSource = fs.readFileSync(path.join(__dirname, '..', 'viewer2.js'), 'utf8');
+  const panelSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'mapInfoPanel2.js'), 'utf8');
+
+  assert.strictEqual(viewerSource.includes('|| baronyMeta[entity.id]'), false);
+  assert.strictEqual(panelSource.includes('|| baronyMeta[entity.id]'), false);
+  assert.strictEqual(viewerSource.includes('!entity._type && baronyMeta[entity.id]'), true);
+  assert.strictEqual(panelSource.includes('!entity._type && baronyMeta[entity.id]'), true);
+});
+
+test('seigneur panel uses ViewModel barony titles with robust fallback comparison', () => {
+  const viewerSource = fs.readFileSync(path.join(__dirname, '..', 'viewer2.js'), 'utf8');
+  const panelSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'mapInfoPanel2.js'), 'utf8');
+
+  assert.strictEqual(viewerSource.includes('currentViewModel.seigneurs.list.forEach'), true);
+  assert.strictEqual(panelSource.includes('seigneur.titles?.barony'), true);
+  assert.strictEqual(panelSource.includes('String(b.seigneur_id) === String(seigneurId)'), true);
+});
+
+test('seigneur title links select the associated de facto filter', () => {
+  const panelSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'mapInfoPanel2.js'), 'utf8');
+  const showSeigneurBody = panelSource.match(/function showSeigneurInfo\([^)]*\) \{([\s\S]*?)\n    \}/)?.[1] || '';
+
+  assert.strictEqual(showSeigneurBody.includes("mode: 'defacto'"), true);
+  assert.strictEqual(showSeigneurBody.includes("mode: 'dejure'"), false);
+});
+
+test('duchy piety legend is not treated as title selection entries', () => {
+  const viewerSource = fs.readFileSync(path.join(__dirname, '..', 'viewer2.js'), 'utf8');
+
+  assert.strictEqual(viewerSource.includes('titleFilter && !titleFilter.infoMode && id'), true);
+});
+
+test('title and duchy piety panel rendering lives in mapInfoPanel2', () => {
+  const viewerSource = fs.readFileSync(path.join(__dirname, '..', 'viewer2.js'), 'utf8');
+  const panelSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'mapInfoPanel2.js'), 'utf8');
+  const viewerSetTitleHierarchyBody = viewerSource.match(/function setTitleHierarchyTable\([^)]*\) \{([\s\S]*?)\n  \}/)?.[1] || '';
+  const viewerRenderPietyBody = viewerSource.match(/function renderDuchyPietyRankingPanel\([^)]*\) \{([\s\S]*?)\n  \}/)?.[1] || '';
+  const viewerRestoreTitleBody = viewerSource.match(/function restoreDefaultTitlePanelLayout\([^)]*\) \{([\s\S]*?)\n  \}/)?.[1] || '';
+
+  assert.strictEqual(panelSource.includes('function showTitleInfo'), true);
+  assert.strictEqual(panelSource.includes('function setTitleHierarchyTable'), true);
+  assert.strictEqual(panelSource.includes('function renderDuchyPietyRankingPanel'), true);
+  assert.strictEqual(panelSource.includes('getDuchyPietyRows'), true);
+  assert.strictEqual(panelSource.includes('Classement de piété ducal'), true);
+  assert.strictEqual(viewerSource.includes('function getDuchyPietyRows'), true);
+  assert.strictEqual(viewerSetTitleHierarchyBody.includes('getInfoPanelController().setTitleHierarchyTable'), true);
+  assert.strictEqual(viewerRenderPietyBody.includes('getInfoPanelController().renderDuchyPietyRankingPanel'), true);
+  assert.strictEqual(viewerRestoreTitleBody.includes('getInfoPanelController().restoreDefaultTitlePanelLayout'), true);
+});
+
+test('index2 barony feudal table is prepared from ViewModel and rendered by mapInfoPanel2', () => {
+  const viewerSource = fs.readFileSync(path.join(__dirname, '..', 'viewer2.js'), 'utf8');
+  const panelSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'mapInfoPanel2.js'), 'utf8');
+  const getBaronyFeudalRowsBody = viewerSource.match(/function getBaronyFeudalRows\([^)]*\) \{([\s\S]*?)\n  \}/)?.[1] || '';
+
+  assert.strictEqual(viewerSource.includes('function setFeudalTable'), false);
+  assert.strictEqual(panelSource.includes('function setFeudalTable'), true);
+  assert.strictEqual(getBaronyFeudalRowsBody.includes('const vmBarony = getVmBarony(info);'), true);
+  assert.strictEqual(getBaronyFeudalRowsBody.includes('vmBarony.dejure?.archduchy?.id'), true);
+  assert.strictEqual(getBaronyFeudalRowsBody.includes('vmBarony.defacto?.archduchy?.id'), true);
 });
 
 test('mapFilters2 exposes straightforward filters through the new click selection contract', () => {

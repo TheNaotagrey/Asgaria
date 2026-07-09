@@ -111,7 +111,6 @@
   let selectedTitle = null;
   let selectedEntity = null;
   let handleFilterChange = null;
-  let defactoParentCache = new Map();
   const defaultFeudalSectionTitle = feudalSection?.querySelector('h3')?.textContent || 'Hiérarchie féodale';
   const defaultFeudalHeaders = Array.from(infoFeudalTable?.querySelectorAll('thead th') || []).map(th => th.textContent);
 
@@ -126,6 +125,7 @@
   };
 
   const titleHierarchy = ['viscounty', 'county', 'marquisate', 'duchy', 'archduchy', 'kingdom', 'empire'];
+  const rankSequence = ['barony', ...titleHierarchy];
   const dejureSubtitleRankMap = {
     empire: 'kingdom',
     kingdom: 'duchy',
@@ -170,20 +170,53 @@
         seigneurToArchduchy,
         seigneurToKingdom,
         seigneurToEmpire,
+        canonicalDependents,
+        canonicalParents,
+        sanctuaryMap,
+        mapMode,
+        activeFilter: filterSelect?.value || '',
+        defaultFeudalHeaders,
+        defaultFeudalSectionTitle,
         titleHierarchy,
         titleTypeConfig
       }),
       actions: {
+        attachFloatingTooltip: attachCultureFloatingTooltip,
+        applyFilter: (filterId) => filterManager?.applyFilter(filterId),
         clearSelectedTitle: () => { selectedTitle = null; },
+        clearTradeSelections: () => {
+          selectedTradeRouteId = null;
+          selectedTradeLineId = null;
+          if (filterManager && typeof filterManager.setTradeRouteSelection === 'function') {
+            filterManager.setTradeRouteSelection(null);
+          }
+          if (filterManager && typeof filterManager.setTradeLineSelection === 'function') {
+            filterManager.setTradeLineSelection(null);
+          }
+        },
         getBaronyEntity,
         getBaronyIdsForEntity,
+        getDuchyPietyRows,
+        getImmediateSubtitles,
         getSeigneurEntity,
+        getSubtitleHeading,
+        getTargetTitleMode,
+        getTitleFilterInfo,
+        getTitleFilterValue,
+        getTitleHierarchyRows,
         getTitleEntity,
         getTitleMap,
         handleSelect,
+        renderTradeLinesList,
+        renderTradeRoutesList,
         restoreDefaultTitlePanelLayout,
         selectEntity,
-        showTitleInfo
+        setFilterValue,
+        getBaronyFeudalRows,
+        setSelectedTitle: (title) => { selectedTitle = title; },
+        showTitleInfo,
+        syncTitleSelectionHighlight,
+        shouldSuppressTradeRoutePanelHide: () => suppressTradeRoutePanelHide
       },
       elements: {
         infoPanel,
@@ -192,13 +225,25 @@
         infoReligionLine,
         infoCultureLine,
         tradeRoutesSection,
+        tradeRoutesList,
+        tradeLinesList,
         feudalSection,
+        infoFeudalTable,
+        infoFeudalBody,
+        infoDuchyPietyTable,
+        infoDuchyPietyBody,
         religiousSection,
+        infoReligiousList,
         canonicalOwnedSection,
+        canonicalOwnedList,
         canonicalParentSection,
+        canonicalParentList,
         titleSubtitlesSection,
         titleSubtitlesList,
         seaInfoPanel,
+        seaInfoId,
+        seaInfoName,
+        seaInfoSeigneur,
         seigneurInfoPanel,
         seigneurInfoTitle,
         seigneurInfoIdentity,
@@ -219,7 +264,7 @@
   }
 
   function isVacantBarony(info) {
-    return !!(info && (info.vacant === 1 || info.vacant === '1' || info.vacant === true));
+    return !!info?.vacant;
   }
 
   function setLabeledLine(elem, label, value) {
@@ -248,7 +293,7 @@
 
   function setSelectionMapId(entity) {
     if (!mapData.selection) mapData.selection = {};
-    mapData.selection.mapId = entity && (entity._type === 'barony' || entity._type === 'seaZone' || baronyMeta[entity.id])
+    mapData.selection.mapId = entity && (entity._type === 'barony' || entity._type === 'seaZone' || (!entity._type && baronyMeta[entity.id]))
       ? String(entity.id)
       : null;
   }
@@ -305,7 +350,9 @@
   }
 
   function getBaronyEntity(baronyId) {
-    return getVm()?.getEntity?.('barony', baronyId) || baronyMeta[baronyId] || baronyLookup[baronyId] || null;
+    const entity = getVm()?.getEntity?.('barony', baronyId) || baronyMeta[baronyId] || baronyLookup[baronyId] || null;
+    if (entity && !entity._type) entity._type = 'barony';
+    return entity;
   }
 
   function getTitleEntity(rankKey, titleId, mode = 'dejure') {
@@ -330,7 +377,7 @@
   function getBaronyIdsForEntity(entity, mode = 'dejure') {
     if (!entity) return [];
     if (entity._type === 'seaZone') return [entity.id];
-    if (entity._type === 'barony' || baronyMeta[entity.id]) return [entity.id];
+    if (entity._type === 'barony' || (!entity._type && baronyMeta[entity.id])) return [entity.id];
     if (entity._type === 'seigneur') {
       return Object.values(baronyLookup).filter(b => String(b.seigneur_id) === String(entity.id)).map(b => b.id);
     }
@@ -369,6 +416,16 @@
   function getTitleFilterValue(rankKey, mode) {
     if (rankKey === 'duchy' && mode === 'duchy_piety_ranking') return 'duchy_piety_ranking';
     return mode === 'defacto' ? `${rankKey}_defacto` : rankKey;
+  }
+
+  function setFilterValue(filterValue) {
+    if (!filterSelect || filterSelect.value === filterValue) return;
+    filterSelect.value = filterValue;
+    if (typeof handleFilterChange === 'function') {
+      handleFilterChange();
+    } else if (filterManager) {
+      filterManager.applyFilter(filterSelect.value);
+    }
   }
 
   function getTitleFilterInfo(filterValue) {
@@ -786,31 +843,13 @@
   }
 
   function getBaronyTitleId(baronyInfo, rankKey, mode = 'dejure') {
-    if (!baronyInfo) return null;
-    const vmTitle = getVmBarony(baronyInfo)?.[mode]?.[rankKey] || null;
-    if (vmTitle) return vmTitle.id;
-    if (mode === 'defacto') return resolveDefactoTitle(baronyInfo, rankKey);
-    if (rankKey === 'viscounty') return baronyInfo.viscounty_id;
-    if (rankKey === 'county') return baronyInfo.county_id;
-    const county = countyMap[baronyInfo.county_id];
-    if (rankKey === 'marquisate') return county?.marquisate_id || null;
-    if (rankKey === 'duchy') return county?.duchy_id || null;
-    const duchy = county ? duchyMap[county.duchy_id] : null;
-    if (rankKey === 'archduchy') return duchy?.archduchy_id || null;
-    if (rankKey === 'kingdom') return duchy?.kingdom_id || null;
-    const kingdom = duchy ? kingdomMap[duchy.kingdom_id] : null;
-    if (rankKey === 'empire') return kingdom?.empire_id || null;
-    return null;
+    if (!baronyInfo?.id) return null;
+    return getVm()?.getBaronyTitleId?.(baronyInfo.id, rankKey, mode) || null;
   }
 
   function getBaroniesForTitle(rankKey, titleId, mode = 'dejure') {
     const vm = getVm();
-    if (vm) {
-      return vm.getBaroniesForTitle(rankKey, titleId, mode).map(barony => barony.id);
-    }
-    return Object.values(baronyMeta)
-      .filter(info => String(getBaronyTitleId(info, rankKey, mode) || '') === String(titleId))
-      .map(info => info.id);
+    return vm?.getBaroniesForTitle?.(rankKey, titleId, mode).map(barony => barony.id) || [];
   }
 
   function getTitleName(rankKey, id) {
@@ -824,57 +863,10 @@
     return getTitleName(a.rankKey, a.id).localeCompare(getTitleName(b.rankKey, b.id), 'fr');
   }
 
-  function getImmediateDejureSubtitles(rankKey, titleId) {
-    const childRank = dejureSubtitleRankMap[rankKey];
-    if (!childRank) return [];
-    const ids = new Set();
-    getBaroniesForTitle(rankKey, titleId, 'dejure').forEach(baronyId => {
-      const childId = getBaronyTitleId(baronyMeta[baronyId], childRank, 'dejure');
-      if (childId) ids.add(String(childId));
-    });
-    return [...ids].map(id => ({ rankKey: childRank, id })).sort(compareSubtitleItems);
-  }
-
-  function getImmediateDefactoSubtitles(rankKey, titleId) {
-    const parentIndex = getRankIndex(rankKey);
-    if (parentIndex <= 0) return [];
-    const items = [];
-    for (let childIndex = parentIndex - 1; childIndex >= 0; childIndex--) {
-      const childRank = rankSequence[childIndex];
-      if (childRank === 'barony') {
-        Object.values(baronyMeta).forEach(info => {
-          const parent = resolveDefactoParent('barony', info);
-          if (parent?.rankKey === rankKey && String(parent.id) === String(titleId)) {
-            items.push({ rankKey: 'barony', id: String(info.id) });
-          }
-        });
-        continue;
-      }
-      Object.values(getTitleMap(childRank)).forEach(info => {
-        if (!info?.id) return;
-        const parent = resolveDefactoParent(childRank, info);
-        if (parent?.rankKey === rankKey && String(parent.id) === String(titleId)) {
-          items.push({ rankKey: childRank, id: String(info.id) });
-        }
-      });
-    }
-    const dedup = new Map();
-    items.forEach(item => {
-      dedup.set(`${item.rankKey}:${item.id}`, item);
-    });
-    return [...dedup.values()].sort(compareSubtitleItems);
-  }
-
   function getImmediateSubtitles(rankKey, titleId, mode = 'dejure') {
-    const vm = getVm();
-    if (vm) {
-      return vm.getImmediateSubtitles(rankKey, titleId, mode)
-        .map(entity => ({ rankKey: entity._type, id: entity.id }))
-        .sort(compareSubtitleItems);
-    }
-    return mode === 'defacto'
-      ? getImmediateDefactoSubtitles(rankKey, titleId)
-      : getImmediateDejureSubtitles(rankKey, titleId);
+    return getVm()?.getImmediateSubtitles?.(rankKey, titleId, mode)
+      .map(entity => ({ rankKey: entity._type, id: entity.id }))
+      .sort(compareSubtitleItems) || [];
   }
 
   function getSubtitleHeading(rankKey, mode = 'dejure') {
@@ -885,19 +877,15 @@
     return `${plural} de jure:`;
   }
 
-  function setTitleHierarchyTable(section, tbody, rankKey, titleInfo, mode) {
-    if (!section || !tbody) return;
-    tbody.innerHTML = '';
+  function getTitleHierarchyRows(rankKey, titleInfo, mode) {
     const currentIndex = titleHierarchy.indexOf(rankKey);
     if (currentIndex < 0 || !titleInfo) {
-      section.style.display = 'none';
-      return;
+      return { rows: [], hasDejureData: false };
     }
     const sampleBaronyId = getBaroniesForTitle(rankKey, titleInfo.id, mode)[0];
     const sampleBarony = sampleBaronyId ? baronyMeta[sampleBaronyId] : null;
     if (!sampleBarony) {
-      section.style.display = 'none';
-      return;
+      return { rows: [], hasDejureData: false };
     }
 
     const rows = [];
@@ -909,36 +897,14 @@
       rows.push({ rankKey: parentRank, dejureId, defactoId });
     }
 
-    const hasDejureData = rows.some(row => row.dejureId);
-    if (infoFeudalTable) {
-      infoFeudalTable.classList.toggle('hide-dejure-column', !hasDejureData);
-    }
+    return {
+      rows: rows.reverse(),
+      hasDejureData: rows.some(row => row.dejureId)
+    };
+  }
 
-    if (!rows.length) {
-      section.style.display = 'none';
-      return;
-    }
-
-    section.style.display = 'block';
-    rows.reverse().forEach(row => {
-      const tr = document.createElement('tr');
-      const levelCell = document.createElement('td');
-      const strong = document.createElement('strong');
-      strong.textContent = titleTypeConfig[row.rankKey].label;
-      levelCell.appendChild(strong);
-      const dejureCell = document.createElement('td');
-      if (row.dejureId) {
-        dejureCell.appendChild(createTitleButton(row.rankKey, row.dejureId, { mode: 'dejure', forceFilterMode: 'dejure' }));
-      }
-      const defactoCell = document.createElement('td');
-      if (row.defactoId) {
-        defactoCell.appendChild(createTitleButton(row.rankKey, row.defactoId, { mode: 'defacto', forceFilterMode: 'defacto' }));
-      }
-      tr.appendChild(levelCell);
-      tr.appendChild(dejureCell);
-      tr.appendChild(defactoCell);
-      tbody.appendChild(tr);
-    });
+  function setTitleHierarchyTable(section, tbody, rankKey, titleInfo, mode) {
+    return getInfoPanelController().setTitleHierarchyTable(section, tbody, rankKey, titleInfo, mode);
   }
 
   function syncTitleSelectionHighlight() {
@@ -952,78 +918,7 @@
   }
 
   function showTitleInfo(rankKey, titleId, mode = 'dejure', options = {}) {
-    const { forceFilterMode = null } = options;
-    const titleInfo = getTitleMap(rankKey)[titleId];
-    if (!titleInfo || !infoPanel) return;
-    const activeTitleFilter = getTitleFilterInfo(filterSelect?.value);
-    const targetMode = getTargetTitleMode(forceFilterMode);
-    const keepDuchyPietyFilter =
-      activeTitleFilter?.infoMode === 'duchy_piety_ranking' &&
-      rankKey === 'duchy' &&
-      (targetMode || mode) === 'dejure';
-    const targetFilterValue = keepDuchyPietyFilter
-      ? 'duchy_piety_ranking'
-      : getTitleFilterValue(rankKey, targetMode);
-    selectedTitle = { rankKey, id: titleId, mode: targetMode || mode };
-    if (filterSelect && filterSelect.value !== targetFilterValue) {
-      filterSelect.value = targetFilterValue;
-      if (typeof handleFilterChange === 'function') {
-        handleFilterChange();
-      } else if (filterManager) {
-        filterManager.applyFilter(filterSelect.value);
-      }
-    }
-    hideSeigneurInfo();
-    hideTradeRoutePanel();
-    if (seaInfoPanel) seaInfoPanel.style.display = 'none';
-    infoPanel.style.display = 'block';
-    const rankLabel = titleTypeConfig[rankKey]?.label || 'Titre';
-    restoreDefaultTitlePanelLayout();
-    if (baronyTitle) baronyTitle.textContent = `${rankLabel}: ${titleInfo.name || ''}`;
-    setSeigneurLine(infoOwnerLine, titleInfo.seigneur_id, 'Détenteur:');
-    if (infoReligionLine) infoReligionLine.style.display = 'none';
-    if (infoCultureLine) infoCultureLine.style.display = 'none';
-    if (tradeRoutesSection) tradeRoutesSection.style.display = 'none';
-    if (religiousSection) religiousSection.style.display = 'none';
-    if (canonicalOwnedSection) canonicalOwnedSection.style.display = 'none';
-    if (canonicalParentSection) canonicalParentSection.style.display = 'none';
-
-    const currentTitleFilter = getTitleFilterInfo(filterSelect?.value);
-    const isDuchyPietyPanel = currentTitleFilter?.infoMode === 'duchy_piety_ranking' && rankKey === 'duchy' && (targetMode || mode) === 'dejure';
-    if (isDuchyPietyPanel) {
-      if (infoOwnerLine) infoOwnerLine.style.display = 'none';
-      if (titleSubtitlesSection) titleSubtitlesSection.style.display = 'none';
-      renderDuchyPietyRankingPanel(titleInfo.id, titleInfo.name || '');
-      syncTitleSelectionHighlight();
-      return;
-    }
-
-    setTitleHierarchyTable(feudalSection, infoFeudalBody, rankKey, titleInfo, mode);
-
-    if (titleSubtitlesSection && titleSubtitlesList) {
-      titleSubtitlesList.innerHTML = '';
-      const subtitles = getImmediateSubtitles(rankKey, titleId, targetMode || mode);
-      if (titleSubtitlesHeading) {
-        titleSubtitlesHeading.textContent = getSubtitleHeading(rankKey, targetMode || mode);
-      }
-      if (subtitles.length > 0) {
-        titleSubtitlesSection.style.display = 'block';
-        subtitles.forEach(item => {
-          const li = document.createElement('li');
-          if (item.rankKey === 'barony') {
-            li.appendChild(createBaronyButton(item.id));
-          } else {
-            const childLabel = titleTypeConfig[item.rankKey]?.label || 'Titre';
-            li.appendChild(document.createTextNode(`${childLabel} de `));
-            li.appendChild(createTitleButton(item.rankKey, item.id, { mode: targetMode || mode }));
-          }
-          titleSubtitlesList.appendChild(li);
-        });
-      } else {
-        titleSubtitlesSection.style.display = 'none';
-      }
-    }
-    syncTitleSelectionHighlight();
+    return getInfoPanelController().showTitleInfo(rankKey, titleId, mode, options);
   }
 
   function addSeigneurTitle(map, seigneurId, titleId) {
@@ -1039,7 +934,6 @@
     });
   }
 
-  const rankSequence = ['barony', 'viscounty', 'county', 'marquisate', 'duchy', 'archduchy', 'kingdom', 'empire'];
   const cultureRankConfig = [
     { key: 'barony', label: 'Baron', plural: 'Barons', points: 0.005 },
     { key: 'viscounty', label: 'Vicomte', plural: 'Vicomtes', points: 0.0075 },
@@ -1061,139 +955,12 @@
     { key: 'kingdom', label: 'Roi', plural: 'Rois', points: 3 },
     { key: 'empire', label: 'Empereur', plural: 'Empereurs', points: 4 }
   ];
-  const titleConfig = {
-    viscounty: { map: viscountyMap, seigneurTo: seigneurToViscounty },
-    county: { map: countyMap, seigneurTo: seigneurToCounty },
-    marquisate: { map: marquisateMap, seigneurTo: seigneurToMarquisate },
-    duchy: { map: duchyMap, seigneurTo: seigneurToDuchy },
-    archduchy: { map: archduchyMap, seigneurTo: seigneurToArchduchy },
-    kingdom: { map: kingdomMap, seigneurTo: seigneurToKingdom },
-    empire: { map: empireMap, seigneurTo: seigneurToEmpire }
-  };
-
-  function refreshTitleConfig() {
-    clearDefactoCache();
-    titleConfig.viscounty.map = viscountyMap;
-    titleConfig.viscounty.seigneurTo = seigneurToViscounty;
-    titleConfig.county.map = countyMap;
-    titleConfig.county.seigneurTo = seigneurToCounty;
-    titleConfig.marquisate.map = marquisateMap;
-    titleConfig.marquisate.seigneurTo = seigneurToMarquisate;
-    titleConfig.duchy.map = duchyMap;
-    titleConfig.duchy.seigneurTo = seigneurToDuchy;
-    titleConfig.archduchy.map = archduchyMap;
-    titleConfig.archduchy.seigneurTo = seigneurToArchduchy;
-    titleConfig.kingdom.map = kingdomMap;
-    titleConfig.kingdom.seigneurTo = seigneurToKingdom;
-    titleConfig.empire.map = empireMap;
-    titleConfig.empire.seigneurTo = seigneurToEmpire;
-  }
-
   function getRankIndex(rankKey) {
     return rankSequence.indexOf(rankKey);
   }
 
-  function clearDefactoCache() {
-    defactoParentCache = new Map();
-  }
-
-  function buildSeigneurChain(startId) {
-    const chain = [];
-    let sid = startId;
-    while (sid) {
-      chain.push(String(sid));
-      sid = seigneurMap[sid]?.overlord_id;
-    }
-    return chain;
-  }
-
-  function chooseByDejure(candidates, dejureId) {
-    if (!Array.isArray(candidates) || candidates.length === 0) return null;
-    if (dejureId && candidates.includes(dejureId)) return dejureId;
-    return candidates[0];
-  }
-
-  function getHighestRankIndex(seigneurId) {
-    if (!seigneurId) return -1;
-    for (let i = rankSequence.length - 1; i >= 1; i--) {
-      const key = rankSequence[i];
-      const list = titleConfig[key]?.seigneurTo?.[String(seigneurId)];
-      if (Array.isArray(list) && list.length > 0) return i;
-    }
-    return -1;
-  }
-
   function getSeigneurRankKey(seigneurId) {
-    const highestIndex = getHighestRankIndex(seigneurId);
-    return highestIndex >= 1 ? rankSequence[highestIndex] : 'barony';
-  }
-
-  function chooseClosestTitleForSeigneur(seigneurId, startIndex, dejureMap) {
-    const sid = String(seigneurId || '');
-    for (let i = startIndex + 1; i < rankSequence.length; i++) {
-      const key = rankSequence[i];
-      const list = titleConfig[key]?.seigneurTo?.[sid];
-      const dejureId = dejureMap[key];
-      if (dejureId && Array.isArray(list) && list.includes(dejureId)) {
-        return { rankKey: key, id: dejureId };
-      }
-    }
-    for (let i = startIndex + 1; i < rankSequence.length; i++) {
-      const key = rankSequence[i];
-      const list = titleConfig[key]?.seigneurTo?.[sid];
-      if (Array.isArray(list) && list.length > 0) {
-        return { rankKey: key, id: list[0] };
-      }
-    }
-    return null;
-  }
-
-  function chooseClosestTitleFromChain(startId, startIndex, dejureMap) {
-    const chain = buildSeigneurChain(startId);
-    for (const sid of chain) {
-      const selected = chooseClosestTitleForSeigneur(sid, startIndex, dejureMap);
-      if (selected) return selected;
-    }
-    return null;
-  }
-
-  function getOverrideCandidates(rankKey, info) {
-    const overrides = [];
-    if (!info) return overrides;
-    if (rankKey === 'barony') {
-      if (info.defacto_viscounty_id) overrides.push({ rankKey: 'viscounty', id: info.defacto_viscounty_id });
-      if (info.defacto_county_id) overrides.push({ rankKey: 'county', id: info.defacto_county_id });
-    } else if (rankKey === 'viscounty') {
-      if (info.defacto_county_id) overrides.push({ rankKey: 'county', id: info.defacto_county_id });
-    } else if (rankKey === 'county') {
-      if (info.defacto_marquisate_id) overrides.push({ rankKey: 'marquisate', id: info.defacto_marquisate_id });
-      if (info.defacto_duchy_id) overrides.push({ rankKey: 'duchy', id: info.defacto_duchy_id });
-    } else if (rankKey === 'marquisate') {
-      if (info.defacto_duchy_id) overrides.push({ rankKey: 'duchy', id: info.defacto_duchy_id });
-    } else if (rankKey === 'duchy') {
-      if (info.defacto_archduchy_id) overrides.push({ rankKey: 'archduchy', id: info.defacto_archduchy_id });
-      if (info.defacto_kingdom_id) overrides.push({ rankKey: 'kingdom', id: info.defacto_kingdom_id });
-    } else if (rankKey === 'archduchy') {
-      if (info.defacto_kingdom_id) overrides.push({ rankKey: 'kingdom', id: info.defacto_kingdom_id });
-    } else if (rankKey === 'kingdom') {
-      if (info.defacto_empire_id) overrides.push({ rankKey: 'empire', id: info.defacto_empire_id });
-    }
-    return overrides;
-  }
-
-  function chooseClosestOverride(rankKey, info) {
-    const overrides = getOverrideCandidates(rankKey, info);
-    const startIndex = getRankIndex(rankKey);
-    let best = null;
-    let bestIndex = Infinity;
-    overrides.forEach(candidate => {
-      const idx = getRankIndex(candidate.rankKey);
-      if (idx > startIndex && idx < bestIndex) {
-        best = candidate;
-        bestIndex = idx;
-      }
-    });
-    return best;
+    return getSeigneurEntity(seigneurId)?.highestTitleRank || 'barony';
   }
 
   function formatPoints(value) {
@@ -1268,60 +1035,24 @@
     return rows;
   }
 
-  function renderDuchyPietyRankingPanel(duchyId, duchyName) {
-    if (!feudalSection || !infoFeudalTable || !infoDuchyPietyTable || !infoDuchyPietyBody) return;
-    const heading = feudalSection.querySelector('h3');
-    if (heading) heading.textContent = 'Classement de piété ducal';
-    infoFeudalTable.style.display = 'none';
-    infoDuchyPietyTable.style.display = '';
-    infoDuchyPietyBody.innerHTML = '';
+  function getDuchyPietyRows(duchyId) {
     const duchyStats = buildDuchyPietyStats()[String(duchyId)] || {};
-    const rows = Object.values(duchyStats)
+    return Object.values(duchyStats)
       .map(stat => ({
         ...stat,
         religionName: religionMap[stat.religionId]?.name || `Religion #${stat.religionId}`,
+        pointsLabel: formatPointsOneDecimal(stat.points),
         tooltipRows: buildDuchyPietyTooltipRows(stat)
       }))
       .sort((a, b) => b.points - a.points || a.religionName.localeCompare(b.religionName, 'fr'));
+  }
 
-    if (!rows.length) {
-      const tr = document.createElement('tr');
-      const td = document.createElement('td');
-      td.colSpan = 2;
-      td.textContent = 'Aucune donnée';
-      tr.appendChild(td);
-      infoDuchyPietyBody.appendChild(tr);
-    } else {
-      rows.forEach(stat => {
-        const tr = document.createElement('tr');
-        const religionCell = document.createElement('td');
-        religionCell.textContent = stat.religionName;
-        const pointsCell = document.createElement('td');
-        const pointsSpan = document.createElement('span');
-        pointsSpan.className = 'tooltip';
-        pointsSpan.textContent = formatPointsOneDecimal(stat.points);
-        attachCultureFloatingTooltip(pointsSpan, stat.tooltipRows);
-        pointsCell.appendChild(pointsSpan);
-        tr.appendChild(religionCell);
-        tr.appendChild(pointsCell);
-        infoDuchyPietyBody.appendChild(tr);
-      });
-    }
-    if (baronyTitle) baronyTitle.textContent = `Duché de ${duchyName || ''}`;
+  function renderDuchyPietyRankingPanel(duchyId, duchyName) {
+    return getInfoPanelController().renderDuchyPietyRankingPanel(duchyId, duchyName);
   }
 
   function restoreDefaultTitlePanelLayout() {
-    if (!feudalSection || !infoFeudalTable || !infoDuchyPietyTable || !infoDuchyPietyBody) return;
-    const heading = feudalSection.querySelector('h3');
-    if (heading) heading.textContent = defaultFeudalSectionTitle;
-    const headers = infoFeudalTable.querySelectorAll('thead th');
-    defaultFeudalHeaders.forEach((label, index) => {
-      if (headers[index]) headers[index].textContent = label;
-    });
-    infoDuchyPietyBody.innerHTML = '';
-    infoDuchyPietyTable.style.display = 'none';
-    infoFeudalTable.style.display = '';
-    infoFeudalTable.classList.remove('hide-dejure-column');
+    return getInfoPanelController().restoreDefaultTitlePanelLayout();
   }
 
   function buildCultureTooltipRows(stat) {
@@ -1462,182 +1193,60 @@
     cultureRankingPanel.style.display = 'block';
   }
 
-  function getDejureMapForTitle(rankKey, info) {
-    const dejureMap = {};
-    if (!info) return dejureMap;
-    if (rankKey === 'barony') {
-      if (info.viscounty_id) dejureMap.viscounty = info.viscounty_id;
-      if (info.county_id) dejureMap.county = info.county_id;
-      const county = info.county_id ? countyMap?.[info.county_id] : null;
-      if (county?.marquisate_id) dejureMap.marquisate = county.marquisate_id;
-      if (county?.duchy_id) dejureMap.duchy = county.duchy_id;
-      const duchy = county?.duchy_id ? duchyMap?.[county.duchy_id] : null;
-      if (duchy?.archduchy_id) dejureMap.archduchy = duchy.archduchy_id;
-      if (duchy?.kingdom_id) dejureMap.kingdom = duchy.kingdom_id;
-      const kingdom = duchy?.kingdom_id ? kingdomMap?.[duchy.kingdom_id] : null;
-      if (kingdom?.empire_id) dejureMap.empire = kingdom.empire_id;
-    } else if (rankKey === 'county') {
-      if (info.marquisate_id) dejureMap.marquisate = info.marquisate_id;
-      if (info.duchy_id) dejureMap.duchy = info.duchy_id;
-      const duchy = info.duchy_id ? duchyMap?.[info.duchy_id] : null;
-      if (duchy?.archduchy_id) dejureMap.archduchy = duchy.archduchy_id;
-      if (duchy?.kingdom_id) dejureMap.kingdom = duchy.kingdom_id;
-      const kingdom = duchy?.kingdom_id ? kingdomMap?.[duchy.kingdom_id] : null;
-      if (kingdom?.empire_id) dejureMap.empire = kingdom.empire_id;
-    } else if (rankKey === 'duchy') {
-      if (info.archduchy_id) dejureMap.archduchy = info.archduchy_id;
-      if (info.kingdom_id) dejureMap.kingdom = info.kingdom_id;
-      const kingdom = info.kingdom_id ? kingdomMap?.[info.kingdom_id] : null;
-      if (kingdom?.empire_id) dejureMap.empire = kingdom.empire_id;
-    } else if (rankKey === 'kingdom') {
-      if (info.empire_id) dejureMap.empire = info.empire_id;
-    }
-    return dejureMap;
-  }
-
-  function resolveDefactoParentRaw(rankKey, info) {
-    if (!info) return null;
-    const startIndex = getRankIndex(rankKey);
-    if (startIndex < 0 || startIndex >= rankSequence.length - 1) return null;
-    const override = chooseClosestOverride(rankKey, info);
-    if (override) return override;
-    const dejureMap = getDejureMapForTitle(rankKey, info);
-    const seigneurId = info.seigneur_id;
-    if (seigneurId) {
-      const highestIndex = getHighestRankIndex(seigneurId);
-      if (highestIndex > startIndex) {
-        const selected = chooseClosestTitleForSeigneur(seigneurId, startIndex, dejureMap);
-        if (selected) return selected;
-      }
-      const overlordId = seigneurMap?.[seigneurId]?.overlord_id;
-      const selected = chooseClosestTitleFromChain(overlordId, startIndex, dejureMap);
-      if (selected) return selected;
-    }
-    return null;
-  }
-
-  function getDefactoToken(rankKey, info) {
-    if (!rankKey || !info?.id) return null;
-    return `${rankKey}:${info.id}`;
-  }
-
-  function resolveDefactoParent(rankKey, info) {
-    const token = getDefactoToken(rankKey, info);
-    if (!token) return null;
-    if (defactoParentCache.has(token)) {
-      return defactoParentCache.get(token);
-    }
-    const resolved = resolveDefactoParentRaw(rankKey, info);
-    defactoParentCache.set(token, resolved || null);
-    return resolved;
-  }
-
-  function resolveDefactoTitle(info, targetRankKey) {
-    if (!info) return null;
-    const targetIndex = getRankIndex(targetRankKey);
-    if (targetIndex < 1) return null;
-    let currentRankKey = 'barony';
-    let currentInfo = info;
-    const visited = new Set();
-    while (currentRankKey && getRankIndex(currentRankKey) < targetIndex) {
-      const parent = resolveDefactoParent(currentRankKey, currentInfo);
-      if (!parent) return null;
-      if (parent.rankKey === targetRankKey) return parent.id;
-      const parentInfo = titleConfig[parent.rankKey]?.map?.[parent.id];
-      if (!parentInfo) return null;
-      const token = `${parent.rankKey}:${parent.id}`;
-      if (visited.has(token)) return null;
-      visited.add(token);
-      currentRankKey = parent.rankKey;
-      currentInfo = parentInfo;
-    }
-    return null;
-  }
-
-  function setFeudalTable(section, tbody, info) {
-    if (!section || !tbody || !info) return;
-    if (infoFeudalTable) infoFeudalTable.classList.remove('hide-dejure-column');
-    tbody.innerHTML = '';
-    const viscounty = viscountyMap[info.viscounty_id];
-    const county = countyMap[info.county_id];
-    const marquisate = county ? marquisateMap[county.marquisate_id] : null;
-    const duchy = county ? duchyMap[county.duchy_id] : null;
-    const archduchy = duchy ? archduchyMap[duchy.archduchy_id] : null;
-    const kingdom = duchy ? kingdomMap[duchy.kingdom_id] : null;
-    const empire = kingdom ? empireMap[kingdom.empire_id] : null;
+  function getBaronyFeudalRows(info) {
+    if (!info) return [];
+    const vmBarony = getVmBarony(info);
+    if (!vmBarony) return [];
 
     const rows = {
       viscounty: {
         rankKey: 'viscounty',
         level: 'Vicomté',
-        dejureId: viscounty?.id || null,
-        defactoId: resolveDefactoTitle(info, 'viscounty')
+        dejureId: vmBarony.dejure?.viscounty?.id || null,
+        defactoId: vmBarony.defacto?.viscounty?.id || null
       },
       county: {
         rankKey: 'county',
         level: 'Comté',
-        dejureId: county?.id || null,
-        defactoId: resolveDefactoTitle(info, 'county')
+        dejureId: vmBarony.dejure?.county?.id || null,
+        defactoId: vmBarony.defacto?.county?.id || null
       },
       marquisate: {
         rankKey: 'marquisate',
         level: 'Marquisat',
-        dejureId: marquisate?.id || null,
-        defactoId: resolveDefactoTitle(info, 'marquisate')
+        dejureId: vmBarony.dejure?.marquisate?.id || null,
+        defactoId: vmBarony.defacto?.marquisate?.id || null
       },
       duchy: {
         rankKey: 'duchy',
         level: 'Duché',
-        dejureId: duchy?.id || null,
-        defactoId: resolveDefactoTitle(info, 'duchy')
+        dejureId: vmBarony.dejure?.duchy?.id || null,
+        defactoId: vmBarony.defacto?.duchy?.id || null
       },
       archduchy: {
         rankKey: 'archduchy',
         level: 'Archiduché',
-        dejureId: archduchy?.id || null,
-        defactoId: resolveDefactoTitle(info, 'archduchy')
+        dejureId: vmBarony.dejure?.archduchy?.id || null,
+        defactoId: vmBarony.defacto?.archduchy?.id || null
       },
       kingdom: {
         rankKey: 'kingdom',
         level: 'Royaume',
-        dejureId: kingdom?.id || null,
-        defactoId: resolveDefactoTitle(info, 'kingdom')
+        dejureId: vmBarony.dejure?.kingdom?.id || null,
+        defactoId: vmBarony.defacto?.kingdom?.id || null
       },
       empire: {
         rankKey: 'empire',
         level: 'Empire',
-        dejureId: empire?.id || null,
-        defactoId: resolveDefactoTitle(info, 'empire')
+        dejureId: vmBarony.dejure?.empire?.id || null,
+        defactoId: vmBarony.defacto?.empire?.id || null
       }
     };
 
     const order = ['kingdom', 'empire', 'archduchy', 'duchy', 'marquisate', 'county', 'viscounty'];
-    const filteredRows = order
+    return order
       .map(key => rows[key])
       .filter(row => row && (row.dejureId || row.defactoId));
-
-    const hasData = filteredRows.length > 0;
-    if (!hasData) {
-      section.style.display = 'none';
-      return;
-    }
-
-    section.style.display = 'block';
-    filteredRows.forEach(row => {
-      const tr = document.createElement('tr');
-      const levelCell = document.createElement('td');
-      const strong = document.createElement('strong');
-      strong.textContent = row.level;
-      levelCell.appendChild(strong);
-      const dejureCell = document.createElement('td');
-      if (row.dejureId) dejureCell.appendChild(createTitleButton(row.rankKey, row.dejureId, { mode: 'dejure', forceFilterMode: 'dejure' }));
-      const defactoCell = document.createElement('td');
-      if (row.defactoId) defactoCell.appendChild(createTitleButton(row.rankKey, row.defactoId, { mode: 'defacto', forceFilterMode: 'defacto' }));
-      tr.appendChild(levelCell);
-      tr.appendChild(dejureCell);
-      tr.appendChild(defactoCell);
-      tbody.appendChild(tr);
-    });
   }
 
   const landFiltersBase = [
@@ -1720,7 +1329,7 @@
       const lab = document.createElement('span');
       lab.textContent = info.name;
       item.appendChild(lab);
-      if (titleFilter && id) {
+      if (titleFilter && !titleFilter.infoMode && id) {
         item.classList.add('legend-item--interactive');
         item.title = 'Cliquer pour sélectionner ce titre';
         item.addEventListener('click', () => {
@@ -1857,98 +1466,7 @@
   }
 
   function handleSelect(id) {
-    hideSeigneurInfo();
-    if (!suppressTradeRoutePanelHide) {
-      hideTradeRoutePanel();
-    }
-    if (mapMode === 'sea') {
-      if (!id) {
-        if (seaInfoPanel) seaInfoPanel.style.display = 'none';
-        return;
-      }
-      const info = baronyMeta[id] || {};
-      if (seaInfoPanel) seaInfoPanel.style.display = 'block';
-      if (infoPanel) infoPanel.style.display = 'none';
-      if (seaInfoId) seaInfoId.textContent = info.id || '';
-      if (seaInfoName) seaInfoName.textContent = info.name || '';
-      if (seaInfoSeigneur) {
-        seaInfoSeigneur.innerHTML = '';
-        if (info.seigneur_id && seigneurMap[info.seigneur_id]) {
-          seaInfoSeigneur.appendChild(createSeigneurButton(info.seigneur_id));
-        }
-      }
-      if (filterManager && filterSelect && (filterSelect.value === 'distance' || filterSelect.value === 'baronies')) {
-        filterManager.applyFilter(filterSelect.value);
-      }
-      return;
-    }
-    if (!id) {
-      if (infoPanel) infoPanel.style.display = 'none';
-      return;
-    }
-    const info = baronyMeta[id] || {};
-    selectedTitle = null;
-    restoreDefaultTitlePanelLayout();
-    if (infoPanel) infoPanel.style.display = 'block';
-    if (seaInfoPanel) seaInfoPanel.style.display = 'none';
-    if (baronyTitle) {
-      const vacantLabel = info.vacant ? ' (vacante)' : '';
-      baronyTitle.textContent = `Baronnie: ${info.name || ''}${vacantLabel} (#${info.id || ''})`;
-    }
-    setSeigneurLine(
-      infoOwnerLine,
-      info.seigneur_id,
-      'Propriétaire:'
-    );
-    const isTradeRouteFilter = filterSelect && filterSelect.value === 'trade_routes';
-    if (isTradeRouteFilter) {
-      selectedTradeRouteId = null;
-      selectedTradeLineId = null;
-      if (filterManager && typeof filterManager.setTradeRouteSelection === 'function') {
-        filterManager.setTradeRouteSelection(null);
-      }
-      if (filterManager && typeof filterManager.setTradeLineSelection === 'function') {
-        filterManager.setTradeLineSelection(null);
-      }
-      setTradeRouteInfoMode(true);
-      renderTradeRoutesList(info.id);
-      renderTradeLinesList(info.id);
-      if (filterManager) filterManager.applyFilter('trade_routes');
-      return;
-    }
-    setTradeRouteInfoMode(false);
-    if (titleSubtitlesSection) titleSubtitlesSection.style.display = 'none';
-    setLabeledLine(
-      infoReligionLine,
-      'Religion de la population :',
-      info.religion_pop_id ? `${religionMap[info.religion_pop_id]?.name || ''}` : ''
-    );
-    setLabeledLine(
-      infoCultureLine,
-      'Culture:',
-      info.culture_id ? `${cultureMapInfo[info.culture_id]?.name || ''}` : ''
-    );
-    setFeudalTable(feudalSection, infoFeudalBody, info);
-    const sancts = sanctuaryMap[id] || [];
-    const buildings = [];
-    sancts.forEach(s => {
-      const rname = religionMap[s.religion_id]?.name || '';
-      const isActive = info.religion_pop_id && String(info.religion_pop_id) === String(s.religion_id);
-      buildings.push(`Sanctuaire: ${rname} (${isActive ? 'actif' : 'inactif'})`);
-    });
-    if (info.priory_religion_id) buildings.push(`Prieuré: ${religionMap[info.priory_religion_id]?.name || ''}`);
-    if (info.church_religion_id) buildings.push(`Église: ${religionMap[info.church_religion_id]?.name || ''}`);
-    if (info.cathedral_religion_id) buildings.push(`Cathédrale: ${religionMap[info.cathedral_religion_id]?.name || ''}`);
-    setList(religiousSection, infoReligiousList, buildings);
-    const ownedCanonicals = (canonicalDependents[id] || []).map(cid => ({ id: cid }));
-    setBaronyList(canonicalOwnedSection, canonicalOwnedList, ownedCanonicals);
-    const parentCanonicals = (canonicalParents[id] || [])
-      .filter(pid => pid !== id)
-      .map(pid => ({ id: pid }));
-    setBaronyList(canonicalParentSection, canonicalParentList, parentCanonicals);
-    if (filterManager && filterSelect && filterSelect.value === 'distance') {
-      filterManager.applyFilter('distance');
-    }
+    return getInfoPanelController().handleSelect(id);
   }
 
   async function fetchData() {
@@ -2025,7 +1543,6 @@
       finalizeSeigneurTitleMap(seigneurToMarquisate);
       finalizeSeigneurTitleMap(seigneurToArchduchy);
       finalizeSeigneurTitleMap(seigneurToEmpire);
-      refreshTitleConfig();
       baronyAdjacency = {};
       connections.forEach(c => {
         const dist = parseInt(c.distance, 10) || 1;
@@ -2122,9 +1639,9 @@
     });
     baronyMeta = {};
     baronyLookup = {};
-    baronies.forEach(b => { baronyMeta[b.id] = b; baronyLookup[b.id] = b; });
+    currentViewModel.baronies.list.forEach(b => { baronyMeta[b.id] = b; baronyLookup[b.id] = b; });
     seigneurMap = {};
-    seigneurs.forEach(s => { seigneurMap[s.id] = s; });
+    currentViewModel.seigneurs.list.forEach(s => { seigneurMap[s.id] = s; });
     religionMap = {};
     religions.forEach(r => { religionMap[r.id] = r; });
     cultureMapInfo = {};
@@ -2157,7 +1674,6 @@
     finalizeSeigneurTitleMap(seigneurToMarquisate);
     finalizeSeigneurTitleMap(seigneurToArchduchy);
     finalizeSeigneurTitleMap(seigneurToEmpire);
-    refreshTitleConfig();
     canonicalLandMap = {};
     canonicalParents = {};
     canonicalLands.forEach(cl => {

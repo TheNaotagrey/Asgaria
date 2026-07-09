@@ -226,6 +226,226 @@
       if (tradeRoutesSection) tradeRoutesSection.style.display = active ? 'block' : 'none';
     }
 
+    function restoreDefaultTitlePanelLayout() {
+      const { defaultFeudalSectionTitle = 'Hiérarchie féodale', defaultFeudalHeaders = [] } = state();
+      const feudalSection = getElement('feudalSection', 'feudalSection');
+      const infoFeudalTable = getElement('infoFeudalTable', 'infoFeudalTable');
+      const infoDuchyPietyTable = getElement('infoDuchyPietyTable', 'infoDuchyPietyTable');
+      const infoDuchyPietyBody = getElement('infoDuchyPietyBody', 'infoDuchyPietyBody');
+      if (!feudalSection || !infoFeudalTable || !infoDuchyPietyTable || !infoDuchyPietyBody) return;
+      const heading = feudalSection.querySelector('h3');
+      if (heading) heading.textContent = defaultFeudalSectionTitle;
+      const headers = infoFeudalTable.querySelectorAll('thead th');
+      defaultFeudalHeaders.forEach((label, index) => {
+        if (headers[index]) headers[index].textContent = label;
+      });
+      infoDuchyPietyBody.innerHTML = '';
+      infoDuchyPietyTable.style.display = 'none';
+      infoFeudalTable.style.display = '';
+      infoFeudalTable.classList.remove('hide-dejure-column');
+    }
+
+    function setTitleHierarchyTable(section, tbody, rankKey, titleInfo, mode) {
+      const { titleTypeConfig = {} } = state();
+      const infoFeudalTable = getElement('infoFeudalTable', 'infoFeudalTable');
+      if (!section || !tbody) return;
+      tbody.innerHTML = '';
+      const result = actions.getTitleHierarchyRows?.(rankKey, titleInfo, mode) || {};
+      const rows = result.rows || [];
+      if (infoFeudalTable) {
+        infoFeudalTable.classList.toggle('hide-dejure-column', !result.hasDejureData);
+      }
+      if (!rows.length) {
+        section.style.display = 'none';
+        return;
+      }
+
+      section.style.display = 'block';
+      rows.forEach(row => {
+        const tr = document.createElement('tr');
+        const levelCell = document.createElement('td');
+        const strong = document.createElement('strong');
+        strong.textContent = titleTypeConfig[row.rankKey]?.label || 'Titre';
+        levelCell.appendChild(strong);
+        const dejureCell = document.createElement('td');
+        if (row.dejureId) {
+          dejureCell.appendChild(createTitleButton(row.rankKey, row.dejureId, { mode: 'dejure', forceFilterMode: 'dejure' }));
+        }
+        const defactoCell = document.createElement('td');
+        if (row.defactoId) {
+          defactoCell.appendChild(createTitleButton(row.rankKey, row.defactoId, { mode: 'defacto', forceFilterMode: 'defacto' }));
+        }
+        tr.appendChild(levelCell);
+        tr.appendChild(dejureCell);
+        tr.appendChild(defactoCell);
+        tbody.appendChild(tr);
+      });
+    }
+
+    function setFeudalTable(section, tbody, rows = []) {
+      const infoFeudalTable = getElement('infoFeudalTable', 'infoFeudalTable');
+      if (!section || !tbody) return;
+      if (infoFeudalTable) infoFeudalTable.classList.remove('hide-dejure-column');
+      tbody.innerHTML = '';
+      const filteredRows = (rows || []).filter(row => row && (row.dejureId || row.defactoId));
+      if (!filteredRows.length) {
+        section.style.display = 'none';
+        return;
+      }
+
+      section.style.display = 'block';
+      filteredRows.forEach(row => {
+        const tr = document.createElement('tr');
+        const levelCell = document.createElement('td');
+        const strong = document.createElement('strong');
+        strong.textContent = row.level;
+        levelCell.appendChild(strong);
+        const dejureCell = document.createElement('td');
+        if (row.dejureId) {
+          dejureCell.appendChild(createTitleButton(row.rankKey, row.dejureId, { mode: 'dejure', forceFilterMode: 'dejure' }));
+        }
+        const defactoCell = document.createElement('td');
+        if (row.defactoId) {
+          defactoCell.appendChild(createTitleButton(row.rankKey, row.defactoId, { mode: 'defacto', forceFilterMode: 'defacto' }));
+        }
+        tr.appendChild(levelCell);
+        tr.appendChild(dejureCell);
+        tr.appendChild(defactoCell);
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderDuchyPietyRankingPanel(duchyId, duchyName) {
+      const feudalSection = getElement('feudalSection', 'feudalSection');
+      const infoFeudalTable = getElement('infoFeudalTable', 'infoFeudalTable');
+      const infoDuchyPietyTable = getElement('infoDuchyPietyTable', 'infoDuchyPietyTable');
+      const infoDuchyPietyBody = getElement('infoDuchyPietyBody', 'infoDuchyPietyBody');
+      const baronyTitle = getElement('baronyTitle', 'baronyTitle');
+      if (!feudalSection || !infoFeudalTable || !infoDuchyPietyTable || !infoDuchyPietyBody) return;
+      const heading = feudalSection.querySelector('h3');
+      if (heading) heading.textContent = 'Classement de piété ducal';
+      feudalSection.style.display = 'block';
+      infoFeudalTable.style.display = 'none';
+      infoDuchyPietyTable.style.display = '';
+      infoDuchyPietyBody.innerHTML = '';
+      const rows = actions.getDuchyPietyRows?.(duchyId) || [];
+
+      if (!rows.length) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 2;
+        td.textContent = 'Aucune donnée';
+        tr.appendChild(td);
+        infoDuchyPietyBody.appendChild(tr);
+      } else {
+        rows.forEach(stat => {
+          const tr = document.createElement('tr');
+          const religionCell = document.createElement('td');
+          religionCell.textContent = stat.religionName;
+          const pointsCell = document.createElement('td');
+          const pointsSpan = document.createElement('span');
+          pointsSpan.className = 'tooltip';
+          pointsSpan.textContent = stat.pointsLabel;
+          actions.attachFloatingTooltip?.(pointsSpan, stat.tooltipRows || []);
+          pointsCell.appendChild(pointsSpan);
+          tr.appendChild(religionCell);
+          tr.appendChild(pointsCell);
+          infoDuchyPietyBody.appendChild(tr);
+        });
+      }
+      if (baronyTitle) baronyTitle.textContent = `Duché de ${duchyName || ''}`;
+    }
+
+    function showTitleInfo(rankKey, titleId, mode = 'dejure', options = {}) {
+      const { forceFilterMode = null } = options;
+      const titleInfo = actions.getTitleMap?.(rankKey)?.[titleId];
+      const infoPanel = getElement('infoPanel', 'infoPanel');
+      if (!titleInfo || !infoPanel) return;
+      const { activeFilter = '', titleTypeConfig = {} } = state();
+      const activeTitleFilter = actions.getTitleFilterInfo?.(activeFilter);
+      const targetMode = actions.getTargetTitleMode?.(forceFilterMode) || mode;
+      const keepDuchyPietyFilter =
+        activeTitleFilter?.infoMode === 'duchy_piety_ranking' &&
+        rankKey === 'duchy' &&
+        (targetMode || mode) === 'dejure';
+      const targetFilterValue = keepDuchyPietyFilter
+        ? 'duchy_piety_ranking'
+        : actions.getTitleFilterValue?.(rankKey, targetMode);
+
+      actions.setSelectedTitle?.({ rankKey, id: titleId, mode: targetMode || mode });
+      if (targetFilterValue && activeFilter !== targetFilterValue) {
+        actions.setFilterValue?.(targetFilterValue);
+      }
+
+      hideSeigneurInfo();
+      hideTradeRoutePanel();
+      const seaInfoPanel = getElement('seaInfoPanel', 'seaInfoPanel');
+      if (seaInfoPanel) seaInfoPanel.style.display = 'none';
+      infoPanel.style.display = 'block';
+      const rankLabel = titleTypeConfig[rankKey]?.label || 'Titre';
+      restoreDefaultTitlePanelLayout();
+
+      const baronyTitle = getElement('baronyTitle', 'baronyTitle');
+      const infoOwnerLine = getElement('infoOwnerLine', 'infoOwnerLine');
+      const infoReligionLine = getElement('infoReligionLine', 'infoReligionLine');
+      const infoCultureLine = getElement('infoCultureLine', 'infoCultureLine');
+      const tradeRoutesSection = getElement('tradeRoutesSection', 'tradeRoutesSection');
+      const religiousSection = getElement('religiousSection', 'religiousBuildingsSection');
+      const canonicalOwnedSection = getElement('canonicalOwnedSection', 'canonicalOwnedSection');
+      const canonicalParentSection = getElement('canonicalParentSection', 'canonicalParentSection');
+      const titleSubtitlesSection = getElement('titleSubtitlesSection', 'titleSubtitlesSection');
+      const titleSubtitlesList = getElement('titleSubtitlesList', 'titleSubtitlesList');
+      const titleSubtitlesHeading = titleSubtitlesSection?.querySelector('h3') || null;
+      const feudalSection = getElement('feudalSection', 'feudalSection');
+      const infoFeudalBody = getElement('infoFeudalBody', 'infoFeudalBody');
+
+      if (baronyTitle) baronyTitle.textContent = `${rankLabel}: ${titleInfo.name || ''}`;
+      setSeigneurLine(infoOwnerLine, titleInfo.seigneur_id, 'Détenteur:');
+      if (infoReligionLine) infoReligionLine.style.display = 'none';
+      if (infoCultureLine) infoCultureLine.style.display = 'none';
+      if (tradeRoutesSection) tradeRoutesSection.style.display = 'none';
+      if (religiousSection) religiousSection.style.display = 'none';
+      if (canonicalOwnedSection) canonicalOwnedSection.style.display = 'none';
+      if (canonicalParentSection) canonicalParentSection.style.display = 'none';
+
+      const currentTitleFilter = actions.getTitleFilterInfo?.(state().activeFilter);
+      const isDuchyPietyPanel = currentTitleFilter?.infoMode === 'duchy_piety_ranking' && rankKey === 'duchy' && (targetMode || mode) === 'dejure';
+      if (isDuchyPietyPanel) {
+        if (infoOwnerLine) infoOwnerLine.style.display = 'none';
+        if (titleSubtitlesSection) titleSubtitlesSection.style.display = 'none';
+        renderDuchyPietyRankingPanel(titleInfo.id, titleInfo.name || '');
+        actions.syncTitleSelectionHighlight?.();
+        return;
+      }
+
+      setTitleHierarchyTable(feudalSection, infoFeudalBody, rankKey, titleInfo, mode);
+
+      if (titleSubtitlesSection && titleSubtitlesList) {
+        titleSubtitlesList.innerHTML = '';
+        const subtitles = actions.getImmediateSubtitles?.(rankKey, titleId, targetMode || mode) || [];
+        if (titleSubtitlesHeading) {
+          titleSubtitlesHeading.textContent = actions.getSubtitleHeading?.(rankKey, targetMode || mode) || 'Sous-titres:';
+        }
+        if (subtitles.length > 0) {
+          titleSubtitlesSection.style.display = 'block';
+          subtitles.forEach(item => {
+            const li = document.createElement('li');
+            if (item.rankKey === 'barony') {
+              li.appendChild(createBaronyButton(item.id));
+            } else {
+              const childLabel = titleTypeConfig[item.rankKey]?.label || 'Titre';
+              li.appendChild(document.createTextNode(`${childLabel} de `));
+              li.appendChild(createTitleButton(item.rankKey, item.id, { mode: targetMode || mode }));
+            }
+            titleSubtitlesList.appendChild(li);
+          });
+        } else {
+          titleSubtitlesSection.style.display = 'none';
+        }
+      }
+      actions.syncTitleSelectionHighlight?.();
+    }
+
     function renderGenericEntityInfo(entity) {
       const infoPanel = getElement('infoPanel', 'infoPanel');
       if (!entity || !infoPanel) return;
@@ -277,16 +497,128 @@
         return;
       }
       if (titleHierarchy.includes(entity._type)) {
-        actions.showTitleInfo?.(entity._type, entity.id, options.mode || entity._selectionMode || 'dejure', {
+        showTitleInfo(entity._type, entity.id, options.mode || entity._selectionMode || 'dejure', {
           forceFilterMode: options.mode || entity._selectionMode || 'dejure'
         });
         return;
       }
-      if (entity._type === 'seaZone' || entity._type === 'barony' || baronyMeta[entity.id]) {
+      if (entity._type === 'seaZone' || entity._type === 'barony' || (!entity._type && baronyMeta[entity.id])) {
         actions.handleSelect?.(entity.id);
         return;
       }
       renderGenericEntityInfo(entity);
+    }
+
+    function handleSelect(id) {
+      const {
+        activeFilter = '',
+        baronyMeta = {},
+        canonicalDependents = {},
+        canonicalParents = {},
+        cultureMapInfo = {},
+        mapMode = 'land',
+        religionMap = {},
+        sanctuaryMap = {},
+        seigneurMap = {}
+      } = state();
+      const infoPanel = getElement('infoPanel', 'infoPanel');
+      const seaInfoPanel = getElement('seaInfoPanel', 'seaInfoPanel');
+      const seaInfoId = getElement('seaInfoId', 'seaInfoId');
+      const seaInfoName = getElement('seaInfoName', 'seaInfoName');
+      const seaInfoSeigneur = getElement('seaInfoSeigneur', 'seaInfoSeigneur');
+      const baronyTitle = getElement('baronyTitle', 'baronyTitle');
+      const infoOwnerLine = getElement('infoOwnerLine', 'infoOwnerLine');
+      const infoReligionLine = getElement('infoReligionLine', 'infoReligionLine');
+      const infoCultureLine = getElement('infoCultureLine', 'infoCultureLine');
+      const feudalSection = getElement('feudalSection', 'feudalSection');
+      const infoFeudalBody = getElement('infoFeudalBody', 'infoFeudalBody');
+      const religiousSection = getElement('religiousSection', 'religiousBuildingsSection');
+      const infoReligiousList = getElement('infoReligiousList', 'infoReligiousList');
+      const canonicalOwnedSection = getElement('canonicalOwnedSection', 'canonicalOwnedSection');
+      const canonicalOwnedList = getElement('canonicalOwnedList', 'canonicalOwnedList');
+      const canonicalParentSection = getElement('canonicalParentSection', 'canonicalParentSection');
+      const canonicalParentList = getElement('canonicalParentList', 'canonicalParentList');
+      const titleSubtitlesSection = getElement('titleSubtitlesSection', 'titleSubtitlesSection');
+
+      hideSeigneurInfo();
+      if (!actions.shouldSuppressTradeRoutePanelHide?.()) {
+        hideTradeRoutePanel();
+      }
+      if (mapMode === 'sea') {
+        if (!id) {
+          if (seaInfoPanel) seaInfoPanel.style.display = 'none';
+          return;
+        }
+        const info = baronyMeta[id] || {};
+        if (seaInfoPanel) seaInfoPanel.style.display = 'block';
+        if (infoPanel) infoPanel.style.display = 'none';
+        if (seaInfoId) seaInfoId.textContent = info.id || '';
+        if (seaInfoName) seaInfoName.textContent = info.name || '';
+        if (seaInfoSeigneur) {
+          seaInfoSeigneur.innerHTML = '';
+          if (info.seigneur_id && seigneurMap[info.seigneur_id]) {
+            seaInfoSeigneur.appendChild(createSeigneurButton(info.seigneur_id));
+          }
+        }
+        if (activeFilter === 'distance' || activeFilter === 'baronies') {
+          actions.applyFilter?.(activeFilter);
+        }
+        return;
+      }
+      if (!id) {
+        if (infoPanel) infoPanel.style.display = 'none';
+        return;
+      }
+      const info = baronyMeta[id] || {};
+      actions.clearSelectedTitle?.();
+      actions.restoreDefaultTitlePanelLayout?.();
+      if (infoPanel) infoPanel.style.display = 'block';
+      if (seaInfoPanel) seaInfoPanel.style.display = 'none';
+      if (baronyTitle) {
+        const vacantLabel = info.vacant ? ' (vacante)' : '';
+        baronyTitle.textContent = `Baronnie: ${info.name || ''}${vacantLabel} (#${info.id || ''})`;
+      }
+      setSeigneurLine(infoOwnerLine, info.seigneur_id, 'Propriétaire:');
+      if (activeFilter === 'trade_routes') {
+        actions.clearTradeSelections?.();
+        setTradeRouteInfoMode(true);
+        actions.renderTradeRoutesList?.(info.id);
+        actions.renderTradeLinesList?.(info.id);
+        actions.applyFilter?.('trade_routes');
+        return;
+      }
+      setTradeRouteInfoMode(false);
+      if (titleSubtitlesSection) titleSubtitlesSection.style.display = 'none';
+      setLabeledLine(
+        infoReligionLine,
+        'Religion de la population :',
+        info.religion_pop_id ? `${religionMap[info.religion_pop_id]?.name || ''}` : ''
+      );
+      setLabeledLine(
+        infoCultureLine,
+        'Culture:',
+        info.culture_id ? `${cultureMapInfo[info.culture_id]?.name || ''}` : ''
+      );
+      setFeudalTable(feudalSection, infoFeudalBody, actions.getBaronyFeudalRows?.(info) || []);
+      const buildings = [];
+      (sanctuaryMap[id] || []).forEach(sanctuary => {
+        const rname = religionMap[sanctuary.religion_id]?.name || '';
+        const isActive = info.religion_pop_id && String(info.religion_pop_id) === String(sanctuary.religion_id);
+        buildings.push(`Sanctuaire: ${rname} (${isActive ? 'actif' : 'inactif'})`);
+      });
+      if (info.priory_religion_id) buildings.push(`Prieuré: ${religionMap[info.priory_religion_id]?.name || ''}`);
+      if (info.church_religion_id) buildings.push(`Église: ${religionMap[info.church_religion_id]?.name || ''}`);
+      if (info.cathedral_religion_id) buildings.push(`Cathédrale: ${religionMap[info.cathedral_religion_id]?.name || ''}`);
+      setList(religiousSection, infoReligiousList, buildings);
+      const ownedCanonicals = (canonicalDependents[id] || []).map(cid => ({ id: cid }));
+      setBaronyList(canonicalOwnedSection, canonicalOwnedList, ownedCanonicals);
+      const parentCanonicals = (canonicalParents[id] || [])
+        .filter(pid => pid !== id)
+        .map(pid => ({ id: pid }));
+      setBaronyList(canonicalParentSection, canonicalParentList, parentCanonicals);
+      if (activeFilter === 'distance') {
+        actions.applyFilter?.('distance');
+      }
     }
 
     function showSeigneurInfo(seigneurId) {
@@ -336,16 +668,16 @@
       setSeigneurLine(seigneurOverlordLine, seigneur.overlord_id, 'Suzerain:');
 
       const titles = [];
-      (seigneurToEmpire[seigneurId] || []).forEach(id => { if (id && empireMap[id]) titles.push({ rankKey: 'empire', id, mode: 'dejure' }); });
-      (seigneurToKingdom[seigneurId] || []).forEach(id => { if (id && kingdomMap[id]) titles.push({ rankKey: 'kingdom', id, mode: 'dejure' }); });
-      (seigneurToArchduchy[seigneurId] || []).forEach(id => { if (id && archduchyMap[id]) titles.push({ rankKey: 'archduchy', id, mode: 'dejure' }); });
-      (seigneurToDuchy[seigneurId] || []).forEach(id => { if (id && duchyMap[id]) titles.push({ rankKey: 'duchy', id, mode: 'dejure' }); });
-      (seigneurToMarquisate[seigneurId] || []).forEach(id => { if (id && marquisateMap[id]) titles.push({ rankKey: 'marquisate', id, mode: 'dejure' }); });
-      (seigneurToCounty[seigneurId] || []).forEach(id => { if (id && countyMap[id]) titles.push({ rankKey: 'county', id, mode: 'dejure' }); });
-      (seigneurToViscounty[seigneurId] || []).forEach(id => { if (id && viscountyMap[id]) titles.push({ rankKey: 'viscounty', id, mode: 'dejure' }); });
-      const ownedBaronies = Object.values(baronyLookup)
-        .filter(b => b.seigneur_id === seigneurId)
-        .map(b => ({ id: b.id, name: b.name }));
+      (seigneurToEmpire[seigneurId] || []).forEach(id => { if (id && empireMap[id]) titles.push({ rankKey: 'empire', id, mode: 'defacto' }); });
+      (seigneurToKingdom[seigneurId] || []).forEach(id => { if (id && kingdomMap[id]) titles.push({ rankKey: 'kingdom', id, mode: 'defacto' }); });
+      (seigneurToArchduchy[seigneurId] || []).forEach(id => { if (id && archduchyMap[id]) titles.push({ rankKey: 'archduchy', id, mode: 'defacto' }); });
+      (seigneurToDuchy[seigneurId] || []).forEach(id => { if (id && duchyMap[id]) titles.push({ rankKey: 'duchy', id, mode: 'defacto' }); });
+      (seigneurToMarquisate[seigneurId] || []).forEach(id => { if (id && marquisateMap[id]) titles.push({ rankKey: 'marquisate', id, mode: 'defacto' }); });
+      (seigneurToCounty[seigneurId] || []).forEach(id => { if (id && countyMap[id]) titles.push({ rankKey: 'county', id, mode: 'defacto' }); });
+      (seigneurToViscounty[seigneurId] || []).forEach(id => { if (id && viscountyMap[id]) titles.push({ rankKey: 'viscounty', id, mode: 'defacto' }); });
+      const ownedBaronies = Array.isArray(seigneur.titles?.barony)
+        ? seigneur.titles.barony
+        : Object.values(baronyLookup).filter(b => String(b.seigneur_id) === String(seigneurId));
       setTitleList(seigneurTitlesSection, seigneurTitlesList, titles, ownedBaronies);
 
       const vassals = Object.values(seigneurMap)
@@ -361,8 +693,11 @@
       createTitleButton,
       hideSeigneurInfo,
       hideTradeRoutePanel,
+      handleSelect,
+      renderDuchyPietyRankingPanel,
       renderGenericEntityInfo,
       renderSelectedEntity,
+      restoreDefaultTitlePanelLayout,
       setBaronyList,
       setLabeledLine,
       setLine,
@@ -370,8 +705,11 @@
       setSeigneurLine,
       setSeigneurList,
       setTitleList,
+      setFeudalTable,
+      setTitleHierarchyTable,
       setTradeRouteInfoMode,
       showBaronyDetails,
+      showTitleInfo,
       showSeigneurInfo
     };
   }
