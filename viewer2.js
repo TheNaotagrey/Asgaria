@@ -844,7 +844,8 @@
 
   function getBaronyTitleId(baronyInfo, rankKey, mode = 'dejure') {
     if (!baronyInfo?.id) return null;
-    return getVm()?.getBaronyTitleId?.(baronyInfo.id, rankKey, mode) || null;
+    const title = getVm()?.getBaronyTitleId?.(baronyInfo.id, rankKey, mode) || null;
+    return title && typeof title === 'object' ? title.id : title;
   }
 
   function getBaroniesForTitle(rankKey, titleId, mode = 'dejure') {

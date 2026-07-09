@@ -657,6 +657,13 @@ test('index2 barony feudal table is prepared from ViewModel and rendered by mapI
   assert.strictEqual(getBaronyFeudalRowsBody.includes('vmBarony.defacto?.archduchy?.id'), true);
 });
 
+test('index2 title hierarchy rows pass title ids to the panel renderer', () => {
+  const viewerSource = fs.readFileSync(path.join(__dirname, '..', 'viewer2.js'), 'utf8');
+  const getBaronyTitleIdBody = viewerSource.match(/function getBaronyTitleId\([^)]*\) \{([\s\S]*?)\n  \}/)?.[1] || '';
+
+  assert.strictEqual(getBaronyTitleIdBody.includes("typeof title === 'object' ? title.id : title"), true);
+});
+
 test('mapFilters2 exposes straightforward filters through the new click selection contract', () => {
   const registry = mapFilters2.createRegistry();
   const expectedIds = [
