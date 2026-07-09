@@ -2,8 +2,8 @@
   const API_BASE = location.origin === 'null' ? 'http://localhost:3000' : '';
   const params = new URLSearchParams(location.search);
   const mapMode = params.get('mode') === 'sea' ? 'sea' : 'land';
-  const PIXEL_CHUNK_SIZE = 50;
-  const MAX_PIXEL_REQUESTS = 3;
+  const PIXEL_CHUNK_SIZE = 25;
+  const MAX_PIXEL_REQUESTS = 2;
   const pixelEndpoint = mapMode === 'sea' ? '/api/maritime_zone_pixels' : '/api/barony_pixels';
   const entityEndpoint = mapMode === 'sea' ? '/api/maritime_zones' : '/api/baronies';
 

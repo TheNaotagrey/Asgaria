@@ -1,0 +1,9 @@
+# .cpanel.yml
+---
+deployment:
+  tasks:
+    - export DEPLOYPATH=/home/wkkgb451/repositories/Asgaria
+    - /usr/bin/git pull
+    - cd $DEPLOYPATH
+    - npm install
+    - touch tmp/restart.txt
