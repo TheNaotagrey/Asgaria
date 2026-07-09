@@ -689,8 +689,12 @@ test('index2 barony feudal table is prepared from ViewModel and rendered by mapI
 test('index2 title hierarchy rows pass title ids to the panel renderer', () => {
   const viewerSource = fs.readFileSync(path.join(__dirname, '..', 'viewer2.js'), 'utf8');
   const getBaronyTitleIdBody = viewerSource.match(/function getBaronyTitleId\([^)]*\) \{([\s\S]*?)\n  \}/)?.[1] || '';
+  const getTitleHierarchyRowsBody = viewerSource.match(/function getTitleHierarchyRows\([^)]*\) \{([\s\S]*?)\n  \}/)?.[1] || '';
 
-  assert.strictEqual(getBaronyTitleIdBody.includes("typeof title === 'object' ? title.id : title"), true);
+  assert.strictEqual(viewerSource.includes('function normalizeTitleId'), true);
+  assert.strictEqual(getBaronyTitleIdBody.includes('return normalizeTitleId(title);'), true);
+  assert.strictEqual(getTitleHierarchyRowsBody.includes('getDeJureAncestors'), true);
+  assert.strictEqual(getTitleHierarchyRowsBody.includes("getBaronyTitleId(sampleBarony, parentRank, 'dejure')"), false);
 });
 
 test('mapFilters2 exposes straightforward filters through the new click selection contract', () => {

@@ -842,10 +842,16 @@
     return getInfoPanelController().setBaronyList(section, list, items);
   }
 
+  function normalizeTitleId(title) {
+    if (!title) return null;
+    if (typeof title === 'object') return normalizeTitleId(title.id);
+    return title;
+  }
+
   function getBaronyTitleId(baronyInfo, rankKey, mode = 'dejure') {
     if (!baronyInfo?.id) return null;
     const title = getVm()?.getBaronyTitleId?.(baronyInfo.id, rankKey, mode) || null;
-    return title && typeof title === 'object' ? title.id : title;
+    return normalizeTitleId(title);
   }
 
   function getBaroniesForTitle(rankKey, titleId, mode = 'dejure') {
@@ -885,15 +891,19 @@
     }
     const sampleBaronyId = getBaroniesForTitle(rankKey, titleInfo.id, mode)[0];
     const sampleBarony = sampleBaronyId ? baronyMeta[sampleBaronyId] : null;
-    if (!sampleBarony) {
-      return { rows: [], hasDejureData: false };
-    }
+    const dejureAncestors = getVm()?.getDeJureAncestors?.(rankKey, titleInfo.id) || [];
+    const dejureByRank = dejureAncestors.reduce((acc, ancestor) => {
+      if (ancestor?._type && acc[ancestor._type] === undefined) {
+        acc[ancestor._type] = normalizeTitleId(ancestor);
+      }
+      return acc;
+    }, {});
 
     const rows = [];
     for (let i = currentIndex + 1; i < titleHierarchy.length; i++) {
       const parentRank = titleHierarchy[i];
-      const dejureId = getBaronyTitleId(sampleBarony, parentRank, 'dejure');
-      const defactoId = getBaronyTitleId(sampleBarony, parentRank, 'defacto');
+      const dejureId = dejureByRank[parentRank] || null;
+      const defactoId = sampleBarony ? getBaronyTitleId(sampleBarony, parentRank, 'defacto') : null;
       if (!dejureId && !defactoId) continue;
       rows.push({ rankKey: parentRank, dejureId, defactoId });
     }
