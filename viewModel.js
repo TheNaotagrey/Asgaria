@@ -15,7 +15,9 @@
     kingdoms: { aliases: ['kingdoms', 'kingdomMap'], type: 'kingdom' },
     empires: { aliases: ['empires', 'empireMap'], type: 'empire' },
     sanctuaries: { aliases: ['sanctuaries', 'sanctuaryMap'], type: 'sanctuary' },
-    canonicalLands: { aliases: ['canonicalLands', 'canonicalLandMap'], type: 'canonicalLand' }
+    canonicalLands: { aliases: ['canonicalLands', 'canonicalLandMap'], type: 'canonicalLand' },
+    tradeRoutes: { aliases: ['tradeRoutes', 'trade_routes'], type: 'tradeRoute' },
+    tradeLines: { aliases: ['tradeLines', 'trade_lines'], type: 'tradeLine' }
   };
 
   const COLLECTION_BY_TYPE = Object.keys(ENTITY_CONFIG).reduce((acc, collectionName) => {
@@ -78,8 +80,14 @@
 
     if (Array.isArray(source)) {
       source.forEach((item) => {
-        if (!item || item.id === undefined || item.id === null) return;
-        const id = toId(item.id);
+        if (!item) return;
+        const rawId = item.id !== undefined && item.id !== null
+          ? item.id
+          : (type === 'canonicalLand' && item.barony_id !== undefined && item.canonical_barony_id !== undefined
+            ? `${item.barony_id}:${item.canonical_barony_id}`
+            : null);
+        if (rawId === null) return;
+        const id = toId(rawId);
         const obj = { ...item, id, _type: type };
         list.push(obj);
         byId[id] = obj;
@@ -139,6 +147,11 @@
         title.defactoParent = null;
         title.defactoChildren = [];
         title.topDefactoParent = null;
+        if (rank === 'duchy') {
+          title.pietyStatsByReligion = {};
+          title.duchyPietyWinnerId = null;
+          title.duchyPietyWinnerReligion = null;
+        }
       });
     });
 
@@ -160,6 +173,11 @@
       b.canonicalFor = [];
       b.sanctuaries = [];
       b.connectedBaronies = [];
+      b.tradeRoutes = [];
+      b.tradeLines = [];
+      b.landTradeBaronies = [];
+      b.seaTradeBaronies = [];
+      b.distanceToSelected = -1;
     });
   }
 
@@ -1133,6 +1151,7 @@
     detectDeJureCycles(vm);
     linkSpecialRelations(vm, options);
     linkBaronyConnections(vm, rawData, options);
+    linkTradeRelations(vm);
 
     if (options.includeDefacto) {
       computeDefactoHierarchy(vm);
@@ -1149,7 +1168,7 @@
     vm.getEntity = function getEntity(rankOrType, id) {
       if (!rankOrType) return null;
       const normalizedType = String(rankOrType).toLowerCase();
-      const collectionName = Object.keys(ENTITY_CONFIG).find((key) => ENTITY_CONFIG[key].type === normalizedType);
+      const collectionName = Object.keys(ENTITY_CONFIG).find((key) => ENTITY_CONFIG[key].type.toLowerCase() === normalizedType);
       if (!collectionName || !vm[collectionName]) return null;
       return vm[collectionName].byId[toId(id)] || null;
     };
@@ -1275,7 +1294,141 @@
       return entity?.color || fallback;
     };
 
+    function clearBaronyDistances() {
+      vm.baronies.list.forEach((barony) => {
+        barony.distanceToSelected = -1;
+      });
+    }
+
+    vm.applyDistancesToBaronies = function applyDistancesToBaronies(fromBaronyId) {
+      clearBaronyDistances();
+      const start = vm.getEntity('barony', fromBaronyId);
+      if (!start) return {};
+
+      const distanceMap = {};
+      const queue = [{ barony: start, dist: 0 }];
+      distanceMap[start.id] = 0;
+      start.distanceToSelected = 0;
+
+      while (queue.length) {
+        let bestIndex = 0;
+        for (let i = 1; i < queue.length; i += 1) {
+          if (queue[i].dist < queue[bestIndex].dist) bestIndex = i;
+        }
+        const current = queue.splice(bestIndex, 1)[0];
+        if (!current || current.dist !== distanceMap[current.barony.id]) continue;
+
+        (current.barony.connectedBaronies || []).forEach((neighbor) => {
+          const target = vm.getEntity('barony', neighbor.id);
+          if (!target) return;
+          const parsedDistance = parseInt(neighbor.distance, 10);
+          const weight = Number.isFinite(parsedDistance) && parsedDistance > 0 ? parsedDistance : 1;
+          const nextDist = current.dist + weight;
+          if (distanceMap[target.id] === undefined || nextDist < distanceMap[target.id]) {
+            distanceMap[target.id] = nextDist;
+            target.distanceToSelected = nextDist;
+            queue.push({ barony: target, dist: nextDist });
+          }
+        });
+      }
+
+      return distanceMap;
+    };
+
+    vm.getSeigneurRankKey = function getSeigneurRankKey(seigneurId) {
+      const seigneur = vm.getEntity('seigneur', seigneurId);
+      return seigneur?.highestTitleRank || 'barony';
+    };
+
+    computeDuchyPiety(vm);
+
     return vm;
+  }
+
+  function normalizeTradePath(raw) {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw.map(val => parseInt(val, 10)).filter(Number.isFinite);
+    if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed.map(val => parseInt(val, 10)).filter(Number.isFinite);
+      } catch (err) {
+        const matches = raw.match(/-?\d+/g);
+        return matches ? matches.map(val => parseInt(val, 10)).filter(Number.isFinite) : [];
+      }
+    }
+    return [];
+  }
+
+  function addUniqueBaronyRef(list, barony) {
+    if (!barony || list.some(item => item.id === barony.id)) return;
+    list.push(barony);
+  }
+
+  function linkTradeRelations(vm) {
+    vm.tradeRoutes.list.forEach((route) => {
+      route.path = normalizeTradePath(route.path);
+      route.origin = vm.baronies.byId[toId(route.barony_id_1)] || null;
+      route.destination = vm.baronies.byId[toId(route.barony_id_2)] || null;
+      if (route.origin) route.origin.tradeRoutes.push(route);
+      if (route.destination) route.destination.tradeRoutes.push(route);
+      addUniqueBaronyRef(route.origin?.landTradeBaronies || [], route.destination);
+      addUniqueBaronyRef(route.destination?.landTradeBaronies || [], route.origin);
+    });
+
+    vm.tradeLines.list.forEach((line) => {
+      line.path = normalizeTradePath(line.path);
+      line.origin = vm.baronies.byId[toId(line.barony_id_1)] || null;
+      line.destination = vm.baronies.byId[toId(line.barony_id_2)] || null;
+      if (line.origin) line.origin.tradeLines.push(line);
+      if (line.destination) line.destination.tradeLines.push(line);
+      addUniqueBaronyRef(line.origin?.seaTradeBaronies || [], line.destination);
+      addUniqueBaronyRef(line.destination?.seaTradeBaronies || [], line.origin);
+    });
+  }
+
+  function isDefaultExcludedPietyReligion(vm, religionId) {
+    if (!religionId) return true;
+    const religion = vm.religions.byId[toId(religionId)];
+    if (!religion?.name) return false;
+    return String(religion.name)
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .includes('athe');
+  }
+
+  function computeDuchyPiety(vm) {
+    const piety = global.duchyPiety || (typeof duchyPiety !== 'undefined' ? duchyPiety : null);
+    if (!piety) return;
+    const sanctuaryMap = {};
+    vm.baronies.list.forEach((barony) => {
+      sanctuaryMap[barony.id] = barony.sanctuaries || [];
+    });
+    const stats = piety.computeDuchyPietyStats(
+      {
+        baronyMeta: vm.baronies.byId,
+        sanctuaryMap,
+        seigneurMap: vm.seigneurs.byId,
+        duchyMap: vm.duchies.byId,
+        religionMap: vm.religions.byId
+      },
+      {
+        getDuchyIdForBarony: (barony) => barony?.dejure?.duchy?.id || null,
+        getSeigneurRankKey: (seigneurId) => vm.getSeigneurRankKey(seigneurId),
+        isExcludedReligion: (religionId) => isDefaultExcludedPietyReligion(vm, religionId),
+        includeTieBreakBonus: true
+      }
+    );
+    const winners = piety.buildDuchyPietyWinnersFromStats(stats, vm.religions.byId);
+    vm.duchies.list.forEach((duchy) => {
+      duchy.pietyStatsByReligion = stats[String(duchy.id)] || {};
+      duchy.duchyPietyWinnerId = winners[String(duchy.id)] || null;
+      duchy.duchyPietyWinnerReligion = duchy.duchyPietyWinnerId ? vm.getEntity('religion', duchy.duchyPietyWinnerId) : null;
+    });
+    vm.baronies.list.forEach((barony) => {
+      barony.duchyPietyWinnerReligion = barony.dejure?.duchy?.duchyPietyWinnerReligion || null;
+    });
   }
 
   const api = {

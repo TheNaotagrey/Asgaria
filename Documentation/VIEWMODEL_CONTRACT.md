@@ -17,6 +17,22 @@
   - `seigneur.vassals`
   - `seigneur.baronies`
   - `seigneur.titles`
+- Les relations de baronnie exposent leurs références depuis le ViewModel:
+  - `barony.canonicalLands`
+  - `barony.canonicalFor`
+  - `barony.sanctuaries`
+  - `barony.connectedBaronies`
+  - `barony.distanceToSelected` après application d'une distance dérivée
+- Les routes commerciales et lignes maritimes font partie du ViewModel:
+  - `vm.tradeRoutes.list`, `vm.tradeRoutes.byId`
+  - `vm.tradeLines.list`, `vm.tradeLines.byId`
+  - `barony.tradeRoutes`, `barony.tradeLines`
+  - `barony.landTradeBaronies`, `barony.seaTradeBaronies`
+- La piété ducale est dérivée une seule fois pendant la construction du ViewModel:
+  - `duchy.pietyStatsByReligion`
+  - `duchy.duchyPietyWinnerId`
+  - `duchy.duchyPietyWinnerReligion`
+  - `barony.duchyPietyWinnerReligion`
 
 ## Helpers publics
 
@@ -28,18 +44,29 @@ Les vues et filtres doivent utiliser ces helpers au lieu de reconstruire les hi�
 - `vm.getChildrenForTitle(rankKey, titleId, mode)`
 - `vm.getImmediateSubtitles(rankKey, titleId, mode)`
 - `vm.getColorForBaronyFilter(baronyId, filterKey)`
+- `vm.applyDistancesToBaronies(fromBaronyId)`
+
+Appeler `vm.applyDistancesToBaronies(null)` remet `barony.distanceToSelected` à `-1` pour toutes les baronnies.
 
 ## Règle de rendu
 
-`viewer2.js` garde la logique propre à la page: état, sélection, highlight, changement de filtre et préparation de données.
+`viewer2.js` garde la logique propre à la page: état, sélection, highlight, changement de filtre et orchestration des panneaux.
+
+`mapDataLoader.js` charge les données API, construit le ViewModel et prépare les index techniques partagés par le viewer et le futur éditeur v2.
+
+`mapCanvasRuntime.js` rend la carte et gère le canvas, le pan/zoom, le hit testing, `onMapClick(...)` et `highlightBaronies(...)`. Il ne doit pas contenir le runtime d'application des filtres.
+
+`mapFilterRuntime.js` applique les définitions de filtres au `mapData` courant et produit les `colorMap`, patterns et données de légende.
 
 `mapInfoPanel2.js` rend le DOM des panneaux. Il ne doit pas reconstruire les hiérarchies; il reçoit des références ou des lignes déjà dérivées du ViewModel.
 
-`mapFilters2.js` reste un registre déclaratif de filtres. Les filtres simples doivent lire les références ViewModel, par exemple:
+`mapFilterRegistry.js` reste un registre déclaratif de filtres. Les filtres simples doivent lire les références ViewModel, par exemple:
 
 ```js
 colorForBarony: (barony) => barony.defacto.duchy?.color || null
 ```
+
+Les filtres qui dépendent de la baronnie sélectionnée utilisent `kind: 'baronyBasedOnSelected'`. Le runtime leur passe la baronnie sélectionnée et peut appeler `onSelectBarony(selected, vm)` pour dériver un état temporaire sur le ViewModel, comme les distances. Les routes commerciales utilisent aussi ce type en lisant `barony.landTradeBaronies` et `barony.seaTradeBaronies`.
 
 ## Règle de facto
 

@@ -30,6 +30,44 @@
     return barony || null;
   }
 
+  function hslToRgb(h, s, l) {
+    s /= 100; l /= 100;
+    const k = n => (n + h / 30) % 12;
+    const a = s * Math.min(l, 1 - l);
+    const f = n => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+    return [Math.round(255 * f(0)), Math.round(255 * f(8)), Math.round(255 * f(4))];
+  }
+
+  const tradeRoutePrimaryColor = [36, 163, 33, 102];
+  const tradeRouteLandColor = [255, 106, 6];
+  const tradeRouteSeaColor = [52, 152, 219];
+
+  function getDistanceColorForBarony(barony) {
+    const d = barony?.distanceToSelected;
+    if (d === undefined || d < 0) return null;
+    const hue = (d * 40) % 360;
+    return hslToRgb(hue, 65, 65);
+  }
+
+  function getTradeRouteColorForBarony(barony, selected) {
+    if (!barony || !selected) return null;
+    if (String(barony.id) === String(selected.id)) return tradeRoutePrimaryColor;
+    if ((selected.landTradeBaronies || []).some(target => String(target.id) === String(barony.id))) {
+      return tradeRouteLandColor;
+    }
+    if ((selected.seaTradeBaronies || []).some(target => String(target.id) === String(barony.id))) {
+      return tradeRouteSeaColor;
+    }
+    return null;
+  }
+
+  function getTradeRoutePatternForBarony(barony, selected) {
+    if (!barony || !selected || String(barony.id) === String(selected.id)) return null;
+    const hasLand = (selected.landTradeBaronies || []).some(target => String(target.id) === String(barony.id));
+    const hasSea = (selected.seaTradeBaronies || []).some(target => String(target.id) === String(barony.id));
+    return hasLand && hasSea ? [tradeRouteLandColor, tradeRouteSeaColor] : null;
+  }
+
   function createRegistry() {
     const titleFilter = (rank, mode) => ({
       id: mode === 'defacto' ? `${rank}_defacto` : rank,
@@ -107,15 +145,38 @@
         legendEntityForBarony: (barony) => getVacancyEntity(barony)
       },
       ...TITLE_FILTER_RANKS.flatMap((rank) => [titleFilter(rank, 'dejure'), titleFilter(rank, 'defacto')]),
-      { id: 'distance', kind: 'distance' },
-      { id: 'trade_routes', kind: 'trade_routes' },
+      {
+        id: 'distance',
+        kind: 'baronyBasedOnSelected',
+        straightforward: true,
+        colorForBarony: (barony) => getDistanceColorForBarony(barony),
+        selectEntityForBaronyClick: selectClickedBarony,
+        legendEntityForBarony: () => null,
+        onSelectBarony: (selected, vm) => vm?.applyDistancesToBaronies?.(selected?.id || null)
+      },
+      {
+        id: 'trade_routes',
+        kind: 'baronyBasedOnSelected',
+        straightforward: true,
+        colorForBarony: (barony, selected) => getTradeRouteColorForBarony(barony, selected),
+        patternForBarony: (barony, selected) => getTradeRoutePatternForBarony(barony, selected),
+        selectEntityForBaronyClick: selectClickedBarony,
+        legendEntityForBarony: () => null,
+        legendData: {
+          land: { color: tradeRouteLandColor, name: 'Route (terre)' },
+          sea: { color: tradeRouteSeaColor, name: 'Ligne (mer)' }
+        }
+      },
       { id: 'canonical', kind: 'canonical' },
       { id: 'sanctuary', kind: 'sanctuary' },
       {
         id: 'duchy_piety_ranking',
-        kind: 'duchy_piety_ranking',
+        kind: 'barony',
+        straightforward: true,
         rank: 'duchy',
         mode: 'dejure',
+        colorForBarony: (barony) => barony?.duchyPietyWinnerReligion?.color || null,
+        legendEntityForBarony: (barony) => barony?.duchyPietyWinnerReligion || null,
         selectEntityForBaronyClick: (barony) => barony?.dejure?.duchy || barony
       },
       { id: 'baronies', kind: 'sea_baronies' }
@@ -131,6 +192,6 @@
   }
 
   const api = { createRegistry, getFilterDefinition };
-  global.mapFilters2 = api;
+  global.mapFilterRegistry = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : global);

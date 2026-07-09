@@ -418,7 +418,7 @@
         return;
       }
 
-      setTitleHierarchyTable(feudalSection, infoFeudalBody, rankKey, titleInfo, mode);
+      setTitleHierarchyTable(feudalSection, infoFeudalBody, rankKey, titleInfo, targetMode || mode);
 
       if (titleSubtitlesSection && titleSubtitlesList) {
         titleSubtitlesList.innerHTML = '';
@@ -429,13 +429,14 @@
         if (subtitles.length > 0) {
           titleSubtitlesSection.style.display = 'block';
           subtitles.forEach(item => {
+            const childRank = item?._type || item?.rankKey;
             const li = document.createElement('li');
-            if (item.rankKey === 'barony') {
+            if (childRank === 'barony') {
               li.appendChild(createBaronyButton(item.id));
             } else {
-              const childLabel = titleTypeConfig[item.rankKey]?.label || 'Titre';
+              const childLabel = titleTypeConfig[childRank]?.label || 'Titre';
               li.appendChild(document.createTextNode(`${childLabel} de `));
-              li.appendChild(createTitleButton(item.rankKey, item.id, { mode: targetMode || mode }));
+              li.appendChild(createTitleButton(childRank, item.id, { mode: targetMode || mode }));
             }
             titleSubtitlesList.appendChild(li);
           });
@@ -513,12 +514,9 @@
       const {
         activeFilter = '',
         baronyMeta = {},
-        canonicalDependents = {},
-        canonicalParents = {},
         cultureMapInfo = {},
         mapMode = 'land',
         religionMap = {},
-        sanctuaryMap = {},
         seigneurMap = {}
       } = state();
       const infoPanel = getElement('infoPanel', 'infoPanel');
@@ -601,20 +599,21 @@
       );
       setFeudalTable(feudalSection, infoFeudalBody, actions.getBaronyFeudalRows?.(info) || []);
       const buildings = [];
-      (sanctuaryMap[id] || []).forEach(sanctuary => {
-        const rname = religionMap[sanctuary.religion_id]?.name || '';
-        const isActive = info.religion_pop_id && String(info.religion_pop_id) === String(sanctuary.religion_id);
+      (info.sanctuaries || []).forEach(sanctuary => {
+        const religionId = sanctuary.religion_id || sanctuary.religion?.id;
+        const rname = sanctuary.religion?.name || religionMap[religionId]?.name || '';
+        const isActive = info.religion_pop_id && String(info.religion_pop_id) === String(religionId);
         buildings.push(`Sanctuaire: ${rname} (${isActive ? 'actif' : 'inactif'})`);
       });
       if (info.priory_religion_id) buildings.push(`Prieuré: ${religionMap[info.priory_religion_id]?.name || ''}`);
       if (info.church_religion_id) buildings.push(`Église: ${religionMap[info.church_religion_id]?.name || ''}`);
       if (info.cathedral_religion_id) buildings.push(`Cathédrale: ${religionMap[info.cathedral_religion_id]?.name || ''}`);
       setList(religiousSection, infoReligiousList, buildings);
-      const ownedCanonicals = (canonicalDependents[id] || []).map(cid => ({ id: cid }));
+      const ownedCanonicals = (info.canonicalFor || []).map(barony => ({ id: barony.id }));
       setBaronyList(canonicalOwnedSection, canonicalOwnedList, ownedCanonicals);
-      const parentCanonicals = (canonicalParents[id] || [])
-        .filter(pid => pid !== id)
-        .map(pid => ({ id: pid }));
+      const parentCanonicals = (info.canonicalLands || [])
+        .filter(barony => String(barony.id) !== String(id))
+        .map(barony => ({ id: barony.id }));
       setBaronyList(canonicalParentSection, canonicalParentList, parentCanonicals);
       if (activeFilter === 'distance') {
         actions.applyFilter?.('distance');
@@ -625,20 +624,6 @@
       const {
         seigneurMap = {},
         religionMap = {},
-        empireMap = {},
-        kingdomMap = {},
-        archduchyMap = {},
-        duchyMap = {},
-        marquisateMap = {},
-        countyMap = {},
-        viscountyMap = {},
-        seigneurToEmpire = {},
-        seigneurToKingdom = {},
-        seigneurToArchduchy = {},
-        seigneurToDuchy = {},
-        seigneurToMarquisate = {},
-        seigneurToCounty = {},
-        seigneurToViscounty = {},
         baronyLookup = {}
       } = state();
       const seigneurInfoPanel = getElement('seigneurInfoPanel', 'seigneurInfoPanel');
@@ -668,20 +653,19 @@
       setSeigneurLine(seigneurOverlordLine, seigneur.overlord_id, 'Suzerain:');
 
       const titles = [];
-      (seigneurToEmpire[seigneurId] || []).forEach(id => { if (id && empireMap[id]) titles.push({ rankKey: 'empire', id, mode: 'defacto' }); });
-      (seigneurToKingdom[seigneurId] || []).forEach(id => { if (id && kingdomMap[id]) titles.push({ rankKey: 'kingdom', id, mode: 'defacto' }); });
-      (seigneurToArchduchy[seigneurId] || []).forEach(id => { if (id && archduchyMap[id]) titles.push({ rankKey: 'archduchy', id, mode: 'defacto' }); });
-      (seigneurToDuchy[seigneurId] || []).forEach(id => { if (id && duchyMap[id]) titles.push({ rankKey: 'duchy', id, mode: 'defacto' }); });
-      (seigneurToMarquisate[seigneurId] || []).forEach(id => { if (id && marquisateMap[id]) titles.push({ rankKey: 'marquisate', id, mode: 'defacto' }); });
-      (seigneurToCounty[seigneurId] || []).forEach(id => { if (id && countyMap[id]) titles.push({ rankKey: 'county', id, mode: 'defacto' }); });
-      (seigneurToViscounty[seigneurId] || []).forEach(id => { if (id && viscountyMap[id]) titles.push({ rankKey: 'viscounty', id, mode: 'defacto' }); });
+      ['empire', 'kingdom', 'archduchy', 'duchy', 'marquisate', 'county', 'viscounty'].forEach(rankKey => {
+        (seigneur.titles?.[rankKey] || []).forEach(title => {
+          if (title?.id) titles.push({ rankKey, id: title.id, mode: 'defacto' });
+        });
+      });
       const ownedBaronies = Array.isArray(seigneur.titles?.barony)
         ? seigneur.titles.barony
         : Object.values(baronyLookup).filter(b => String(b.seigneur_id) === String(seigneurId));
       setTitleList(seigneurTitlesSection, seigneurTitlesList, titles, ownedBaronies);
 
-      const vassals = Object.values(seigneurMap)
-        .filter(s => s.overlord_id === seigneurId)
+      const vassals = (Array.isArray(seigneur.vassals) && seigneur.vassals.length > 0
+        ? seigneur.vassals
+        : Object.values(seigneurMap).filter(s => String(s.overlord_id) === String(seigneurId)))
         .map(s => s.id);
       setSeigneurList(seigneurVassalsSection, seigneurVassalList, vassals);
     }

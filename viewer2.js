@@ -7,7 +7,7 @@
 
   let mapWidth = 0;
   let mapHeight = 0;
-  const terrainColor = mapCore2.terrainColor;
+  const terrainColor = mapCanvasRuntime.terrainColor;
   const playerColor = [82, 190, 128];
   const npcColor = [231, 76, 60];
 
@@ -26,21 +26,9 @@
   let marquisateMap = {};
   let archduchyMap = {};
   let empireMap = {};
-  let seigneurToViscounty = {}, seigneurToCounty = {}, seigneurToMarquisate = {}, seigneurToDuchy = {}, seigneurToArchduchy = {}, seigneurToKingdom = {}, seigneurToEmpire = {};
-  let canonicalLandMap = {};
-  let canonicalDependents = {};
-  let canonicalParents = {};
-  let sanctuaryMap = {};
-  let baronyAdjacency = {};
   let mapData = {};
-  let tradeRoutes = [];
-  let tradeRouteConnections = {};
   let tradeRouteById = {};
-  let tradeRoutesByBarony = {};
-  let tradeLines = [];
-  let tradeLineConnections = {};
   let tradeLineById = {};
-  let tradeLinesByBarony = {};
   let pendingPixelData = null;
   let selectedTradeRouteId = null;
   let selectedTradeLineId = null;
@@ -126,6 +114,26 @@
 
   const titleHierarchy = ['viscounty', 'county', 'marquisate', 'duchy', 'archduchy', 'kingdom', 'empire'];
   const rankSequence = ['barony', ...titleHierarchy];
+  const cultureRankConfig = [
+    { key: 'barony', label: 'Baron', plural: 'Barons', points: 0.005 },
+    { key: 'viscounty', label: 'Vicomte', plural: 'Vicomtes', points: 0.0075 },
+    { key: 'county', label: 'Comte', plural: 'Comtes', points: 0.01 },
+    { key: 'marquisate', label: 'Marquis', plural: 'Marquis', points: 0.015 },
+    { key: 'duchy', label: 'Duc', plural: 'Ducs', points: 0.025 },
+    { key: 'archduchy', label: 'Archiduc', plural: 'Archiducs', points: 0.035 },
+    { key: 'kingdom', label: 'Roi', plural: 'Rois', points: 0.045 },
+    { key: 'empire', label: 'Empereur', plural: 'Empereurs', points: 0.055 }
+  ];
+  const duchyPietyTitleBonusConfig = [
+    { key: 'barony', label: 'Baron', plural: 'Barons', points: 0.5 },
+    { key: 'viscounty', label: 'Vicomte', plural: 'Vicomtes', points: 0.75 },
+    { key: 'county', label: 'Comte', plural: 'Comtes', points: 1 },
+    { key: 'marquisate', label: 'Marquis', plural: 'Marquis', points: 1.25 },
+    { key: 'duchy', label: 'Duc', plural: 'Ducs', points: 1.5 },
+    { key: 'archduchy', label: 'Archiduc', plural: 'Archiducs', points: 2 },
+    { key: 'kingdom', label: 'Roi', plural: 'Rois', points: 3 },
+    { key: 'empire', label: 'Empereur', plural: 'Empereurs', points: 4 }
+  ];
   const dejureSubtitleRankMap = {
     empire: 'kingdom',
     kingdom: 'duchy',
@@ -163,16 +171,6 @@
         marquisateMap,
         archduchyMap,
         empireMap,
-        seigneurToViscounty,
-        seigneurToCounty,
-        seigneurToMarquisate,
-        seigneurToDuchy,
-        seigneurToArchduchy,
-        seigneurToKingdom,
-        seigneurToEmpire,
-        canonicalDependents,
-        canonicalParents,
-        sanctuaryMap,
         mapMode,
         activeFilter: filterSelect?.value || '',
         defaultFeudalHeaders,
@@ -326,7 +324,7 @@
       return;
     }
     const barony = getBaronyEntity(click.id);
-    const filterDefinition = mapFilters2.getFilterDefinition(filterSelect?.value);
+    const filterDefinition = mapFilterRegistry.getFilterDefinition(filterSelect?.value);
     const target = filterDefinition?.selectEntityForBaronyClick
       ? filterDefinition.selectEntityForBaronyClick(barony, { mapData, filterSelect, core })
       : barony;
@@ -584,71 +582,18 @@
     return [];
   }
 
-  function buildTradeRouteMaps(routes) {
-    tradeRouteConnections = {};
-    tradeRouteById = {};
-    tradeRoutesByBarony = {};
-    const connectionSets = {};
-    routes.forEach(route => {
-      const id = parseInt(route.id, 10);
-      const barony1 = parseInt(route.barony_id_1, 10);
-      const barony2 = parseInt(route.barony_id_2, 10);
-      if (!id || !barony1 || !barony2) return;
-      const path = parseTradeRoutePath(route.path);
-      const normalized = { ...route, id, barony_id_1: barony1, barony_id_2: barony2, path };
-      tradeRouteById[id] = normalized;
-      if (!tradeRoutesByBarony[barony1]) tradeRoutesByBarony[barony1] = [];
-      if (!tradeRoutesByBarony[barony2]) tradeRoutesByBarony[barony2] = [];
-      tradeRoutesByBarony[barony1].push(id);
-      tradeRoutesByBarony[barony2].push(id);
-      if (!connectionSets[barony1]) connectionSets[barony1] = new Set();
-      if (!connectionSets[barony2]) connectionSets[barony2] = new Set();
-      connectionSets[barony1].add(barony2);
-      connectionSets[barony2].add(barony1);
-    });
-    Object.keys(connectionSets).forEach(id => {
-      tradeRouteConnections[id] = Array.from(connectionSets[id]);
-    });
-  }
-
-  function buildTradeLineMaps(lines) {
-    tradeLineConnections = {};
-    tradeLineById = {};
-    tradeLinesByBarony = {};
-    const connectionSets = {};
-    lines.forEach(line => {
-      const id = parseInt(line.id, 10);
-      const barony1 = parseInt(line.barony_id_1, 10);
-      const barony2 = parseInt(line.barony_id_2, 10);
-      if (!id || !barony1 || !barony2) return;
-      const path = parseTradeRoutePath(line.path);
-      const normalized = { ...line, id, barony_id_1: barony1, barony_id_2: barony2, path };
-      tradeLineById[id] = normalized;
-      if (!tradeLinesByBarony[barony1]) tradeLinesByBarony[barony1] = [];
-      if (!tradeLinesByBarony[barony2]) tradeLinesByBarony[barony2] = [];
-      tradeLinesByBarony[barony1].push(id);
-      tradeLinesByBarony[barony2].push(id);
-      if (!connectionSets[barony1]) connectionSets[barony1] = new Set();
-      if (!connectionSets[barony2]) connectionSets[barony2] = new Set();
-      connectionSets[barony1].add(barony2);
-      connectionSets[barony2].add(barony1);
-    });
-    Object.keys(connectionSets).forEach(id => {
-      tradeLineConnections[id] = Array.from(connectionSets[id]);
-    });
-  }
-
   function renderTradeRoutesList(baronyId) {
     if (!tradeRoutesList || !tradeRoutesSection) return;
     tradeRoutesList.innerHTML = '';
-    const routeIds = tradeRoutesByBarony[baronyId] || [];
-    if (!routeIds.length) {
+    const barony = getBaronyEntity(baronyId);
+    const routes = barony?.tradeRoutes || [];
+    if (!routes.length) {
       tradeRoutesList.textContent = 'Aucune route commerciale';
       return;
     }
-    const rows = routeIds.map(routeId => {
-      const route = tradeRouteById[routeId];
-      const otherId = route.barony_id_1 === baronyId ? route.barony_id_2 : route.barony_id_1;
+    const rows = routes.map(route => {
+      const routeId = route.id;
+      const otherId = String(route.barony_id_1) === String(baronyId) ? route.barony_id_2 : route.barony_id_1;
       const otherName = baronyMeta[otherId]?.name || baronyLookup[otherId]?.name;
       const otherLabel = otherName ? `${otherName} (#${otherId})` : `Baronnie #${otherId}`;
       const pathLength = route.path ? route.path.length : 0;
@@ -674,14 +619,15 @@
   function renderTradeLinesList(baronyId) {
     if (!tradeLinesList || !tradeRoutesSection) return;
     tradeLinesList.innerHTML = '';
-    const lineIds = tradeLinesByBarony[baronyId] || [];
-    if (!lineIds.length) {
+    const barony = getBaronyEntity(baronyId);
+    const lines = barony?.tradeLines || [];
+    if (!lines.length) {
       tradeLinesList.textContent = 'Aucune ligne commerciale';
       return;
     }
-    const rows = lineIds.map(lineId => {
-      const line = tradeLineById[lineId];
-      const otherId = line.barony_id_1 === baronyId ? line.barony_id_2 : line.barony_id_1;
+    const rows = lines.map(line => {
+      const lineId = line.id;
+      const otherId = String(line.barony_id_1) === String(baronyId) ? line.barony_id_2 : line.barony_id_1;
       const otherName = baronyMeta[otherId]?.name || baronyLookup[otherId]?.name;
       const otherLabel = otherName ? `${otherName} (#${otherId})` : `Baronnie #${otherId}`;
       const pathLength = line.path ? line.path.length : 0;
@@ -865,14 +811,15 @@
   }
 
   function compareSubtitleItems(a, b) {
-    const levelDiff = getRankIndex(b.rankKey) - getRankIndex(a.rankKey);
+    const aRank = a?._type || a?.rankKey;
+    const bRank = b?._type || b?.rankKey;
+    const levelDiff = getRankIndex(bRank) - getRankIndex(aRank);
     if (levelDiff !== 0) return levelDiff;
-    return getTitleName(a.rankKey, a.id).localeCompare(getTitleName(b.rankKey, b.id), 'fr');
+    return getTitleName(aRank, a.id).localeCompare(getTitleName(bRank, b.id), 'fr');
   }
 
   function getImmediateSubtitles(rankKey, titleId, mode = 'dejure') {
     return getVm()?.getImmediateSubtitles?.(rankKey, titleId, mode)
-      .map(entity => ({ rankKey: entity._type, id: entity.id }))
       .sort(compareSubtitleItems) || [];
   }
 
@@ -932,40 +879,6 @@
     return getInfoPanelController().showTitleInfo(rankKey, titleId, mode, options);
   }
 
-  function addSeigneurTitle(map, seigneurId, titleId) {
-    if (!seigneurId || !titleId) return;
-    const key = String(seigneurId);
-    if (!map[key]) map[key] = [];
-    map[key].push(titleId);
-  }
-
-  function finalizeSeigneurTitleMap(map) {
-    Object.values(map).forEach(list => {
-      list.sort((a, b) => a - b);
-    });
-  }
-
-  const cultureRankConfig = [
-    { key: 'barony', label: 'Baron', plural: 'Barons', points: 0.005 },
-    { key: 'viscounty', label: 'Vicomte', plural: 'Vicomtes', points: 0.0075 },
-    { key: 'county', label: 'Comte', plural: 'Comtes', points: 0.01 },
-    { key: 'marquisate', label: 'Marquis', plural: 'Marquis', points: 0.015 },
-    { key: 'duchy', label: 'Duc', plural: 'Ducs', points: 0.025 },
-    { key: 'archduchy', label: 'Archiduc', plural: 'Archiducs', points: 0.035 },
-    { key: 'kingdom', label: 'Roi', plural: 'Rois', points: 0.045 },
-    { key: 'empire', label: 'Empereur', plural: 'Empereurs', points: 0.055 }
-  ];
-
-  const duchyPietyTitleBonusConfig = [
-    { key: 'barony', label: 'Baron', plural: 'Barons', points: 0.5 },
-    { key: 'viscounty', label: 'Vicomte', plural: 'Vicomtes', points: 0.75 },
-    { key: 'county', label: 'Comte', plural: 'Comtes', points: 1 },
-    { key: 'marquisate', label: 'Marquis', plural: 'Marquis', points: 1.25 },
-    { key: 'duchy', label: 'Duc', plural: 'Ducs', points: 1.5 },
-    { key: 'archduchy', label: 'Archiduc', plural: 'Archiducs', points: 2 },
-    { key: 'kingdom', label: 'Roi', plural: 'Rois', points: 3 },
-    { key: 'empire', label: 'Empereur', plural: 'Empereurs', points: 4 }
-  ];
   function getRankIndex(rankKey) {
     return rankSequence.indexOf(rankKey);
   }
@@ -1003,30 +916,6 @@
     return normalized.includes('athe');
   }
 
-  function getDuchyIdForBarony(info) {
-    if (!info) return null;
-    const county = countyMap[info.county_id];
-    return county?.duchy_id || null;
-  }
-
-  function buildDuchyPietyStats() {
-    return duchyPiety.computeDuchyPietyStats(
-      {
-        baronyMeta,
-        sanctuaryMap,
-        seigneurMap,
-        duchyMap,
-        religionMap
-      },
-      {
-        getDuchyIdForBarony,
-        getSeigneurRankKey,
-        isExcludedReligion: isExcludedPietyReligion,
-        includeTieBreakBonus: true
-      }
-    );
-  }
-
   function buildDuchyPietyTooltipRows(stat) {
     const rows = [];
     if (stat.details.pop) rows.push({ label: `${stat.details.pop} Population${stat.details.pop > 1 ? 's' : ''}`, points: `+${formatPoints(stat.details.pop)}` });
@@ -1047,7 +936,7 @@
   }
 
   function getDuchyPietyRows(duchyId) {
-    const duchyStats = buildDuchyPietyStats()[String(duchyId)] || {};
+    const duchyStats = getVm()?.getEntity?.('duchy', duchyId)?.pietyStatsByReligion || {};
     return Object.values(duchyStats)
       .map(stat => ({
         ...stat,
@@ -1140,21 +1029,23 @@
     }
     clearCultureFloatingTooltips();
     const stats = {};
-    Object.values(baronyMeta).forEach(info => {
-      const cultureInfo = info ? cultureMapInfo[info.culture_id] : null;
-      if (!info || !info.culture_id || !cultureInfo) return;
-      const key = String(info.culture_id);
+    const baronies = getVm()?.baronies?.list || Object.values(baronyMeta);
+    baronies.forEach(info => {
+      const cultureInfo = info?.culture || (info ? cultureMapInfo[info.culture_id] : null);
+      const cultureId = cultureInfo?.id || info?.culture_id;
+      if (!info || !cultureId || !cultureInfo) return;
+      const key = String(cultureId);
       if (!stats[key]) {
         stats[key] = {
-          cultureId: info.culture_id,
+          cultureId,
           baronyCount: 0,
           seigneurIds: new Set(),
           rankCounts: {}
         };
       }
       stats[key].baronyCount += 1;
-      if (!isVacantBarony(info) && info.seigneur_id) {
-        stats[key].seigneurIds.add(String(info.seigneur_id));
+      if (!isVacantBarony(info) && (info.seigneur_id || info.seigneur?.id)) {
+        stats[key].seigneurIds.add(String(info.seigneur_id || info.seigneur.id));
       }
     });
     const rows = Object.values(stats).map(stat => {
@@ -1254,7 +1145,7 @@
       }
     };
 
-    const order = ['kingdom', 'empire', 'archduchy', 'duchy', 'marquisate', 'county', 'viscounty'];
+    const order = ['empire', 'kingdom', 'archduchy', 'duchy', 'marquisate', 'county', 'viscounty'];
     return order
       .map(key => rows[key])
       .filter(row => row && (row.dejureId || row.defactoId));
@@ -1481,285 +1372,46 @@
   }
 
   async function fetchData() {
-    const endpoint = mapMode === 'sea' ? '/api/maritime_zone_pixels' : '/api/barony_pixels';
-    pixelData = mapMode === 'sea' ? await fetch(API_BASE + endpoint).then(r => r.json()) : {};
-    canonicalLandMap = {};
-    canonicalDependents = {};
-    canonicalParents = {};
-    if (mapMode === 'sea') {
-      const [zones, seigneurs, connections, zoneBaronies, baronies, religions, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires] = await Promise.all([
-        fetch(API_BASE + '/api/maritime_zones').then(r => r.json()),
-        fetch(API_BASE + '/api/seigneurs').then(r => r.json()),
-        fetch(API_BASE + '/api/maritime_zone_connections').then(r => r.json()),
-        fetch(API_BASE + '/api/maritime_zone_baronies').then(r => r.json()),
-        fetch(API_BASE + '/api/baronies').then(r => r.json()),
-        fetch(API_BASE + '/api/religions').then(r => r.json()),
-        fetch(API_BASE + '/api/counties').then(r => r.json()),
-        fetch(API_BASE + '/api/duchies').then(r => r.json()),
-        fetch(API_BASE + '/api/kingdoms').then(r => r.json()),
-        fetch(API_BASE + '/api/viscounties').then(r => r.json()),
-        fetch(API_BASE + '/api/marquisates').then(r => r.json()),
-        fetch(API_BASE + '/api/archduchies').then(r => r.json()),
-        fetch(API_BASE + '/api/empires').then(r => r.json())
-      ]);
-      const currentViewModel = viewModel.build({
-        baronies,
-        seigneurs,
-        religions,
-        cultures: [],
-        counties,
-        duchies,
-        kingdoms,
-        viscounties,
-        marquisates,
-        archduchies,
-        empires,
-        canonicalLands: [],
-        sanctuaries: [],
-        baronyConnections: []
-      });
-      baronyMeta = {};
-      zones.forEach(z => { baronyMeta[z.id] = z; });
-      baronyLookup = {};
-      baronies.forEach(b => { baronyLookup[b.id] = b; });
-      seigneurMap = {};
-      seigneurs.forEach(s => { seigneurMap[s.id] = s; });
-      religionMap = {};
-      religions.forEach(r => { religionMap[r.id] = r; });
-      countyMap = {};
-      duchyMap = {};
-      kingdomMap = {};
-      viscountyMap = {};
-      marquisateMap = {};
-      archduchyMap = {};
-      empireMap = {};
-      seigneurToCounty = {};
-      counties.forEach(c => { countyMap[c.id] = c; addSeigneurTitle(seigneurToCounty, c.seigneur_id, c.id); });
-      seigneurToDuchy = {};
-      duchies.forEach(d => { duchyMap[d.id] = d; addSeigneurTitle(seigneurToDuchy, d.seigneur_id, d.id); });
-      seigneurToKingdom = {};
-      kingdoms.forEach(k => { kingdomMap[k.id] = k; addSeigneurTitle(seigneurToKingdom, k.seigneur_id, k.id); });
-      seigneurToViscounty = {};
-      viscounties.forEach(v => { viscountyMap[v.id] = v; addSeigneurTitle(seigneurToViscounty, v.seigneur_id, v.id); });
-      seigneurToMarquisate = {};
-      marquisates.forEach(m => { marquisateMap[m.id] = m; addSeigneurTitle(seigneurToMarquisate, m.seigneur_id, m.id); });
-      seigneurToArchduchy = {};
-      archduchies.forEach(a => { archduchyMap[a.id] = a; addSeigneurTitle(seigneurToArchduchy, a.seigneur_id, a.id); });
-      seigneurToEmpire = {};
-      empires.forEach(e => { empireMap[e.id] = e; addSeigneurTitle(seigneurToEmpire, e.seigneur_id, e.id); });
-      finalizeSeigneurTitleMap(seigneurToCounty);
-      finalizeSeigneurTitleMap(seigneurToDuchy);
-      finalizeSeigneurTitleMap(seigneurToKingdom);
-      finalizeSeigneurTitleMap(seigneurToViscounty);
-      finalizeSeigneurTitleMap(seigneurToMarquisate);
-      finalizeSeigneurTitleMap(seigneurToArchduchy);
-      finalizeSeigneurTitleMap(seigneurToEmpire);
-      baronyAdjacency = {};
-      connections.forEach(c => {
-        const dist = parseInt(c.distance, 10) || 1;
-        if (!baronyAdjacency[c.zone_id_1]) baronyAdjacency[c.zone_id_1] = [];
-        if (!baronyAdjacency[c.zone_id_2]) baronyAdjacency[c.zone_id_2] = [];
-        baronyAdjacency[c.zone_id_1].push({ id: c.zone_id_2, distance: dist });
-        baronyAdjacency[c.zone_id_2].push({ id: c.zone_id_1, distance: dist });
-      });
-      const baronyIds = [...new Set(zoneBaronies.map(zb => zb.barony_id))];
-      baronyPixels = {};
-      fetchBaronyPixelsInChunks(baronyIds, baronyPixels, false).catch(err => console.error(err));
-      maritimeZoneBaronies = {};
-      zoneBaronies.forEach(zb => {
-        if (!maritimeZoneBaronies[zb.zone_id]) maritimeZoneBaronies[zb.zone_id] = [];
-        maritimeZoneBaronies[zb.zone_id].push(zb.barony_id);
-      });
-      mapData = {
-        pixelData,
-        baronyMeta,
-        baronyLookup,
-        baronyAdjacency,
-        baronyPixels,
-        maritimeZoneBaronies,
-        seigneurMap,
-        religionMap,
-        countyMap,
-        duchyMap,
-        kingdomMap,
-        viscountyMap,
-        marquisateMap,
-        archduchyMap,
-        empireMap,
-        seigneurToViscounty,
-        seigneurToCounty,
-        seigneurToMarquisate,
-        seigneurToDuchy,
-        seigneurToArchduchy,
-        seigneurToKingdom,
-        seigneurToEmpire,
-        viewModel: currentViewModel,
-        selection: { mapId: null },
-        mapWidth,
-        mapHeight,
-        mapMode
-      };
-      updateSearchEntries();
-      return mapData;
-    }
-    let [baronies, seigneurs, religions, cultures, counties, duchies, kingdoms, viscounties, marquisates, archduchies, empires, canonicalLands, sanctuaries, connections, routes, lines, maritimeZones] = await Promise.all([
-      fetch(API_BASE + '/api/baronies').then(r => r.json()),
-      fetch(API_BASE + '/api/seigneurs').then(r => r.json()),
-      fetch(API_BASE + '/api/religions').then(r => r.json()),
-      fetch(API_BASE + '/api/cultures').then(r => r.json()),
-      fetch(API_BASE + '/api/counties').then(r => r.json()),
-      fetch(API_BASE + '/api/duchies').then(r => r.json()),
-      fetch(API_BASE + '/api/kingdoms').then(r => r.json()),
-      fetch(API_BASE + '/api/viscounties').then(r => r.json()),
-      fetch(API_BASE + '/api/marquisates').then(r => r.json()),
-      fetch(API_BASE + '/api/archduchies').then(r => r.json()),
-      fetch(API_BASE + '/api/empires').then(r => r.json()),
-      fetch(API_BASE + '/api/canonical_lands').then(r => r.json()),
-      fetch(API_BASE + '/api/sanctuaries').then(r => r.json()),
-      fetch(API_BASE + '/api/barony_connections').then(r => r.json()),
-      fetch(API_BASE + '/api/trade_routes').then(r => r.json()),
-      fetch(API_BASE + '/api/trade_lines').then(r => r.json()),
-      fetch(API_BASE + '/api/maritime_zones').then(r => r.json())
-    ]);
-    if (!Array.isArray(baronies) || baronies.length === 0) {
-      try {
-        const organigrammes = await fetch(API_BASE + '/api/organigrammes').then(r => r.json());
-        const fallbackBaronies = organigrammes?.titles?.baronies;
-        if (Array.isArray(fallbackBaronies) && fallbackBaronies.length > 0) {
-          baronies = fallbackBaronies;
-        }
-      } catch (err) {
-        console.warn('Impossible de récupérer les baronnies depuis l’organigramme.', err);
-      }
-    }
-    const currentViewModel = viewModel.build({
-      baronies,
-      seigneurs,
-      religions,
-      cultures,
-      counties,
-      duchies,
-      kingdoms,
-      viscounties,
-      marquisates,
-      archduchies,
-      empires,
-      canonicalLands,
-      sanctuaries,
-      baronyConnections: connections
-    });
-    baronyMeta = {};
-    baronyLookup = {};
-    currentViewModel.baronies.list.forEach(b => { baronyMeta[b.id] = b; baronyLookup[b.id] = b; });
-    seigneurMap = {};
-    currentViewModel.seigneurs.list.forEach(s => { seigneurMap[s.id] = s; });
-    religionMap = {};
-    religions.forEach(r => { religionMap[r.id] = r; });
-    cultureMapInfo = {};
-    cultures.forEach(c => { cultureMapInfo[c.id] = c; });
-    countyMap = {};
-    seigneurToCounty = {};
-    counties.forEach(c => { countyMap[c.id] = c; addSeigneurTitle(seigneurToCounty, c.seigneur_id, c.id); });
-    duchyMap = {};
-    seigneurToDuchy = {};
-    duchies.forEach(d => { duchyMap[d.id] = d; addSeigneurTitle(seigneurToDuchy, d.seigneur_id, d.id); });
-    kingdomMap = {};
-    seigneurToKingdom = {};
-    kingdoms.forEach(k => { kingdomMap[k.id] = k; addSeigneurTitle(seigneurToKingdom, k.seigneur_id, k.id); });
-    viscountyMap = {};
-    seigneurToViscounty = {};
-    viscounties.forEach(v => { viscountyMap[v.id] = v; addSeigneurTitle(seigneurToViscounty, v.seigneur_id, v.id); });
-    marquisateMap = {};
-    seigneurToMarquisate = {};
-    marquisates.forEach(m => { marquisateMap[m.id] = m; addSeigneurTitle(seigneurToMarquisate, m.seigneur_id, m.id); });
-    archduchyMap = {};
-    seigneurToArchduchy = {};
-    archduchies.forEach(a => { archduchyMap[a.id] = a; addSeigneurTitle(seigneurToArchduchy, a.seigneur_id, a.id); });
-    empireMap = {};
-    seigneurToEmpire = {};
-    empires.forEach(e => { empireMap[e.id] = e; addSeigneurTitle(seigneurToEmpire, e.seigneur_id, e.id); });
-    finalizeSeigneurTitleMap(seigneurToCounty);
-    finalizeSeigneurTitleMap(seigneurToDuchy);
-    finalizeSeigneurTitleMap(seigneurToKingdom);
-    finalizeSeigneurTitleMap(seigneurToViscounty);
-    finalizeSeigneurTitleMap(seigneurToMarquisate);
-    finalizeSeigneurTitleMap(seigneurToArchduchy);
-    finalizeSeigneurTitleMap(seigneurToEmpire);
-    canonicalLandMap = {};
-    canonicalParents = {};
-    canonicalLands.forEach(cl => {
-      if (!canonicalLandMap[cl.barony_id]) canonicalLandMap[cl.barony_id] = [];
-      canonicalLandMap[cl.barony_id].push(cl.canonical_barony_id);
-      if (!canonicalDependents[cl.canonical_barony_id]) canonicalDependents[cl.canonical_barony_id] = [];
-      canonicalDependents[cl.canonical_barony_id].push(cl.barony_id);
-      if (cl.barony_id !== cl.canonical_barony_id) {
-        if (!canonicalParents[cl.barony_id]) canonicalParents[cl.barony_id] = [];
-        canonicalParents[cl.barony_id].push(cl.canonical_barony_id);
-      }
-    });
-    sanctuaryMap = {};
-    sanctuaries.forEach(s => {
-      if (!sanctuaryMap[s.barony_id]) sanctuaryMap[s.barony_id] = [];
-      sanctuaryMap[s.barony_id].push({ religion_id: s.religion_id });
-    });
-    baronyAdjacency = {};
-    connections.forEach(c => {
-      const dist = parseInt(c.distance, 10) || 1;
-      if (!baronyAdjacency[c.barony_id_1]) baronyAdjacency[c.barony_id_1] = [];
-      if (!baronyAdjacency[c.barony_id_2]) baronyAdjacency[c.barony_id_2] = [];
-      baronyAdjacency[c.barony_id_1].push({ id: c.barony_id_2, distance: dist });
-      baronyAdjacency[c.barony_id_2].push({ id: c.barony_id_1, distance: dist });
-    });
-    tradeRoutes = Array.isArray(routes) ? routes : [];
-    buildTradeRouteMaps(tradeRoutes);
-    tradeLines = Array.isArray(lines) ? lines : [];
-    buildTradeLineMaps(tradeLines);
-    maritimeZoneMap = {};
-    (maritimeZones || []).forEach(zone => {
-      maritimeZoneMap[zone.id] = zone;
-    });
-    const baronyIds = baronies.map(b => b.id);
-    baronyPixels = pixelData;
-    fetchBaronyPixelsInChunks(baronyIds, pixelData).catch(err => console.error(err));
-    mapData = {
-      pixelData,
-      baronyMeta,
-      seigneurMap,
-      religionMap,
-      cultureMapInfo,
-      countyMap,
-      duchyMap,
-      kingdomMap,
-      viscountyMap,
-      marquisateMap,
-      archduchyMap,
-      empireMap,
-      canonicalLandMap,
-      canonicalDependents,
-      sanctuaryMap,
-      baronyAdjacency,
-      tradeRouteConnections,
-      tradeRouteById,
-      tradeLineConnections,
-      tradeLineById,
-      baronyLookup,
-      seigneurToViscounty,
-      seigneurToCounty,
-      seigneurToMarquisate,
-      seigneurToDuchy,
-      seigneurToArchduchy,
-      seigneurToKingdom,
-      seigneurToEmpire,
-      viewModel: currentViewModel,
-      selection: { mapId: null },
+    const loaded = await mapDataLoader.load({
+      mode: mapMode,
+      apiBase: API_BASE,
+      includeTrade: true,
       mapWidth,
-      mapHeight,
-      mapMode
-    };
+      mapHeight
+    });
+
+    pixelData = loaded.pixelData || {};
+    baronyPixels = loaded.baronyPixels || {};
+    maritimeZoneBaronies = loaded.maritimeZoneBaronies || {};
+    baronyMeta = loaded.baronyMeta || {};
+    baronyLookup = loaded.baronyLookup || {};
+    seigneurMap = loaded.seigneurMap || {};
+    religionMap = loaded.religionMap || {};
+    cultureMapInfo = loaded.cultureMapInfo || {};
+    countyMap = loaded.countyMap || {};
+    duchyMap = loaded.duchyMap || {};
+    kingdomMap = loaded.kingdomMap || {};
+    viscountyMap = loaded.viscountyMap || {};
+    marquisateMap = loaded.marquisateMap || {};
+    archduchyMap = loaded.archduchyMap || {};
+    empireMap = loaded.empireMap || {};
+    tradeRouteById = loaded.tradeRouteById || {};
+    tradeLineById = loaded.tradeLineById || {};
+    maritimeZoneMap = loaded.maritimeZoneMap || {};
+    maritimeZonePixels = loaded.maritimeZonePixels || {};
+    mapData = loaded;
+
+    if (mapMode === 'sea') {
+      const baronyIds = [...new Set(Object.values(maritimeZoneBaronies).flat())];
+      fetchBaronyPixelsInChunks(baronyIds, baronyPixels, false).catch(err => console.error(err));
+    } else {
+      const baronyIds = Object.keys(baronyMeta);
+      fetchBaronyPixelsInChunks(baronyIds, pixelData).catch(err => console.error(err));
+    }
+
     updateSearchEntries();
     return mapData;
   }
-
   document.addEventListener('DOMContentLoaded', () => {
     attachSearchBar();
     const baseMapLoaded = baseMap.complete ? Promise.resolve() : new Promise(res => (baseMap.onload = res));
@@ -1776,7 +1428,7 @@
       pixelCanvas.height = mapHeight;
       pixelCanvas.style.width = mapWidth + 'px';
       pixelCanvas.style.height = mapHeight + 'px';
-      core = mapCore2.init({
+      core = mapCanvasRuntime.init({
         canvas: pixelCanvas,
         fetchData,
         drawOverlay,
@@ -1784,7 +1436,12 @@
       });
       core.onMapClick(handleMapClick);
       core.ready.then(() => {
-        filterManager = core.createFilterManager(mapFilters2.createRegistry(), { updateLegend });
+        filterManager = mapFilterRuntime.create({
+          core,
+          data: mapData,
+          registry: mapFilterRegistry.createRegistry(),
+          updateLegend
+        });
         if (pendingPixelData && typeof core.setPixelData === 'function') {
           core.setPixelData(pendingPixelData);
           pendingPixelData = null;
