@@ -5,9 +5,9 @@ const path = require('node:path');
 
 const viewModel = require('../viewModel');
 const mapFilterRuntime = require('../src/mapFilterRuntime');
-const { breadthFirst } = require('../src/bfs2');
+const { breadthFirst } = require('../src/bfs');
 global.breadthFirst = breadthFirst;
-require('../src/duchyPiety2');
+require('../src/duchyPiety');
 const mapFilterRegistry = require('../src/mapFilterRegistry');
 const mapDataLoader = require('../src/mapDataLoader');
 
@@ -714,8 +714,42 @@ test('mapFilterRuntime dispatches distance, canonical, sanctuary, trade and duch
   assert.strictEqual(pietyHarness.captured.legend['1'].name, 'Religion A');
 });
 
-test('index2 pipeline source has no legacy selection API and highlight does not render panels', () => {
-  const viewerSource = fs.readFileSync(path.join(__dirname, '..', 'viewer2.js'), 'utf8');
+test('index.html loads the canonical ViewModel map stack', () => {
+  const indexSource = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const expectedScripts = [
+    'viewModel.js',
+    'src/viewModelLabels.js',
+    'src/mapCanvasRuntime.js',
+    'src/bfs.js',
+    'src/duchyPiety.js',
+    'src/mapFilterRuntime.js',
+    'src/mapFilterRegistry.js',
+    'src/mapDataLoader.js',
+    'src/mapInfoPanel.js',
+    'src/seigneurSearch.js',
+    'viewer.js'
+  ];
+
+  expectedScripts.forEach((script) => {
+    assert.strictEqual(indexSource.includes(`<script src="${script}"></script>`), true, `missing canonical map script: ${script}`);
+  });
+  ['src/mapCore.js', 'src/mapFilters.js', 'viewer2.js', 'mapInfoPanel2.js', 'bfs2.js', 'duchyPiety2.js', 'seigneurSearch2.js'].forEach((legacyScript) => {
+    assert.strictEqual(indexSource.includes(legacyScript), false, `legacy map script still loaded by index.html: ${legacyScript}`);
+  });
+  assert.strictEqual(indexSource.includes('href="index.html?mode=sea"'), true);
+});
+
+test('index2.html redirects legacy links to index.html and preserves location state', () => {
+  const redirectSource = fs.readFileSync(path.join(__dirname, '..', 'index2.html'), 'utf8');
+
+  assert.strictEqual(redirectSource.includes('url=index.html'), true);
+  assert.strictEqual(redirectSource.includes('window.location.search'), true);
+  assert.strictEqual(redirectSource.includes('window.location.hash'), true);
+  assert.strictEqual(redirectSource.includes('window.location.replace(target)'), true);
+});
+
+test('main map pipeline source has no legacy selection API and highlight does not render panels', () => {
+  const viewerSource = fs.readFileSync(path.join(__dirname, '..', 'viewer.js'), 'utf8');
   const coreSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'mapCanvasRuntime.js'), 'utf8');
   const filtersSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'mapFilterRegistry.js'), 'utf8');
   const combinedSource = `${viewerSource}\n${coreSource}\n${filtersSource}`;
@@ -742,7 +776,7 @@ test('index2 pipeline source has no legacy selection API and highlight does not 
     'defactoParentCache',
     'refreshTitleConfig'
   ].forEach((legacyToken) => {
-    assert.strictEqual(viewerSource.includes(legacyToken), false, `legacy hierarchy token still present in viewer2: ${legacyToken}`);
+    assert.strictEqual(viewerSource.includes(legacyToken), false, `legacy hierarchy token still present in viewer: ${legacyToken}`);
   });
 
   ['function init', 'applyFilter', 'setColorMap', 'setCanonicalPatterns', 'colorMap'].forEach((runtimeToken) => {
@@ -775,9 +809,9 @@ test('index2 pipeline source has no legacy selection API and highlight does not 
   });
 });
 
-test('index2 selection classifies entities by explicit type before barony id fallback', () => {
-  const viewerSource = fs.readFileSync(path.join(__dirname, '..', 'viewer2.js'), 'utf8');
-  const panelSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'mapInfoPanel2.js'), 'utf8');
+test('main map selection classifies entities by explicit type before barony id fallback', () => {
+  const viewerSource = fs.readFileSync(path.join(__dirname, '..', 'viewer.js'), 'utf8');
+  const panelSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'mapInfoPanel.js'), 'utf8');
 
   assert.strictEqual(viewerSource.includes('|| baronyMeta[entity.id]'), false);
   assert.strictEqual(panelSource.includes('|| baronyMeta[entity.id]'), false);
@@ -786,9 +820,9 @@ test('index2 selection classifies entities by explicit type before barony id fal
 });
 
 test('seigneur panel uses ViewModel barony titles with robust fallback comparison', () => {
-  const viewerSource = fs.readFileSync(path.join(__dirname, '..', 'viewer2.js'), 'utf8');
+  const viewerSource = fs.readFileSync(path.join(__dirname, '..', 'viewer.js'), 'utf8');
   const loaderSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'mapDataLoader.js'), 'utf8');
-  const panelSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'mapInfoPanel2.js'), 'utf8');
+  const panelSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'mapInfoPanel.js'), 'utf8');
 
   assert.strictEqual(viewerSource.includes('currentViewModel.seigneurs.list.forEach'), false);
   assert.strictEqual(loaderSource.includes('function buildSeigneurTitleIndexes'), false);
@@ -799,8 +833,8 @@ test('seigneur panel uses ViewModel barony titles with robust fallback compariso
   assert.strictEqual(panelSource.includes('String(s.overlord_id) === String(seigneurId)'), true);
 });
 
-test('index2 trade route lists define route and line ids before rendering buttons', () => {
-  const viewerSource = fs.readFileSync(path.join(__dirname, '..', 'viewer2.js'), 'utf8');
+test('main map trade route lists define route and line ids before rendering buttons', () => {
+  const viewerSource = fs.readFileSync(path.join(__dirname, '..', 'viewer.js'), 'utf8');
 
   assert.strictEqual(viewerSource.includes('const routeId = route.id;'), true);
   assert.strictEqual(viewerSource.includes('const lineId = line.id;'), true);
@@ -808,8 +842,8 @@ test('index2 trade route lists define route and line ids before rendering button
   assert.strictEqual(viewerSource.includes('data-id="${lineId}"'), true);
 });
 
-test('index2 culture ranking reads canonical ViewModel baronies', () => {
-  const viewerSource = fs.readFileSync(path.join(__dirname, '..', 'viewer2.js'), 'utf8');
+test('main map culture ranking reads canonical ViewModel baronies', () => {
+  const viewerSource = fs.readFileSync(path.join(__dirname, '..', 'viewer.js'), 'utf8');
   const updateCultureBody = viewerSource.match(/function updateCultureRankingPanel\(\) \{([\s\S]*?)\n  \}/)?.[1] || '';
 
   assert.strictEqual(viewerSource.includes('const cultureRankConfig = ['), true);
@@ -819,9 +853,9 @@ test('index2 culture ranking reads canonical ViewModel baronies', () => {
   assert.strictEqual(viewerSource.includes("getSeigneurEntity(seigneurId)?.highestTitleRank || 'barony'"), true);
 });
 
-test('index2 title panels render subtitle entities from ViewModel in the active mode', () => {
-  const viewerSource = fs.readFileSync(path.join(__dirname, '..', 'viewer2.js'), 'utf8');
-  const panelSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'mapInfoPanel2.js'), 'utf8');
+test('main map title panels render subtitle entities from ViewModel in the active mode', () => {
+  const viewerSource = fs.readFileSync(path.join(__dirname, '..', 'viewer.js'), 'utf8');
+  const panelSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'mapInfoPanel.js'), 'utf8');
 
   assert.strictEqual(viewerSource.includes('.map(entity => ({ rankKey: entity._type, id: entity.id }))'), false);
   assert.strictEqual(panelSource.includes('const childRank = item?._type || item?.rankKey;'), true);
@@ -829,7 +863,7 @@ test('index2 title panels render subtitle entities from ViewModel in the active 
 });
 
 test('seigneur title links select the associated de facto filter', () => {
-  const panelSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'mapInfoPanel2.js'), 'utf8');
+  const panelSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'mapInfoPanel.js'), 'utf8');
   const showSeigneurBody = panelSource.match(/function showSeigneurInfo\([^)]*\) \{([\s\S]*?)\n    \}/)?.[1] || '';
 
   assert.strictEqual(showSeigneurBody.includes("mode: 'defacto'"), true);
@@ -837,14 +871,14 @@ test('seigneur title links select the associated de facto filter', () => {
 });
 
 test('duchy piety legend is not treated as title selection entries', () => {
-  const viewerSource = fs.readFileSync(path.join(__dirname, '..', 'viewer2.js'), 'utf8');
+  const viewerSource = fs.readFileSync(path.join(__dirname, '..', 'viewer.js'), 'utf8');
 
   assert.strictEqual(viewerSource.includes('titleFilter && !titleFilter.infoMode && id'), true);
 });
 
-test('title and duchy piety panel rendering lives in mapInfoPanel2', () => {
-  const viewerSource = fs.readFileSync(path.join(__dirname, '..', 'viewer2.js'), 'utf8');
-  const panelSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'mapInfoPanel2.js'), 'utf8');
+test('title and duchy piety panel rendering lives in mapInfoPanel', () => {
+  const viewerSource = fs.readFileSync(path.join(__dirname, '..', 'viewer.js'), 'utf8');
+  const panelSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'mapInfoPanel.js'), 'utf8');
   const viewerSetTitleHierarchyBody = viewerSource.match(/function setTitleHierarchyTable\([^)]*\) \{([\s\S]*?)\n  \}/)?.[1] || '';
   const viewerRenderPietyBody = viewerSource.match(/function renderDuchyPietyRankingPanel\([^)]*\) \{([\s\S]*?)\n  \}/)?.[1] || '';
   const viewerRestoreTitleBody = viewerSource.match(/function restoreDefaultTitlePanelLayout\([^)]*\) \{([\s\S]*?)\n  \}/)?.[1] || '';
@@ -860,9 +894,9 @@ test('title and duchy piety panel rendering lives in mapInfoPanel2', () => {
   assert.strictEqual(viewerRestoreTitleBody.includes('getInfoPanelController().restoreDefaultTitlePanelLayout'), true);
 });
 
-test('index2 barony feudal table is prepared from ViewModel and rendered by mapInfoPanel2', () => {
-  const viewerSource = fs.readFileSync(path.join(__dirname, '..', 'viewer2.js'), 'utf8');
-  const panelSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'mapInfoPanel2.js'), 'utf8');
+test('main map barony feudal table is prepared from ViewModel and rendered by mapInfoPanel', () => {
+  const viewerSource = fs.readFileSync(path.join(__dirname, '..', 'viewer.js'), 'utf8');
+  const panelSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'mapInfoPanel.js'), 'utf8');
   const getBaronyFeudalRowsBody = viewerSource.match(/function getBaronyFeudalRows\([^)]*\) \{([\s\S]*?)\n  \}/)?.[1] || '';
 
   assert.strictEqual(viewerSource.includes('function setFeudalTable'), false);
@@ -872,8 +906,8 @@ test('index2 barony feudal table is prepared from ViewModel and rendered by mapI
   assert.strictEqual(getBaronyFeudalRowsBody.includes('vmBarony.defacto?.archduchy?.id'), true);
 });
 
-test('index2 title hierarchy rows pass title ids to the panel renderer', () => {
-  const viewerSource = fs.readFileSync(path.join(__dirname, '..', 'viewer2.js'), 'utf8');
+test('main map title hierarchy rows pass title ids to the panel renderer', () => {
+  const viewerSource = fs.readFileSync(path.join(__dirname, '..', 'viewer.js'), 'utf8');
   const getBaronyTitleIdBody = viewerSource.match(/function getBaronyTitleId\([^)]*\) \{([\s\S]*?)\n  \}/)?.[1] || '';
   const getTitleHierarchyRowsBody = viewerSource.match(/function getTitleHierarchyRows\([^)]*\) \{([\s\S]*?)\n  \}/)?.[1] || '';
 

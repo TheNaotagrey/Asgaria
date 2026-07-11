@@ -704,6 +704,6 @@
     };
   }
 
-  global.mapInfoPanel2 = { init };
-  if (typeof module !== 'undefined' && module.exports) module.exports = global.mapInfoPanel2;
+  global.mapInfoPanel = { init };
+  if (typeof module !== 'undefined' && module.exports) module.exports = global.mapInfoPanel;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -1,6 +1,6 @@
 # Contrat ViewModel
 
-`viewModel.js` est la source canonique des relations de carte pour la pile `index2`.
+`viewModel.js` est la source canonique des relations de carte chargée par `index.html`.
 
 ## Références canoniques
 
@@ -50,7 +50,7 @@ Appeler `vm.applyDistancesToBaronies(null)` remet `barony.distanceToSelected` à
 
 ## Règle de rendu
 
-`viewer2.js` garde la logique propre à la page: état, sélection, highlight, changement de filtre et orchestration des panneaux.
+`viewer.js` garde la logique propre à la page: état, sélection, surbrillance, changement de filtre et orchestration des panneaux.
 
 `mapDataLoader.js` charge les données API, construit le ViewModel et prépare les index techniques partagés par le viewer et le futur éditeur v2.
 
@@ -58,7 +58,7 @@ Appeler `vm.applyDistancesToBaronies(null)` remet `barony.distanceToSelected` à
 
 `mapFilterRuntime.js` applique les définitions de filtres au `mapData` courant et produit les `colorMap`, patterns et données de légende.
 
-`mapInfoPanel2.js` rend le DOM des panneaux. Il ne doit pas reconstruire les hiérarchies; il reçoit des références ou des lignes déjà dérivées du ViewModel.
+`mapInfoPanel.js` rend le DOM des panneaux. Il ne doit pas reconstruire les hiérarchies; il reçoit des références ou des lignes déjà dérivées du ViewModel.
 
 `mapFilterRegistry.js` reste un registre déclaratif de filtres. Les filtres simples doivent lire les références ViewModel, par exemple:
 

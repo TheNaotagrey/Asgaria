@@ -34,7 +34,7 @@ npm start
 Le serveur écoute par défaut sur [http://localhost:3000](http://localhost:3000).
 
 ## Utilisation
-- `index.html` : visualisation simple de la carte.
+- `index.html` : visualisation principale de la carte terrestre et maritime, basée sur le ViewModel canonique.
 - `mapEditor.html` : éditeur de baronnies. La barre latérale permet de modifier l'ID, le nom et les métadonnées (seigneur, religions, culture, vicomté, comté).
 - `admin.html` : page d'administration pour consulter et modifier empires, royaumes, archiduchés, duchés, marquisats, comtés, vicomtés, seigneurs, religions et cultures. Les tableaux présentent les données existantes et une ligne vide permet d'en ajouter de nouvelles.
 
@@ -49,4 +49,8 @@ Toutes les requêtes `PUT` vers l'API nécessitent qu'un utilisateur administrat
 - Si l'utilisateur connecté n'est pas administrateur, le serveur répond avec `403 Forbidden`.
 
 ## Tests
-Aucun test automatisé n'est défini. La commande `npm test` renverra donc une erreur.
+La suite automatisée couvre notamment les routes CRUD, le calendrier des mises à jour, le ViewModel et la pile principale de la carte.
+
+```bash
+npm test
+```
