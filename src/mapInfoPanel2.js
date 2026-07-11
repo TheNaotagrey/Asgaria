@@ -43,14 +43,20 @@
 
     function createSeigneurButton(seigneurId) {
       const { seigneurMap = {} } = state();
+      const seigneur = seigneurMap[seigneurId];
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'seigneur-link';
-      btn.textContent = seigneurMap[seigneurId]?.name || `Seigneur #${seigneurId}`;
+      btn.textContent = formatSeigneurName(seigneur) || `Seigneur #${seigneurId}`;
       btn.addEventListener('click', () => {
         actions.selectEntity?.(actions.getSeigneurEntity?.(seigneurId), { source: 'panel' });
       });
       return btn;
+    }
+
+    function formatSeigneurName(seigneur) {
+      if (!seigneur?.name) return '';
+      return `${seigneur.name}${seigneur.player ? '' : ' (PNJ)'}`;
     }
 
     function showBaronyDetails(baronyId) {
@@ -646,7 +652,7 @@
       if (seaInfoPanel) seaInfoPanel.style.display = 'none';
       hideTradeRoutePanel();
       seigneurInfoPanel.style.display = 'block';
-      if (seigneurInfoTitle) seigneurInfoTitle.textContent = seigneur.name;
+      if (seigneurInfoTitle) seigneurInfoTitle.textContent = formatSeigneurName(seigneur);
       if (seigneurInfoIdentity) setLine(seigneurInfoIdentity, '');
       const religionName = seigneur.religion_id ? (religionMap[seigneur.religion_id]?.name || '') : '';
       setLabeledLine(seigneurInfoReligion, 'Religion:', religionName);

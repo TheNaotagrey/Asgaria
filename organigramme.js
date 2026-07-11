@@ -525,7 +525,7 @@ function renderDialog(seigneurId) {
   });
   const vassalIds = state.vassalsByOverlord.get(seigneurId) || [];
 
-  elements.infoTitle.textContent = seigneur.name;
+  elements.infoTitle.textContent = formatSeigneurName(seigneur);
   setLabeledLine(elements.infoReligion, 'Religion :', seigneur.religion_name || 'Inconnue');
   setSeigneurLine(elements.infoOverlord, seigneur.overlord_id, 'Suzerain :');
 
@@ -631,12 +631,19 @@ function setSeigneurLine(elem, seigneurId, label) {
   elem.appendChild(document.createTextNode('Inconnu'));
 }
 
+function formatSeigneurName(seigneur) {
+  if (!seigneur?.name) return '';
+  return `${seigneur.name}${seigneur.player ? '' : ' (PNJ)'}`;
+}
+
 function createSeigneurButton(seigneurId, label) {
   const seigneur = state.seigneursById.get(seigneurId);
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'control-btn organigramme-seigneur-btn';
-  button.textContent = label || seigneur?.name || `Seigneur #${seigneurId}`;
+  button.textContent = label
+    ? `${label}${seigneur && !seigneur.player ? ' (PNJ)' : ''}`
+    : formatSeigneurName(seigneur) || `Seigneur #${seigneurId}`;
   button.addEventListener('click', () => {
     renderDialog(seigneurId);
     centerOnSeigneur(seigneurId);
