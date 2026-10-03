@@ -72,8 +72,9 @@ const baronyLabels = {
   color:'Couleur'
 };
 
-const buildingPropFields = ['label','produces','production','costs','max','workers_per_building','absolute_restrictions','infra_restrictions','effects','description'];
+const buildingPropFields = [...PlayerTypes.availabilityFields,'label','produces','production','costs','max','workers_per_building','absolute_restrictions','infra_restrictions','effects','description'];
 const buildingPropLabels = {
+  ...Object.fromEntries(PlayerTypes.types.map(type => [`available_${type.id}`, type.name])),
   label:'Nom',
   produces:'Ressource produite',
   production:'Production',
@@ -85,8 +86,9 @@ const buildingPropLabels = {
   effects:'Effets',
   description:'Description'
 };
-const infraPropFields = ['label','type','max','workers_per_building','effects','costs','absolute_restrictions','restrictions','description'];
+const infraPropFields = [...PlayerTypes.availabilityFields,'label','type','max','workers_per_building','effects','costs','absolute_restrictions','restrictions','description'];
 const infraPropLabels = {
+  ...Object.fromEntries(PlayerTypes.types.map(type => [`available_${type.id}`, type.name])),
   label:'Nom',
   type:'Type',
   max:'Max',
@@ -2283,6 +2285,8 @@ function renderTable(container, rows, opts){
   };
 
   const makeInput = (val, field, item)=>{
+    if (['building_properties', 'infrastructure_properties'].includes(opts.endpoint) && PlayerTypes.availabilityFields.includes(field) && (val == null || val === '')) val = PlayerTypes.availabilityDefaults[field];
+    if (opts.endpoint === 'seigneuries' && field === 'type' && !val) val = 'seigneur';
     if(field === 'costs'){
       return createCostEditor(val);
     }
@@ -3055,9 +3059,9 @@ async function loadSeigneuries(){
   const seigneuriesById = seigneuries.slice().sort((a,b)=>a.id - b.id);
   renderTable(document.getElementById('tableSeigneuries'), seigneuriesById, {
     endpoint:'seigneuries',
-    fields:['baronnie_id','seigneur_id','population','update_year','update_number',...inventaireFields],
-    selects:{baronnie_id:baroniesSelect, seigneur_id:seigneursSelect},
-    labels:{baronnie_id:'Baronnie', seigneur_id:'Seigneur', population:'Population', update_year:'Année MJ', update_number:'No MJ', ...inventaireLabels},
+    fields:['baronnie_id','seigneur_id','type','population','update_year','update_number',...inventaireFields],
+    selects:{baronnie_id:baroniesSelect, seigneur_id:seigneursSelect, type:PlayerTypes.types},
+    labels:{type:'Type', baronnie_id:'Baronnie', seigneur_id:'Seigneur', population:'Population', update_year:'Année MJ', update_number:'No MJ', ...inventaireLabels},
     beforeSave:(payload,item)=>{ if(item && item.inventaire_id) payload.inventaire_id = item.inventaire_id; },
     deleteConfig: defaultDeleteConfig('la seigneurie', 'baronnie_id')
   });
@@ -3934,8 +3938,9 @@ async function loadBatiments(){
   renderTable(document.getElementById('tableBuildingProps'), buildingPropsById, {
     endpoint:'building_properties',
     fields:buildingPropFields,
+    booleanFields:PlayerTypes.availabilityFields,
     labels:buildingPropLabels,
-    selects:{produces: resourceSelect},
+    selects:{produces: resourceSelect, ...Object.fromEntries(PlayerTypes.availabilityFields.map(field => [field, yesNoSelect]))},
     allowedEffectTypes:['tag'],
     deleteConfig: defaultDeleteConfig('le bâtiment', 'label')
   });
@@ -3943,6 +3948,7 @@ async function loadBatiments(){
   renderTable(document.getElementById('tableInfraProps'), infraPropsById, {
     endpoint:'infrastructure_properties',
     fields:infraPropFields,
+    booleanFields:PlayerTypes.availabilityFields,
     labels:infraPropLabels,
     selects:{type:typeSelect},
     deleteConfig: defaultDeleteConfig("l'infrastructure", 'label')
@@ -3979,7 +3985,40 @@ function showLoading(panel, show){
   if(el) el.style.display = show ? '' : 'none';
 }
 
+async function loadUpdatePolicyPanel() {
+  const el = id => document.getElementById(id);
+  const fields = el('updatePolicyFields'), status = el('updatePolicyStatus');
+  const blocked = el('updatesBlocked'), limited = el('updatesLimited');
+  const phase = el('updateLimitPhase'), year = el('updateLimitYear');
+  fields.disabled = true;
+  status.textContent = 'Chargement…';
+  try {
+    const response = await fetch(API_BASE + '/api/admin/update_policy');
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Chargement impossible.');
+    phase.replaceChildren(...data.definitions.map(entry => new Option(entry.label, entry.number)));
+    blocked.checked = data.policy.blocked; limited.checked = data.policy.limitEnabled;
+    phase.value = data.policy.limit.number; year.value = data.policy.limit.year;
+    const sync = () => { phase.disabled = year.disabled = blocked.checked || !limited.checked; };
+    blocked.onchange = limited.onchange = sync;
+    sync(); fields.disabled = false; status.textContent = '';
+    el('updatePolicyForm').onsubmit = async event => {
+      event.preventDefault();
+      const policy = { blocked: blocked.checked, limitEnabled: limited.checked, limit: { year: Number(year.value), number: Number(phase.value) } };
+      fields.disabled = true; status.textContent = 'Enregistrement…';
+      try {
+        const result = await fetch(API_BASE + '/api/admin/update_policy', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(policy) });
+        const saved = await result.json();
+        if (!result.ok) throw new Error(saved.error || 'Enregistrement impossible.');
+        status.textContent = 'Règles enregistrées pour tous les joueurs.';
+      } catch (error) { status.textContent = error.message; }
+      finally { fields.disabled = false; }
+    };
+  } catch (error) { status.textContent = error.message; }
+}
+
 const tabLoaders = {
+  updates: loadUpdatePolicyPanel,
   seigneurs: loadSeigneurs,
   users: loadUsers,
   religions: loadReligions,

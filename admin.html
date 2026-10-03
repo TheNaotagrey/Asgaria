@@ -15,7 +15,8 @@
   <main>
     <div class="tab-container">
       <div class="tab-buttons">
-        <button class="tab-btn active" data-tab="seigneurs">Seigneurs</button>
+        <button class="tab-btn active" data-tab="updates">Mises à jour</button>
+        <button class="tab-btn" data-tab="seigneurs">Seigneurs</button>
         <button class="tab-btn" data-tab="religions">Religions</button>
         <button class="tab-btn" data-tab="cultures">Cultures</button>
         <button class="tab-btn" data-tab="empires">Empires</button>
@@ -38,7 +39,7 @@
         <button class="tab-btn" data-tab="logs">Logs</button>
       </div>
       <div class="tab-panels">
-        <div id="tab-seigneurs" class="tab-panel active">
+        <div id="tab-seigneurs" class="tab-panel">
           <div class="tab-loading" style="display:none">Chargement...</div>
           <div id="tableSeigneurs"></div>
         </div>
@@ -120,6 +121,19 @@
         <div id="tab-users" class="tab-panel">
           <div class="tab-loading" style="display:none">Chargement...</div>
           <div id="tableUsers"></div>
+        </div>
+        <div id="tab-updates" class="tab-panel active">
+          <h2>Mises à jour des joueurs</h2>
+          <p>Ces règles s’appliquent à tous les joueurs. La limite est inclusive et ne fait pas reculer les joueurs déjà au-delà.</p>
+          <form id="updatePolicyForm"><fieldset id="updatePolicyFields" disabled>
+            <p><label><input type="checkbox" role="switch" id="updatesBlocked"> Suspendre toutes les mises à jour</label></p>
+            <p><label><input type="checkbox" role="switch" id="updatesLimited"> Activer une mise à jour limite</label></p>
+            <p><label for="updateLimitPhase">Mise à jour limite</label> <select id="updateLimitPhase"></select>
+            <label for="updateLimitYear">Année</label> <input id="updateLimitYear" type="number" min="1" max="9999" required></p>
+            <p>Le calendrier comprend dix mises à jour, de février à hiver. Le gel complet est prioritaire.</p>
+            <button type="submit">Enregistrer</button>
+          </fieldset></form>
+          <p id="updatePolicyStatus" role="status" aria-live="polite"></p>
         </div>
         <div id="tab-logs" class="tab-panel">
             <div class="tab-loading" style="display:none">Chargement...</div>
@@ -239,6 +253,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/timeago.js/4.0.2/locale/fr.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="auth.js"></script>
-  <script src="admin.js"></script>
+  <script src="src/playerTypes.js"></script>
+<script src="admin.js"></script>
 </body>
 </html>

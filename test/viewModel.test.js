@@ -714,6 +714,29 @@ test('mapFilterRuntime dispatches distance, canonical, sanctuary, trade and duch
   assert.strictEqual(pietyHarness.captured.legend['1'].name, 'Religion A');
 });
 
+test('selecting a trade route colors its full path and clearing it restores the barony filter', () => {
+  const vm = buildVm({
+    baronies: [100, 101, 102, 103, 104].map(id => ({ id, name: `Baronnie ${id}` })),
+    counties: [],
+    duchies: [],
+    tradeRoutes: [{ id: 7, barony_id_1: 100, barony_id_2: 103, path: '[101,102]' }]
+  });
+  const { manager, captured } = createFilterHarness(vm, { selection: { mapId: '100' } });
+
+  manager.applyFilter('trade_routes');
+  manager.setTradeRouteSelection(7);
+  assert.deepStrictEqual(captured.colorMap['100'], [36, 163, 33, 102]);
+  assert.deepStrictEqual(captured.colorMap['101'], [255, 159, 67, 255]);
+  assert.deepStrictEqual(captured.colorMap['102'], [255, 159, 67, 255]);
+  assert.deepStrictEqual(captured.colorMap['103'], [36, 163, 33, 102]);
+  assert.strictEqual(captured.colorMap['104'], undefined);
+
+  manager.setTradeRouteSelection(null);
+  assert.deepStrictEqual(captured.colorMap['100'], [36, 163, 33, 102]);
+  assert.deepStrictEqual(captured.colorMap['103'], [255, 106, 6, 255]);
+  assert.strictEqual(captured.colorMap['101'], undefined);
+});
+
 test('index.html loads the canonical ViewModel map stack', () => {
   const indexSource = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const expectedScripts = [

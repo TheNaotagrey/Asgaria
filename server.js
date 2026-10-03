@@ -1,3 +1,4 @@
+const { availabilityFields, availabilityDefaults, isValidType, isBuildingAvailable } = require('./src/playerTypes');
 const express = require('express');
 const sqlite3 = require('sqlite3');
 const zlib = require('zlib');
@@ -16,10 +17,16 @@ const { logAdminChange, prepareChangeLog, diffRecords } = require('./services/ch
 const { crudRoutes, list, create, update } = require('./src/crudRouter');
 const { StorageEffect, ResourceProductionEffect, BuildingProductionEffect, InfraProductionEffect, IDHEffect, VariableWorkersEffect, TagEffect, UnlockPageEffect, SpellSuccessEffect, SpellBasicDiscountEffect, SpellAdvancedDiscountEffect, SpellRangeEffect, SpellMaxPerMonthEffect, LandTransactionMaxPerMonthEffect, NavalTransactionMaxPerMonthEffect } = require('./effects');
 const { breadthFirst } = require('./src/bfs');
+const { findSpellTargets } = require('./src/spellTargeting');
+const { normalizeTradeResources } = require('./src/tradeValidation');
+const { createTradeTransactionAtomically, createTradeLinkAtomically } = require('./src/tradePersistence');
 const { compareUpdatePositions, formatUpdateLabel, getLatestUnlockedUpdate, getNextUpdatePosition, getUnlockDateForUpdate, getUpdateKey, isUpdateUnlocked, normalizeUpdatePosition } = require('./src/updateCycle');
+const { validateUpdatePolicy, getUpdatePolicyBlocker } = require('./src/updatePolicy');
+const { UPDATE_DEFINITIONS } = require('./src/updateCycle');
 const app = express();
 
-const db = new sqlite3.Database('asgaria.db');
+const DATABASE_PATH = 'asgaria.db';
+const db = new sqlite3.Database(DATABASE_PATH);
 db.configure('busyTimeout', 5000);
 const gunzip = promisify(zlib.gunzip);
 
@@ -55,6 +62,7 @@ app.set('adminTables', ADMIN_TABLES);
 
 // create tables if they do not exist
 const initSql = `
+CREATE TABLE IF NOT EXISTS update_policy (id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   email TEXT UNIQUE,
@@ -291,6 +299,7 @@ CREATE TABLE IF NOT EXISTS players (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   seigneur_id INTEGER,
   player_type TEXT DEFAULT 'seigneurie',
+  type TEXT NOT NULL DEFAULT 'seigneur',
   population INTEGER,
   update_year INTEGER,
   update_number INTEGER,
@@ -428,6 +437,7 @@ SELECT
   si.baronnie_id,
   p.seigneur_id,
   p.population,
+  p.type,
   si.tax_rate,
   p.inventaire_id,
   p.buildings,
@@ -819,6 +829,13 @@ db.serialize(() => {
   });
   db.all("PRAGMA table_info(players)", (err, rows) => {
     if (!err && rows) {
+      const refreshPlayerView = (error) => {
+        if (error) return logger.error('Migration du type de joueur impossible', error);
+        db.exec('DROP VIEW IF EXISTS seigneuries; ' + initSql.slice(initSql.indexOf('CREATE VIEW IF NOT EXISTS seigneuries AS')));
+      };
+      if (!rows.some(r => r.name === 'type')) {
+        db.run("ALTER TABLE players ADD COLUMN type TEXT NOT NULL DEFAULT 'seigneur'", refreshPlayerView);
+      } else refreshPlayerView();
       if (!rows.some(r => r.name === 'player_type')) {
         db.run("ALTER TABLE players ADD COLUMN player_type TEXT DEFAULT 'seigneurie'");
       }
@@ -844,18 +861,39 @@ db.serialize(() => {
   });
   db.all("PRAGMA table_info(seigneuries_info)", (err, rows) => {
     if (!err && rows) {
-      if (!rows.some(r => r.name === 'player_id')) {
-        db.run('ALTER TABLE seigneuries_info ADD COLUMN player_id INTEGER');
-      }
-      if (!rows.some(r => r.name === 'baronnie_id')) {
-        db.run('ALTER TABLE seigneuries_info ADD COLUMN baronnie_id INTEGER');
-      }
-      if (!rows.some(r => r.name === 'tax_rate')) {
-        db.run('ALTER TABLE seigneuries_info ADD COLUMN tax_rate INTEGER DEFAULT 5');
-      }
-      if (!rows.some(r => r.name === 'spells_cast')) {
-        db.run('ALTER TABLE seigneuries_info ADD COLUMN spells_cast INTEGER DEFAULT 0');
-      }
+      const missingColumns = [
+        ['player_id', 'INTEGER'],
+        ['baronnie_id', 'INTEGER'],
+        ['tax_rate', 'INTEGER DEFAULT 5'],
+        ['spells_cast', 'INTEGER DEFAULT 0']
+      ].filter(([name]) => !rows.some(row => row.name === name));
+      const finishMigration = () => {
+        db.all('PRAGMA table_info(players)', (playerErr, playerColumns) => {
+          if (playerErr) return logger.error('Migration des seigneuries historiques impossible', playerErr);
+          const names = new Set(playerColumns.map(column => column.name));
+          if (!names.has('baronnie_id')) return;
+          const taxRate = names.has('tax_rate') ? 'COALESCE(p.tax_rate, 5)' : '5';
+          const spellsCast = names.has('spells_cast') ? 'COALESCE(p.spells_cast, 0)' : '0';
+          const playerType = names.has('player_type') ? "(p.player_type='seigneurie' OR p.player_type IS NULL) AND" : '';
+          db.run(`INSERT INTO seigneuries_info (player_id, baronnie_id, tax_rate, spells_cast)
+            SELECT p.id, p.baronnie_id, ${taxRate}, ${spellsCast}
+            FROM players p
+            WHERE ${playerType} NOT EXISTS (
+              SELECT 1 FROM seigneuries_info s WHERE s.player_id=p.id
+            )`, migrationErr => {
+            if (migrationErr) logger.error('Migration des seigneuries historiques impossible', migrationErr);
+          });
+        });
+      };
+      const addNextColumn = () => {
+        const next = missingColumns.shift();
+        if (!next) return finishMigration();
+        db.run(`ALTER TABLE seigneuries_info ADD COLUMN ${next[0]} ${next[1]}`, migrationErr => {
+          if (migrationErr) return logger.error('Migration des colonnes de seigneurie impossible', migrationErr);
+          addNextColumn();
+        });
+      };
+      addNextColumn();
     }
   });
   db.all("PRAGMA table_info(trade_transactions)", (err, rows) => {
@@ -1035,6 +1073,9 @@ db.serialize(() => {
     }
   });
   db.all("PRAGMA table_info(building_properties)", (err, rows) => {
+    if (!err && rows) availabilityFields.forEach(field => {
+      if (!rows.some(row => row.name === field)) db.run(`ALTER TABLE building_properties ADD COLUMN ${field} INTEGER NOT NULL DEFAULT ${availabilityDefaults[field]}`);
+    });
     if (err || !rows) return;
     if (!rows.some(r => r.name === 'label')) {
       db.run('ALTER TABLE building_properties ADD COLUMN label TEXT');
@@ -1054,6 +1095,9 @@ db.serialize(() => {
     });
     db.all("PRAGMA table_info(infrastructure_properties)", (err, rows) => {
       if (err || !rows) return;
+      availabilityFields.forEach(field => {
+        if (!rows.some(row => row.name === field)) db.run(`ALTER TABLE infrastructure_properties ADD COLUMN ${field} INTEGER NOT NULL DEFAULT ${availabilityDefaults[field]}`);
+      });
       if (!rows.some(r => r.name === 'absolute_restrictions')) {
         db.run('ALTER TABLE infrastructure_properties ADD COLUMN absolute_restrictions TEXT');
       }
@@ -1190,6 +1234,28 @@ function requireAdmin(req, res, next) {
     return res.status(403).json({ error: 'Forbidden' });
   }
   next();
+}
+
+async function readUpdatePolicy() {
+  const row = await dbGetAsync('SELECT value FROM update_policy WHERE id=1', []);
+  return row ? validateUpdatePolicy(JSON.parse(row.value)) : { blocked: false, limitEnabled: false, limit: getLatestUnlockedUpdate() };
+}
+app.get('/api/admin/update_policy', requireAdmin, async (req, res) => {
+  try { res.json({ policy: await readUpdatePolicy(), definitions: UPDATE_DEFINITIONS }); }
+  catch (error) { handleError(res, error); }
+});
+app.put('/api/admin/update_policy', requireAdmin, async (req, res) => {
+  let policy;
+  try { policy = validateUpdatePolicy(req.body); }
+  catch (error) { return res.status(400).json({ error: error.message }); }
+  try {
+    await dbRunAsync('INSERT INTO update_policy (id,value) VALUES (1,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value', [JSON.stringify(policy)]);
+    res.json({ policy });
+  } catch (error) { handleError(res, error); }
+});
+async function loadUpdatePolicy(req, res, next) {
+  try { req.updatePolicy = await readUpdatePolicy(); next(); }
+  catch (error) { handleError(res, error); }
 }
 
 function applyAdminOverride(user) {
@@ -1645,7 +1711,7 @@ app.use('/api/inventaire', crudRoutes('inventaire', inventaireFields));
 
 app.get('/api/seigneuries', requireAdmin, (req, res) => {
   const invSelect = inventaireFields.map(f => `i.${f}`).join(',');
-  db.all(`SELECT s.id, s.baronnie_id, s.seigneur_id, s.population, s.update_year, s.update_number, s.inventaire_id, s.buildings, s.infrastructures, ${invSelect} FROM seigneuries s JOIN inventaire i ON s.inventaire_id=i.id`, [], (err, rows) => {
+  db.all(`SELECT s.id, s.type, s.baronnie_id, s.seigneur_id, s.population, s.update_year, s.update_number, s.inventaire_id, s.buildings, s.infrastructures, ${invSelect} FROM seigneuries s JOIN inventaire i ON s.inventaire_id=i.id`, [], (err, rows) => {
     if (err) return handleError(res, err);
     res.json(rows);
   });
@@ -1653,12 +1719,15 @@ app.get('/api/seigneuries', requireAdmin, (req, res) => {
 
 app.post('/api/seigneuries', requireAdmin, (req, res) => {
   const defaultUpdate = getLatestUnlockedUpdate(new Date());
-  const playerFields = ['seigneur_id','population','update_year','update_number'];
+  const playerType = req.body.type == null || req.body.type === '' ? 'seigneur' : req.body.type;
+  if (!isValidType(playerType)) return res.status(400).json({ error: 'Type de joueur invalide' });
+  const playerFields = ['seigneur_id','population','update_year','update_number','type'];
   const playerValues = [
     sanitize(req.body.seigneur_id),
     sanitize(req.body.population),
     sanitize(req.body.update_year) ?? defaultUpdate.year,
-    sanitize(req.body.update_number) ?? defaultUpdate.number
+    sanitize(req.body.update_number) ?? defaultUpdate.number,
+    playerType
   ];
   const baronnieId = sanitize(req.body.baronnie_id);
   const invValues = inventaireFields.map(f => sanitize(req.body[f]) || 0);
@@ -1666,7 +1735,7 @@ app.post('/api/seigneuries', requireAdmin, (req, res) => {
   db.run(`INSERT INTO inventaire (${inventaireFields.join(',')}) VALUES (${invPlace})`, invValues, function(err){
     if (err) return handleError(res, err);
     const invId = this.lastID;
-  db.run("INSERT INTO players (seigneur_id,population,update_year,update_number,player_type,inventaire_id,buildings,infrastructures) VALUES (?,?,?,?, 'seigneurie',?,?,?)",
+  db.run("INSERT INTO players (seigneur_id,population,update_year,update_number,type,player_type,inventaire_id,buildings,infrastructures) VALUES (?,?,?,?,?, 'seigneurie',?,?,?)",
     [...playerValues, invId, '{}', '{}'], function(err2){
       if (err2) return handleError(res, err2);
       const seigneurieId = this.lastID;
@@ -1691,8 +1760,9 @@ app.post('/api/seigneuries', requireAdmin, (req, res) => {
 });
 
 app.put('/api/seigneuries/:id', requireAdmin, (req, res) => {
+  if (req.body.type !== undefined && !isValidType(req.body.type)) return res.status(400).json({ error: 'Type de joueur invalide' });
   const id = req.params.id;
-  const playerFields = ['seigneur_id','population','update_year','update_number'];
+  const playerFields = ['seigneur_id','population','update_year','update_number','type'];
   const playerSet = playerFields.map(f => `${f}=?`).join(',');
   const playerValues = playerFields.map(f => sanitize(req.body[f]));
   const infoFields = ['baronnie_id'];
@@ -1830,7 +1900,7 @@ app.delete('/api/seigneuries/:id', requireAdmin, (req, res) => {
   });
 });
 
-app.get('/api/my_seigneurie', (req, res) => {
+app.get('/api/my_seigneurie', loadUpdatePolicy, (req, res) => {
   if (!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
   const userId = req.session.user.id;
   const overrideId = isAdminActive(req.session.user) && req.query.seigneurie_id ? parseInt(req.query.seigneurie_id, 10) : null;
@@ -2075,7 +2145,7 @@ app.get('/api/my_seigneurie', (req, res) => {
                   message: 'La mise a jour est impossible tant que la population employeee depasse la population totale.'
                 });
               }
-              const updateStatus = buildUpdateStatus(s, blockers);
+              const updateStatus = buildUpdateStatus(s, blockers, new Date(), req.updatePolicy);
               if (!updateStatus.canAdvance) {
                 const hasDateBlocker = updateStatus.blockers.some((entry) => entry.code === 'date_locked');
                 if (!hasDateBlocker && !isUpdateUnlocked(updateStatus.next)) {
@@ -2260,6 +2330,11 @@ app.post('/api/seigneurie/advance_update', (req, res) => {
         }
         try {
           await dbRunAsync('BEGIN TRANSACTION');
+          const policyBlocker = getUpdatePolicyBlocker(await readUpdatePolicy(), nextUpdate);
+          if (policyBlocker) {
+            await dbRunAsync('ROLLBACK');
+            return res.status(403).json({ error: policyBlocker.message, code: policyBlocker.code });
+          }
           const inventaire = await dbGetAsync('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id]);
           const inventoryState = { ...(inventaire || {}) };
           const buildings = safeParse(srow.buildings, {});
@@ -2642,21 +2717,43 @@ tagsRouter.use((req,res,next)=>{
 });
 app.use('/api/tags', tagsRouter);
 
-const buildingPropFields = ['label','produces','production','costs','max','workers_per_building','absolute_restrictions','infra_restrictions','effects','description'];
+const buildingPropFields = [...availabilityFields,'label','produces','production','costs','max','workers_per_building','absolute_restrictions','infra_restrictions','effects','description'];
 const buildingPropsRouter = crudRoutes('building_properties', buildingPropFields);
 buildingPropsRouter.use((req,res,next)=>{
   if(['POST','PUT','DELETE'].includes(req.method)) return requireAdmin(req,res,next);
   next();
 });
-app.use('/api/building_properties', buildingPropsRouter);
+function validateBuildingAvailability(table) { return (req, res, next) => {
+  if (['POST', 'PUT'].includes(req.method)) {
+    if (!isAdminActive(req.session ? req.session.user : null)) return res.status(403).json({ error: 'Accès interdit' });
+    for (const field of availabilityFields) {
+      const value = req.body[field];
+      if (value === undefined) {
+        if (req.method === 'POST') req.body[field] = availabilityDefaults[field];
+      } else if (![0, 1, true, false, '0', '1'].includes(value)) {
+        return res.status(400).json({ error: 'Disponibilité de bâtiment invalide' });
+      } else req.body[field] = Number(value);
+    }
+  }
+  if (req.method === 'PUT' && availabilityFields.some(field => req.body[field] === undefined)) {
+    return db.get(`SELECT * FROM ${table} WHERE id=?`, [req.path.split('/')[1]], (err, row) => {
+      if (err) return handleError(res, err);
+      if (!row) return res.status(404).json({ error: 'Introuvable' });
+      availabilityFields.forEach(field => { if (req.body[field] === undefined) req.body[field] = row[field]; });
+      next();
+    });
+  }
+  next();
+}; }
+app.use('/api/building_properties', validateBuildingAvailability('building_properties'), buildingPropsRouter);
 
-const infraPropFields = ['label','type','max','workers_per_building','effects','costs','absolute_restrictions','restrictions','description'];
+const infraPropFields = [...availabilityFields,'label','type','max','workers_per_building','effects','costs','absolute_restrictions','restrictions','description'];
 const infraPropsRouter = crudRoutes('infrastructure_properties', infraPropFields);
 infraPropsRouter.use((req,res,next)=>{
   if(['POST','PUT','DELETE'].includes(req.method)) return requireAdmin(req,res,next);
   next();
 });
-app.use('/api/infrastructure_properties', infraPropsRouter);
+app.use('/api/infrastructure_properties', validateBuildingAvailability('infrastructure_properties'), infraPropsRouter);
 
 const spellFields = ['label','type','costs','effects','description'];
 const spellsRouter = crudRoutes('spells', spellFields);
@@ -2666,65 +2763,96 @@ spellsRouter.use((req,res,next)=>{
 });
 app.use('/api/spells', spellsRouter);
 
+function applySpellModifier(effectCtx, definition, count, label) {
+  let effect = null;
+  if (definition.type === 'spell_success') effect = new SpellSuccessEffect(definition.amount || 0);
+  else if (definition.type === 'spell_basic_discount') effect = new SpellBasicDiscountEffect(definition.amount || 0);
+  else if (definition.type === 'spell_advanced_discount') effect = new SpellAdvancedDiscountEffect(definition.amount || 0);
+  else if (definition.type === 'spell_range') effect = new SpellRangeEffect(definition.amount || 0);
+  else if (definition.type === 'spell_max_per_month') effect = new SpellMaxPerMonthEffect(definition.amount || 0);
+  if (effect) effect.apply(effectCtx, count, label);
+}
+
+function getSpellEffectContext(seigneurie, callback) {
+  const infrastructures = safeParse(seigneurie.infrastructures, {});
+  const effectCtx = { spellSuccessBonus: 0, basicSpellDiscount: 0, advancedSpellDiscount: 0, spellRangeBonus: 0, spellMax: 0 };
+  db.all('SELECT id, label, effects FROM infrastructure_properties', [], (err, properties) => {
+    if (err) return callback(err);
+    (properties || []).forEach(property => {
+      const entry = infrastructures[property.id] || infrastructures[String(property.id)] || 0;
+      const count = typeof entry === 'object' ? (entry.built || 0) : entry;
+      if (!count) return;
+      safeParse(property.effects, []).forEach(definition => {
+        applySpellModifier(effectCtx, definition, count, property.label || property.type);
+      });
+    });
+    if (!seigneurie.baronnie_id) return callback(null, effectCtx);
+    db.get('SELECT effects FROM barony_properties WHERE barony_id=?', [seigneurie.baronnie_id], (baronyErr, properties) => {
+      if (baronyErr) return callback(baronyErr);
+      safeParse(properties && properties.effects, []).forEach(definition => {
+        applySpellModifier(effectCtx, definition, 1, 'Baronnie');
+      });
+      callback(null, effectCtx);
+    });
+  });
+}
+
+function getAvailableSpellTargets(seigneurie, range, callback) {
+  getTradeAdjacency((adjacencyErr, adjacency) => {
+    if (adjacencyErr) return callback(adjacencyErr);
+    const sql = `SELECT sg.id AS seigneurie_id, sg.baronnie_id, b.name AS barony_name,
+      COALESCE(lord.name, 'Sans seigneur') AS seigneur_name
+      FROM seigneuries sg
+      JOIN baronies b ON b.id=sg.baronnie_id
+      LEFT JOIN seigneurs lord ON lord.id=sg.seigneur_id`;
+    db.all(sql, [], (targetsErr, targets) => {
+      if (targetsErr) return callback(targetsErr);
+      callback(null, findSpellTargets({
+        originSeigneurieId: seigneurie.id,
+        originBaronyId: seigneurie.baronnie_id,
+        range,
+        targets,
+        adjacency
+      }));
+    });
+  });
+}
+
+app.get('/api/spell_targets', (req, res) => {
+  if (!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
+  getSeigneurie(req, 'seigneuries.id, seigneuries.baronnie_id, seigneuries.infrastructures', (err, seigneurie) => {
+    if (err) return handleError(res, err);
+    if (!seigneurie) return res.status(400).json({ error: 'Seigneurie introuvable' });
+    getSpellEffectContext(seigneurie, (effectsErr, effectCtx) => {
+      if (effectsErr) return handleError(res, effectsErr);
+      const range = Math.max(0, 5 + (effectCtx.spellRangeBonus || 0));
+      getAvailableSpellTargets(seigneurie, range, (targetsErr, targets) => {
+        if (targetsErr) return handleError(res, targetsErr);
+        res.json({ range, targets });
+      });
+    });
+  });
+});
+
 app.post('/api/cast_spell', (req,res)=>{
   if (!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
   const spellId = parseInt(req.body.id, 10);
+  const targetSeigneurieId = parseInt(req.body.target_seigneurie_id, 10);
   if (!spellId) return res.status(400).json({ error: 'ID invalide' });
+  if (!targetSeigneurieId) return res.status(400).json({ error: 'Destination du sort invalide' });
   const requestedAmount = parseInt(req.body.amount, 10) || 0;
   getSeigneurie(req, 'seigneuries.id, seigneuries.baronnie_id, seigneuries.buildings, seigneuries.infrastructures, seigneuries.spells_cast, seigneuries.update_year, seigneuries.update_number', (err, srow) => {
     if (err) return handleError(res, err);
     if (!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
     const seigneurieId = srow.id;
-    const infrastructures = safeParse(srow.infrastructures, {});
     let casts = srow.spells_cast || 0;
-    db.all('SELECT id, label, effects FROM infrastructure_properties', [], (err2, iprops) => {
-      if (err2) return handleError(res, err2);
-      const effectCtx = { spellSuccessBonus:0, basicSpellDiscount:0, advancedSpellDiscount:0, spellRangeBonus:0, spellMax:0 };
-      (iprops || []).forEach(ip => {
-        const entry = infrastructures[ip.id] || infrastructures[String(ip.id)] || 0;
-        const count = typeof entry === 'object' ? (entry.built || 0) : entry;
-        if (!count) return;
-        const effects = safeParse(ip.effects, []);
-        effects.forEach(def => {
-          let effObj = null;
-          if (def.type === 'spell_success') {
-            effObj = new SpellSuccessEffect(def.amount || 0);
-          } else if (def.type === 'spell_basic_discount') {
-            effObj = new SpellBasicDiscountEffect(def.amount || 0);
-          } else if (def.type === 'spell_advanced_discount') {
-            effObj = new SpellAdvancedDiscountEffect(def.amount || 0);
-          } else if (def.type === 'spell_range') {
-            effObj = new SpellRangeEffect(def.amount || 0);
-          } else if (def.type === 'spell_max_per_month') {
-            effObj = new SpellMaxPerMonthEffect(def.amount || 0);
-          }
-          if (effObj) effObj.apply(effectCtx, count, ip.label || ip.type);
-        });
-      });
-      const applyBarony = cb => {
-        if (!srow.baronnie_id) return cb();
-        db.get('SELECT effects FROM barony_properties WHERE barony_id=?', [srow.baronnie_id], (err3, bprops) => {
-          if (err3) return handleError(res, err3);
-          const beffs = safeParse(bprops && bprops.effects, []);
-          beffs.forEach(def => {
-            let effObj = null;
-            if (def.type === 'spell_success') {
-              effObj = new SpellSuccessEffect(def.amount || 0);
-            } else if (def.type === 'spell_basic_discount') {
-              effObj = new SpellBasicDiscountEffect(def.amount || 0);
-            } else if (def.type === 'spell_advanced_discount') {
-              effObj = new SpellAdvancedDiscountEffect(def.amount || 0);
-            } else if (def.type === 'spell_range') {
-              effObj = new SpellRangeEffect(def.amount || 0);
-            } else if (def.type === 'spell_max_per_month') {
-              effObj = new SpellMaxPerMonthEffect(def.amount || 0);
-            }
-            if (effObj) effObj.apply(effectCtx, 1, 'Baronnie');
-          });
-          cb();
-        });
-      };
-      applyBarony(() => {
+    getSpellEffectContext(srow, (effectsErr, effectCtx) => {
+      if (effectsErr) return handleError(res, effectsErr);
+      const range = Math.max(0, 5 + (effectCtx.spellRangeBonus || 0));
+      getAvailableSpellTargets(srow, range, (targetsErr, targets) => {
+        if (targetsErr) return handleError(res, targetsErr);
+        const target = targets.find(candidate => Number(candidate.seigneurie_id) === targetSeigneurieId);
+        if (!target) return res.status(400).json({ error: 'Destination hors de portée ou introuvable' });
         const max = effectCtx.spellMax || 0;
         if (max && casts >= max) return res.status(400).json({ error: 'Limite de sorts atteinte' });
         db.get('SELECT * FROM spells WHERE id=?', [spellId], (err4, spell) => {
@@ -2756,19 +2884,19 @@ app.post('/api/cast_spell', (req,res)=>{
               if (idx >= effects.length) return finish();
               const e = effects[idx++];
               if (e.type === 'production') {
-                performTransaction(db, seigneurieId, e.resource, e.amount || 0, err6 => {
+                performTransaction(db, targetSeigneurieId, e.resource, e.amount || 0, err6 => {
                   if (err6) return handleError(res, err6);
                   applyNext();
                 });
               } else if (e.type === 'variable_production') {
                 if (!chosenAmount) return applyNext();
-                performTransaction(db, seigneurieId, e.resource, chosenAmount, err6 => {
+                performTransaction(db, targetSeigneurieId, e.resource, chosenAmount, err6 => {
                   if (err6) return handleError(res, err6);
                   applyNext();
                 });
               } else if (e.type === 'random_luxury') {
                 const resName = luxuryResources[Math.floor(Math.random()*luxuryResources.length)];
-                performTransaction(db, seigneurieId, resName, e.amount || 0, err6 => {
+                performTransaction(db, targetSeigneurieId, resName, e.amount || 0, err6 => {
                   if (err6) return handleError(res, err6);
                   randomLuxury.push(resName);
                   applyNext();
@@ -2781,14 +2909,11 @@ app.post('/api/cast_spell', (req,res)=>{
               casts += 1;
               db.run('UPDATE seigneuries_info SET spells_cast=? WHERE player_id=?', [casts, seigneurieId], err7 => {
                 if (err7) return handleError(res, err7);
-                res.json({ success, randomLuxury });
+                res.json({ success, randomLuxury, target });
               });
             }
-            if (success) {
-              applyNext();
-            } else {
-              finish();
-            }
+            if (success) applyNext();
+            else finish();
           });
         });
       });
@@ -2838,9 +2963,11 @@ function normalizeSeigneurieUpdate(row, now = new Date()) {
   }, now);
 }
 
-function buildUpdateStatus(row, blockers = [], now = new Date()) {
+function buildUpdateStatus(row, blockers = [], now = new Date(), policy) {
   const current = normalizeSeigneurieUpdate(row, now);
   const next = getNextUpdatePosition(current);
+  const policyBlocker = policy && getUpdatePolicyBlocker(policy, next);
+  if (policyBlocker) blockers = [...blockers, policyBlocker];
   const unlockDate = getUnlockDateForUpdate(next);
   const canAdvance = blockers.length === 0 && isUpdateUnlocked(next, now);
   return {
@@ -3140,6 +3267,7 @@ function canConstruct(db, srow, id, qty, cb){
   db.get('SELECT * FROM building_properties WHERE id=?', [id], (err, bprops) => {
     if (err) return cb(err);
     if (!bprops) return cb(new Error('Type inconnu'));
+    if (!isBuildingAvailable(bprops, srow.type)) return cb(new Error('Ce bâtiment est indisponible pour ce type de joueur.'));
     if (!srow.baronnie_id) return cb(new Error('Aucune baronnie associée'));
     const costObj = safeParse(bprops.costs, {});
     const absReq = safeParse(bprops.absolute_restrictions, []);
@@ -3274,6 +3402,7 @@ function canConstructInfra(db, srow, id, qty, cb){
   db.get('SELECT * FROM infrastructure_properties WHERE id=?', [id], (err, iprop) => {
     if(err) return cb(err);
     if(!iprop) return cb(new Error('Type inconnu'));
+    if (!isBuildingAvailable(iprop, srow.type)) return cb(new Error('Cette infrastructure est indisponible pour ce type de joueur.'));
     if(!srow.baronnie_id) return cb(new Error('Aucune baronnie associée'));
     const costObj = safeParse(iprop.costs, {});
     const absReq = safeParse(iprop.absolute_restrictions, []);
@@ -3350,7 +3479,7 @@ app.post('/api/building', (req,res)=>{
   const bId = parseInt(id,10);
   const qty = parseInt(quantity,10) || 0;
   if(!bId || qty <= 0) return res.status(400).json({ error: 'Quantité invalide' });
-  getSeigneurie(req, 'seigneuries.id as id, seigneuries.baronnie_id, seigneuries.population, seigneuries.inventaire_id, seigneuries.buildings, seigneuries.infrastructures', (err, srow)=>{
+  getSeigneurie(req, 'seigneuries.id as id, seigneuries.type, seigneuries.baronnie_id, seigneuries.population, seigneuries.inventaire_id, seigneuries.buildings, seigneuries.infrastructures', (err, srow)=>{
     if(err) return handleError(res, err);
     if(!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
     canConstruct(db, srow, bId, qty, (err2, info)=>{
@@ -3395,7 +3524,7 @@ app.post('/api/infrastructure', (req,res)=>{
   const iId = Number.parseInt(id, 10);
   const qty = Number.parseInt(quantity, 10) || 0;
   if (Number.isNaN(iId) || qty <= 0) return res.status(400).json({ error: 'Quantité invalide' });
-  getSeigneurie(req, 'seigneuries.id as id, seigneuries.baronnie_id, seigneuries.population, seigneuries.inventaire_id, seigneuries.infrastructures, seigneuries.buildings', (err, srow)=>{
+  getSeigneurie(req, 'seigneuries.id as id, seigneuries.type, seigneuries.baronnie_id, seigneuries.population, seigneuries.inventaire_id, seigneuries.infrastructures, seigneuries.buildings', (err, srow)=>{
     if(err) return handleError(res, err);
     if(!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
     canConstructInfra(db, srow, iId, qty, (err2, info)=>{
@@ -3945,16 +4074,21 @@ app.delete('/api/barony_connections', requireAdmin, (req,res)=>{
 app.post('/api/send_transaction', (req, res) => {
   if (!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
   const targetBaronyId = parseInt(req.body.target_barony_id, 10);
-  const resources = req.body.resources || {};
+  let resources = {};
   const txType = req.body.type === 'naval' ? 'naval' : 'land';
-  const reason = req.body.reason || null;
+  const reason = typeof req.body.reason === 'string' ? req.body.reason.trim().slice(0, 2000) : null;
   if (!targetBaronyId || typeof resources !== 'object') return res.status(400).json({ error: 'Données invalides' });
+  try {
+    resources = normalizeTradeResources(req.body.resources, inventaireFields);
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.message || 'Données invalides' });
+  }
   getSeigneurie(req, 'seigneuries.id, seigneuries.baronnie_id, seigneuries.inventaire_id, seigneuries.buildings, seigneuries.infrastructures, seigneuries.land_transactions, seigneuries.naval_transactions, seigneuries.update_year, seigneuries.update_number', (err, srow) => {
     if (err) return handleError(res, err);
     if (!srow) return res.status(400).json({ error: 'Seigneurie introuvable' });
     const seigneurieId = srow.id;
     const infrastructures = safeParse(srow.infrastructures, {});
-    let count = txType === 'naval' ? (srow.naval_transactions || 0) : (srow.land_transactions || 0);
+    const count = txType === 'naval' ? (srow.naval_transactions || 0) : (srow.land_transactions || 0);
     db.all('SELECT id, label, effects FROM infrastructure_properties', [], (err2, iprops) => {
       if (err2) return handleError(res, err2);
       const effectCtx = { landTxMax:0, navalTxMax:0 };
@@ -3993,48 +4127,29 @@ app.post('/api/send_transaction', (req, res) => {
       applyBarony(() => {
         const max = txType === 'naval' ? effectCtx.navalTxMax : effectCtx.landTxMax;
         if (max && count >= max) return res.status(400).json({ error: 'Limite de transactions atteinte' });
-        db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err4, inv) => {
+        return db.get(`SELECT seigneuries.id, seigneurs.user_id as user_id FROM seigneuries JOIN seigneurs ON seigneurs.id=seigneuries.seigneur_id WHERE seigneuries.baronnie_id=?`, [targetBaronyId], (err4, dest) => {
           if (err4) return handleError(res, err4);
-          for (const [r, a] of Object.entries(resources)) {
-            const amt = parseInt(a, 10);
-            if (!inventaireFields.includes(r) || amt <= 0 || inv[r] < amt) {
-              return res.status(400).json({ error: 'Ressources insuffisantes' });
-            }
-          }
-          db.get(`SELECT seigneuries.id, seigneurs.user_id as user_id, seigneurs.name as name, baronies.name as barony_name FROM seigneuries JOIN seigneurs ON seigneurs.id=seigneuries.seigneur_id JOIN baronies ON baronies.id=seigneuries.baronnie_id WHERE seigneuries.baronnie_id=?`, [targetBaronyId], (err5, dest) => {
-            if (err5) return handleError(res, err5);
-            if (!dest) return res.status(400).json({ error: 'Destination invalide' });
-            db.get('SELECT seigneurs.name as name FROM seigneurs JOIN seigneuries ON seigneurs.id=seigneuries.seigneur_id WHERE seigneuries.id=?', [seigneurieId], (errO, originInfo) => {
-              if (errO) return handleError(res, errO);
-              const entries = Object.entries(resources);
-              let idx = 0;
-              function next() {
-                if (idx >= entries.length) return finish();
-                const [resName, amount] = entries[idx++];
-                performTransaction(db, seigneurieId, resName, -amount, err6 => {
-                  if (err6) return handleError(res, err6);
-                  next();
-                });
-              }
-              function finish() {
-                const newCount = count + 1;
-                const field = txType === 'naval' ? 'naval_transactions' : 'land_transactions';
-                const originUpdate = normalizeSeigneurieUpdate(srow);
-                db.run(`UPDATE players SET ${field}=? WHERE id=?`, [newCount, seigneurieId], err7 => {
-                  if (err7) return handleError(res, err7);
-                  db.run('INSERT INTO trade_transactions (origin_id, destination_id, origin_update_year, origin_update_number, resources, type, state, reason) VALUES (?,?,?,?,?,?,?,?)', [seigneurieId, dest.id, originUpdate.year, originUpdate.number, JSON.stringify(resources), txType, 'En Attente', reason], function(err8) {
-                    if (err8) return handleError(res, err8);
-                    const message = `Vous avez reçu une ${txType === 'naval' ? 'cargaison' : 'caravane'} de ressources de ${originInfo ? originInfo.name : ''}`;
-                    sendNotification(db, dest.user_id, message, `/gestion.html?transactionId=${this.lastID}`, () => {
-                      res.json({ ok: true });
-                    });
-                  });
-                });
-              }
-              next();
-            });
+          if (!dest) return res.status(400).json({ error: 'Destination invalide' });
+          createTradeTransactionAtomically(DATABASE_PATH, {
+            seigneurieId,
+            inventoryId: srow.inventaire_id,
+            startBaronyId: srow.baronnie_id,
+            targetBaronyId,
+            resources,
+            type: txType,
+            maxTransactions: max,
+            originUpdate: normalizeSeigneurieUpdate(srow),
+            destinationId: dest.id,
+            reason
+          }).then(transactionId => {
+            const message = `Vous avez reçu une ${txType === 'naval' ? 'cargaison' : 'caravane'} de ressources.`;
+            sendNotification(db, dest.user_id, message, `/gestion.html?transactionId=${transactionId}`, () => res.json({ ok: true }));
+          }).catch(error => {
+            if (error.status) return res.status(error.status).json({ error: error.message });
+            handleError(res, error);
           });
         });
+
       });
     });
   });
@@ -4549,17 +4664,20 @@ app.post('/api/users/me/trade_links/build', (req, res) => {
     db.get('SELECT seigneur_id, name FROM baronies WHERE id=?', [targetId], (err2, brow) => {
       if (err2) return handleError(res, err2);
       if (!brow || !brow.seigneur_id) return res.status(400).json({ error: 'Baronnie invalide' });
-      const finalizeBuild = (cost, sql, storedPath, responsePath, distance) => {
-        db.get('SELECT or_ FROM inventaire WHERE id=?', [srow.inventaire_id], (err4, inv) => {
-          if (err4) return handleError(res, err4);
-          if (!inv || (inv.or_ || 0) < cost) return res.status(400).json({ error: 'Ressources insuffisantes' });
-          consumeResources(db, srow.id, { or_: cost }, err5 => {
-            if (err5) return handleError(res, err5);
-            db.run(sql, [startId, targetId, JSON.stringify(storedPath)], function(err6) {
-              if (err6) return handleError(res, err6);
-              res.json({ id: this.lastID, cost, distance, type: routeType, path: responsePath });
-            });
-          });
+      const finalizeBuild = (storedPath, responsePath, distance) => {
+        createTradeLinkAtomically(DATABASE_PATH, {
+          seigneurieId: srow.id,
+          inventoryId: srow.inventaire_id,
+          startId,
+          targetId,
+          type: routeType,
+          storedPath,
+          distance
+        }).then(id => {
+          res.json({ id, cost: distance * 3, distance, type: routeType, path: responsePath });
+        }).catch(error => {
+          if (error.status) return res.status(error.status).json({ error: error.message });
+          handleError(res, error);
         });
       };
       if (routeType === 'naval') {
@@ -4575,7 +4693,7 @@ app.post('/api/users/me/trade_links/build', (req, res) => {
             if (validationError) return res.status(400).json({ error: validationError });
             const distance = computePathDistance(requestedPath, adjacency);
             if (distance == null) return res.status(400).json({ error: 'Chemin maritime invalide' });
-            finalizeBuild(distance * 3, 'INSERT INTO trade_lines (barony_id_1, barony_id_2, path) VALUES (?,?,?)', requestedPath, requestedPath, distance);
+            finalizeBuild(requestedPath, requestedPath, distance);
           });
         });
         return;
@@ -4595,7 +4713,7 @@ app.post('/api/users/me/trade_links/build', (req, res) => {
         if (validationError) return res.status(400).json({ error: validationError });
         const distance = computePathDistance(fullPath, adjacency);
         if (distance == null) return res.status(400).json({ error: 'Chemin invalide' });
-        finalizeBuild(distance * 3, 'INSERT INTO trade_routes (barony_id_1, barony_id_2, path) VALUES (?,?,?)', normalized.storedPath, fullPath, distance);
+        finalizeBuild(normalized.storedPath, fullPath, distance);
       });
     });
   });

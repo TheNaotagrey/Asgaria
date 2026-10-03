@@ -320,6 +320,10 @@
         return;
       }
       const filterDefinition = registry.byId?.[currentFilter] || null;
+      if (currentFilter === 'trade_routes' && (tradeRouteSelection || tradeLineSelection)) {
+        applyTradeRoutesFilter();
+        return;
+      }
       if (filterDefinition?.kind === 'baronyBasedOnSelected') {
         applyBaronyBasedOnSelectedFilter(filterDefinition);
         return;

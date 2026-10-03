@@ -27,6 +27,7 @@ let buildingPropsSelect = [];
 let infraPropsSelect = [];
 
 let currentSpells = [];
+let spellTargets = [];
 
 const baronyPropBoolFields = ['water_access','sea_access','has_or','has_argent','has_fer','has_pierre','has_epices','has_perle','has_encens','has_huiles','has_pierre_precieuses','has_soie','has_sel','has_fourrure','has_teinture','has_ivoire','has_vin'];
 const baronyPropLabels = {
@@ -54,6 +55,30 @@ const baronyPropLabels = {
 
 function safeParse(json, fallback){
   try { return json ? JSON.parse(json) : fallback; } catch { return fallback; }
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>'"]/g, character => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    "'": '&#39;',
+    '"': '&quot;'
+  })[character]);
+}
+
+function renderTransactionDates(container) {
+  const dates = container.querySelectorAll('.timeago');
+  if (dates.length && window.timeago && typeof window.timeago.render === 'function') {
+    dates.forEach(element => window.timeago.render(element, 'fr'));
+    return;
+  }
+  dates.forEach(element => {
+    const date = new Date(element.dateTime);
+    element.textContent = Number.isNaN(date.getTime())
+      ? ''
+      : date.toLocaleString('fr-CA', { dateStyle: 'medium', timeStyle: 'short' });
+  });
 }
 
 let gameState = {};
@@ -93,7 +118,7 @@ function showConfirm(message){
     const msgEl = document.getElementById('confirmMessage');
     const okBtn = document.getElementById('confirmOk');
     const cancelBtn = document.getElementById('confirmCancel');
-    msgEl.innerHTML = message;
+    msgEl.textContent = message;
     const clean = result => {
       okBtn.removeEventListener('click', onOk);
       cancelBtn.removeEventListener('click', onCancel);
@@ -329,6 +354,7 @@ async function loadAndRender(seigneurieId) {
     const buildingBonuses = data.buildingProductionBonus || {};
     const buildingBonusDetails = data.buildingProductionBonusDetails || {};
     const buildingProps = allBuildingProps.filter(bp => {
+      if (!PlayerTypes.isBuildingAvailable(bp, s.type)) return false;
       try {
         const arr = bp.absolute_restrictions ? JSON.parse(bp.absolute_restrictions) : [];
         return arr.every(p => baronyProps[p]);
@@ -339,6 +365,7 @@ async function loadAndRender(seigneurieId) {
     const bpMap = Object.fromEntries(allBuildingProps.map(b => [String(b.id), b]));
     buildingPropsSelect = allBuildingProps.map(b => ({ id: b.id, name: b.label || b.type }));
     const infraProps = allInfraProps.filter(ip => {
+        if (!PlayerTypes.isBuildingAvailable(ip, s.type)) return false;
         try {
           const arr = ip.absolute_restrictions ? JSON.parse(ip.absolute_restrictions) : [];
           if (Array.isArray(arr)) {
@@ -580,8 +607,14 @@ async function loadAndRender(seigneurieId) {
         magiePanel.style.display = '';
         renderSpellInfo();
         try {
-          const spellsRes = await fetch('/api/spells');
+          const targetQuery = currentSeigneurieId ? `?seigneurie_id=${encodeURIComponent(currentSeigneurieId)}` : '';
+          const [spellsRes, targetsRes] = await Promise.all([
+            fetch('/api/spells'),
+            fetch(`/api/spell_targets${targetQuery}`)
+          ]);
           const spells = spellsRes.ok ? await spellsRes.json() : [];
+          const targetData = targetsRes.ok ? await targetsRes.json() : { targets: [] };
+          spellTargets = Array.isArray(targetData.targets) ? targetData.targets : [];
           renderSpells(spells);
           if (localStorage.getItem('gestionActiveTab') === 'magie') {
             magieBtn.click();
@@ -1952,7 +1985,9 @@ async function castSpell(id) {
   try {
     const qtyInput = document.querySelector(`input.spell-qty[data-id="${id}"]`);
     const amount = qtyInput ? parseInt(qtyInput.value, 10) || 0 : 0;
-    const payload = { id, amount };
+    const targetSelect = document.getElementById('spellTargetSelect');
+    const targetSeigneurieId = targetSelect ? parseInt(targetSelect.value, 10) : 0;
+    const payload = { id, amount, target_seigneurie_id: targetSeigneurieId };
     if (currentSeigneurieId) payload.seigneurie_id = currentSeigneurieId;
     const resp = await fetch('/api/cast_spell', {
       method: 'POST',
@@ -2017,8 +2052,19 @@ function renderSpells(spells) {
     }
     return `<tr><td>${s.label}</td><td>${costStr}</td><td>${effStr}</td><td>${qtyField}</td><td><button class="cast-spell" data-id="${s.id}">Lancer</button></td></tr>`;
   }).join('');
-  container.innerHTML = `<table class="admin-table"><tr><th>Nom</th><th>Coût</th><th>Effets</th><th>Quantité</th><th></th></tr>${rows}</table>`;
+  const targetOptions = spellTargets.map(target => {
+    const isOrigin = Number(target.seigneurie_id) === Number(gameState.s && gameState.s.id);
+    const distance = Number.isFinite(target.distance) ? ` · ${target.distance}` : '';
+    const ownLabel = isOrigin ? ' (vous)' : '';
+    const label = `${target.barony_name || 'Baronnie inconnue'}${ownLabel}${distance}`;
+    return `<option value="${target.seigneurie_id}">${escapeHtml(label)}</option>`;
+  }).join('');
+  const targetControl = targetOptions
+    ? `<div class="spell-target-control"><label for="spellTargetSelect">Baronnie cible :</label><select id="spellTargetSelect">${targetOptions}</select><span>Portée : ${gameState.spellRange || 5}</span></div>`
+    : '<p class="empty-state">Aucune seigneurie à portée ne peut recevoir un sort.</p>';
+  container.innerHTML = `${targetControl}<table class="admin-table"><tr><th>Nom</th><th>Coût</th><th>Effets</th><th>Quantité</th><th></th></tr>${rows}</table>`;
   container.querySelectorAll('button.cast-spell').forEach(btn => {
+    btn.disabled = !targetOptions;
     btn.addEventListener('click', () => castSpell(btn.dataset.id));
   });
   container.querySelectorAll('input.spell-qty').forEach(inp => {
@@ -2102,320 +2148,9 @@ let seigneurNameMap = {};
 let newRouteMode = false;
 let eligibleTargets = {};
 let currentTradeBaronyId = null;
-let currentTradeRoutes = [];
 let seaZoneAdjacency = {};
 let zoneBaronies = {};
 let baronyZones = {};
-let seaReachCache = {};
-
-async function ensureTradeData() {
-  if (tradeBaronies) return;
-  try {
-    const [barRes, seiRes] = await Promise.all([
-      fetch('/api/baronies'),
-      fetch('/api/seigneurs')
-    ]);
-    const barData = barRes.ok ? await barRes.json() : [];
-    const seigs = seiRes.ok ? await seiRes.json() : [];
-    seigneurNameMap = Object.fromEntries(seigs.map(s => [s.id, s.name]));
-    tradeBaronies = barData.map(b => ({
-      id: b.id,
-      name: b.name,
-      seigneur_id: b.seigneur_id,
-      seigneur_name: seigneurNameMap[b.seigneur_id]
-    }));
-  } catch {
-    tradeBaronies = [];
-  }
-}
-
-async function initTradeMap() {
-  if (tradeMapCore) return;
-  const base = document.getElementById('tradeBaseMap');
-  const canvas = document.getElementById('tradeCanvas');
-  if (!base || !canvas) return;
-  const baseLoaded = base.complete ? Promise.resolve() : new Promise(res => (base.onload = res));
-  await baseLoaded;
-  canvas.width = base.naturalWidth;
-  canvas.height = base.naturalHeight;
-  canvas.style.width = '100%';
-  canvas.style.height = '100%';
-  tradeMapCore = mapCore.init({
-    canvas,
-    enablePan: false,
-    enableZoom: false,
-    staticMap: true,
-    onSelect: handleTradeMapSelect,
-    fetchData: async () => {
-      const [pixels, connections, zoneConns, zoneBars] = await Promise.all([
-        fetch('/api/barony_pixels').then(r => r.json()),
-        fetch('/api/barony_connections').then(r => r.json()),
-        fetch('/api/maritime_zone_connections').then(r => r.json()),
-        fetch('/api/maritime_zone_baronies').then(r => r.json())
-      ]);
-      tradeAdjacency = {};
-      connections.forEach(c => {
-        const dist = parseInt(c.distance, 10) || 1;
-        if (!tradeAdjacency[c.barony_id_1]) tradeAdjacency[c.barony_id_1] = [];
-        if (!tradeAdjacency[c.barony_id_2]) tradeAdjacency[c.barony_id_2] = [];
-        tradeAdjacency[c.barony_id_1].push({ id: c.barony_id_2, distance: dist });
-        tradeAdjacency[c.barony_id_2].push({ id: c.barony_id_1, distance: dist });
-      });
-      seaZoneAdjacency = {};
-      zoneConns.forEach(c => {
-        const dist = parseInt(c.distance, 10) || 1;
-        if (!seaZoneAdjacency[c.zone_id_1]) seaZoneAdjacency[c.zone_id_1] = [];
-        if (!seaZoneAdjacency[c.zone_id_2]) seaZoneAdjacency[c.zone_id_2] = [];
-        seaZoneAdjacency[c.zone_id_1].push({ id: c.zone_id_2, distance: dist });
-        seaZoneAdjacency[c.zone_id_2].push({ id: c.zone_id_1, distance: dist });
-      });
-      zoneBaronies = {};
-      baronyZones = {};
-      zoneBars.forEach(zb => {
-        if (!zoneBaronies[zb.zone_id]) zoneBaronies[zb.zone_id] = [];
-        zoneBaronies[zb.zone_id].push(zb.barony_id);
-        if (!baronyZones[zb.barony_id]) baronyZones[zb.barony_id] = [];
-        baronyZones[zb.barony_id].push(zb.zone_id);
-      });
-      seaReachCache = {};
-      return { mapWidth: base.naturalWidth, mapHeight: base.naturalHeight, pixelData: pixels };
-    }
-  });
-  await tradeMapCore.ready;
-  const commerceTab = document.getElementById('tab-commerce');
-  if (commerceTab && commerceTab.classList.contains('active')) {
-    tradeMapCore.resetView();
-    tradeMapCore.drawAll();
-  }
-}
-
-async function updateTradeMap(baronyId, routes) {
-  await initTradeMap();
-  if (!tradeMapCore) return;
-  const normalizedRoutes = Array.isArray(routes) ? routes : [];
-  const bg = [...mapCore.terrainColor, 100];
-  const landColor = [128, 0, 128, 100];
-  const seaColor = [0, 128, 255, 100];
-  const currentColor = [255, 237, 0, 180];
-  const colorMap = {};
-  const patternMap = {};
-  Object.keys(tradeMapCore.pixelData).forEach(id => {
-    colorMap[id] = [...bg];
-  });
-  if (baronyId) {
-    const landSet = new Set((tradeAdjacency[baronyId] || []).map(n => n.id));
-    normalizedRoutes.forEach(r => landSet.add(r.id));
-    const seaSet = computeSeaReachable(baronyId);
-    landSet.forEach(id => {
-      colorMap[String(id)] = [...landColor];
-    });
-    seaSet.forEach(id => {
-      if (landSet.has(id)) {
-        delete colorMap[String(id)];
-        patternMap[String(id)] = [landColor, seaColor];
-      } else {
-        colorMap[String(id)] = [...seaColor];
-      }
-    });
-  }
-  normalizedRoutes.forEach(r => {
-    if (!colorMap[String(r.id)]) colorMap[String(r.id)] = [...landColor];
-  });
-  if (baronyId) {
-    colorMap[String(baronyId)] = [...currentColor];
-  }
-  tradeMapCore.setColorMap(colorMap);
-  tradeMapCore.setCanonicalPatterns(patternMap);
-}
-
-function computeDistances(start) {
-  const { distanceMap } = breadthFirst(start, cur => tradeAdjacency[cur] || []);
-  return distanceMap;
-}
-
-function computeSeaReachable(start) {
-  if (!gameState.navalTxMax || gameState.navalTxMax <= 0) return new Set();
-  if (seaReachCache[start]) return seaReachCache[start];
-  const startZones = baronyZones[start] || [];
-  const { distanceMap } = breadthFirst(startZones, z => seaZoneAdjacency[z] || []);
-  const res = new Set();
-  Object.keys(distanceMap).forEach(z => {
-    (zoneBaronies[z] || []).forEach(bid => {
-      if (bid !== start) res.add(bid);
-    });
-  });
-  seaReachCache[start] = res;
-  return res;
-}
-
-function getAvailableMethods(targetId) {
-  const methods = [];
-  const landPossible = (tradeAdjacency[currentTradeBaronyId] || []).some(n => n.id === targetId) ||
-    currentTradeRoutes.some(r => r.id === targetId);
-  const seaPossible = computeSeaReachable(currentTradeBaronyId).has(targetId);
-  if (landPossible && (!gameState.landTxMax || gameState.landTransactions < gameState.landTxMax)) methods.push('land');
-  if (seaPossible && (!gameState.navalTxMax || gameState.navalTransactions < gameState.navalTxMax)) methods.push('naval');
-  return methods;
-}
-
-async function startTradeRouteCreation() {
-  if (newRouteMode) {
-    newRouteMode = false;
-    eligibleTargets = {};
-    await updateTradeMap(currentTradeBaronyId, currentTradeRoutes);
-    return;
-  }
-  if (!currentTradeBaronyId) return;
-  await ensureTradeData();
-  const dists = computeDistances(currentTradeBaronyId);
-  eligibleTargets = {};
-  tradeBaronies.forEach(b => {
-    if (!b.seigneur_id) return;
-    if (b.id === currentTradeBaronyId) return;
-    if (dists[b.id] == null) return;
-    eligibleTargets[b.id] = { ...b, distance: dists[b.id] };
-  });
-  if (!Object.keys(eligibleTargets).length) {
-    alert('Aucune baronnie disponible');
-    return;
-  }
-  newRouteMode = true;
-  const cm = { ...tradeMapCore.colorMap };
-  Object.keys(eligibleTargets).forEach(id => {
-    cm[id] = [0, 170, 255, 100];
-  });
-  tradeMapCore.setColorMap(cm);
-  tradeMapCore.currentSelectedId = null;
-}
-
-async function handleTradeMapSelect(id) {
-  if (!id) return;
-  if (!newRouteMode) {
-    const idNum = parseInt(id, 10);
-    const methods = getAvailableMethods(idNum);
-    if (!methods.length) {
-      if (tradeMapCore && tradeMapCore.colorMap[id]) {
-        tradeMapCore.colorMap[id][3] = 100;
-        tradeMapCore.currentSelectedId = null;
-        tradeMapCore.drawAll();
-      }
-      return;
-    }
-    await ensureTradeData();
-    const bar = tradeBaronies.find(b => b.id === idNum);
-    const name = bar ? bar.seigneur_name : '';
-    const result = await showTradeDialog(name, methods);
-    if (result) {
-      await sendTransaction(idNum, result.resources, result.reason, result.method);
-      await loadAndRender(currentSeigneurieId);
-      await renderTradeRoutes(currentTradeBaronyId);
-    }
-    tradeMapCore.drawAll();
-    return;
-  }
-  if (!eligibleTargets[id]) return;
-  const target = eligibleTargets[id];
-  const cost = target.distance * 3;
-  const msg = `Vous allez construire une route commerciale vers la baronnie de <strong>${target.name} (#${target.id})</strong> gérée par ${target.seigneur_name}<br><br>Cela vous coutera <strong>${cost} Or</strong>`;
-  const ok = await showConfirm(msg);
-  if (!ok) {
-    newRouteMode = false;
-    eligibleTargets = {};
-    await updateTradeMap(currentTradeBaronyId, currentTradeRoutes);
-    return;
-  }
-  try {
-    const res = await fetch('/api/users/me/trade_links/build', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ barony_id: target.id })
-    });
-    if (res.ok) {
-      await renderTradeRoutes(currentTradeBaronyId);
-    } else {
-      const err = await res.json().catch(() => ({}));
-      alert(err.error || 'Construction impossible');
-    }
-  } catch {
-    alert('Construction impossible');
-  }
-  newRouteMode = false;
-  eligibleTargets = {};
-  await updateTradeMap(currentTradeBaronyId, currentTradeRoutes);
-}
-
-function renderTradeLimits() {
-  const table = document.getElementById('tradeLimitsTable');
-  if (!table || !gameState) return;
-  const {
-    landTransactions = 0,
-    landTxMax = 0,
-    navalTransactions = 0,
-    navalTxMax = 0
-  } = gameState;
-  table.innerHTML =
-    '<tr><th>Type</th><th>Présent</th><th>Max/mois</th></tr>' +
-    `<tr><td>Terrestres</td><td>${landTransactions}</td><td>${landTxMax}</td></tr>` +
-    `<tr><td>Maritimes</td><td>${navalTransactions}</td><td>${navalTxMax}</td></tr>`;
-}
-
-async function renderTradeRoutes(baronyId) {
-  const container = document.getElementById('tradeRoutes');
-  if (!container) return;
-  renderTradeLimits();
-  container.textContent = '';
-  if (!baronyId) {
-    container.textContent = 'Aucune baronnie sélectionnée';
-    await updateTradeMap(null, []);
-    return;
-  }
-  currentTradeBaronyId = baronyId;
-  try {
-    const info = document.getElementById('tradeInfo');
-    if (info) {
-      const { landTransactions = 0, landTxMax = 0, navalTransactions = 0, navalTxMax = 0 } = gameState;
-      info.innerHTML = `Transactions terrestres: ${landTransactions} / ${landTxMax}<br>Transactions maritimes: ${navalTransactions} / ${navalTxMax}`;
-      const legend = document.getElementById('tradeLegend');
-      if (legend) legend.style.display = navalTxMax > 0 ? 'flex' : 'none';
-    }
-    const res = await fetch(`/api/trade_partners?barony_id=${baronyId}`);
-    const routes = res.ok ? await res.json() : [];
-    const normalizedRoutes = Array.isArray(routes) ? routes : [];
-    currentTradeRoutes = normalizedRoutes;
-    await updateTradeMap(baronyId, normalizedRoutes);
-    if (!normalizedRoutes.length) {
-      container.textContent = 'Aucune route commerciale';
-      return;
-    }
-    const { landTransactions = 0, landTxMax = 0 } = gameState;
-    const limitReached = landTxMax !== 0 && landTransactions >= landTxMax;
-    const rows = normalizedRoutes
-      .map(r =>
-        `<tr><td>${r.id}</td><td>${r.name || ''}</td><td>${r.seigneur_name || ''}</td><td>${r.duchy_name || ''}</td><td><button class="trade-btn control-btn" data-id="${r.id}"${limitReached ? ' disabled' : ''}>Commercer</button></td></tr>`
-      )
-      .join('');
-    container.innerHTML = `<table class="admin-table"><tr><th>#</th><th>Nom</th><th>Propriétaire</th><th>Province (Duché)</th><th></th></tr>${rows}</table>`;
-    container.querySelectorAll('.trade-btn').forEach(btn => {
-      if (!btn.disabled) {
-        btn.addEventListener('click', () => openTradeDialog(btn.dataset.id));
-      }
-    });
-  } catch {
-    container.textContent = 'Erreur de chargement';
-    await updateTradeMap(baronyId, []);
-  }
-}
-
-async function openTradeDialog(baronyId) {
-  await ensureTradeData();
-  const idNum = parseInt(baronyId, 10);
-  const methods = getAvailableMethods(idNum);
-  const bar = tradeBaronies.find(b => b.id === idNum);
-  const name = bar ? bar.seigneur_name : '';
-  const result = await showTradeDialog(name, methods);
-  if (!result) return;
-  await sendTransaction(idNum, result.resources, result.reason, result.method);
-}
 
 let tradeLinksState = [];
 let tradeRouteDialogData = { target: null, methods: [], method: 'land', landSelections: [], seaSelections: [] };
@@ -2595,11 +2330,11 @@ async function initTradeMap() {
         baronyZones[zb.barony_id].push(zb.zone_id);
       });
       maritimeZonePixelsState = zonePixels || {};
-      seaReachCache = {};
       return { mapWidth: base.naturalWidth, mapHeight: base.naturalHeight, pixelData: pixels };
     }
   });
   await tradeMapCore.ready;
+  window.tradeMapCore = tradeMapCore;
 }
 
 function setTradePreview(link = null) {
@@ -2655,7 +2390,13 @@ function getBuildMethods(targetId) {
   const methods = [];
   const landPath = computeShortestTradePath(currentTradeBaronyId, targetId, tradeAdjacency);
   if (landPath && landPath.path && landPath.path.length >= 2) methods.push('land');
-  if ((baronyZones[currentTradeBaronyId] || []).length && (baronyZones[targetId] || []).length) methods.push('naval');
+  const seaPossible = (baronyZones[currentTradeBaronyId] || []).some(startZone =>
+    (baronyZones[targetId] || []).some(endZone => {
+      const path = computeShortestTradePath(startZone, endZone, seaZoneAdjacency);
+      return path && path.path && path.path.length;
+    })
+  );
+  if (seaPossible) methods.push('naval');
   return methods;
 }
 
@@ -2885,7 +2626,8 @@ async function startTradeRouteCreation() {
   eligibleTargets = {};
   tradeBaronies.forEach(b => {
     if (!b.seigneur_id || b.id === currentTradeBaronyId) return;
-    const methods = getBuildMethods(b.id);
+    const existingTypes = new Set(tradeLinksState.filter(link => link.partner_id === b.id).map(link => link.type));
+    const methods = getBuildMethods(b.id).filter(method => !existingTypes.has(method));
     if (!methods.length) return;
     eligibleTargets[b.id] = { ...b, methods };
   });
@@ -2985,10 +2727,10 @@ async function renderTradeRoutes(baronyId) {
       return `<tr class="trade-link-row" data-link-id="${link.id}" data-link-type="${link.type}">
         <td>${link.type === 'land' ? 'Terre' : 'Mer'}</td>
         <td>${link.partner_id}</td>
-        <td>${link.partner_name || ''}</td>
-        <td>${link.seigneur_name || ''}</td>
+        <td>${escapeHtml(link.partner_name)}</td>
+        <td>${escapeHtml(link.seigneur_name)}</td>
         <td>${getTradeLinkDistance(link)}</td>
-        <td title="${buildTradeLinkSummary(link).replace(/"/g, '&quot;')}">${pathLength}</td>
+        <td title="${escapeHtml(buildTradeLinkSummary(link))}">${pathLength}</td>
         <td><button class="trade-btn control-btn" data-id="${link.partner_id}" data-method="${link.type}"${limitReached ? ' disabled' : ''}>Commercer</button></td>
       </tr>`;
     }).join('');
@@ -3078,8 +2820,9 @@ function showTradeDialog(seigneurName, methods) {
         const key = sel.value;
         const val = parseInt(inp.value, 10) || 0;
         if (key && val > 0) {
-          if (val > (gameState.inv[key] || 0)) valid = false;
-          else res[key] = val;
+          const total = (res[key] || 0) + val;
+          if (total > (gameState.inv[key] || 0)) valid = false;
+          else res[key] = total;
         }
       });
       if (!valid || !Object.keys(res).length) {
@@ -3115,112 +2858,6 @@ async function sendTransaction(baronyId, resources, reason, method) {
   }
 }
 
-async function renderPendingTransactions() {
-  const table = document.getElementById('pendingTxTable');
-  if (!table) return;
-  try {
-    const url = currentSeigneurieId
-      ? `/api/trade_transactions?seigneurie_id=${currentSeigneurieId}`
-      : '/api/trade_transactions';
-    const res = await fetch(url);
-    const txs = res.ok ? await res.json() : [];
-    table.innerHTML = '<tr><th>Ressources</th><th>Origine</th><th>Mise a jour</th><th>Date</th><th>Raison</th><th></th></tr>';
-    txs.forEach(tx => {
-      const resSummary = Object.entries(tx.resources || {}).map(([k,v]) => `${v} ${resourceLabels[k] || k}`).join(', ');
-      const origin = `${tx.origin_name} (${tx.origin_barony_name})`;
-      const updateLabel = tx.origin_update_label || '';
-      const date = `<span class="timeago" datetime="${tx.created_at}"></span>`;
-      let status;
-      if (tx.state === 'En Attente') {
-        status = `<button class="tx-open" data-id="${tx.id}">...</button>`;
-      } else {
-        const label = tx.state === 'Approuvée' ? 'Approuvée' : 'Refusée';
-        status = `<span title="${tx.decision_time ? new Date(tx.decision_time).toLocaleString() : ''}">${label}</span>`;
-      }
-      table.innerHTML += `<tr><td>${resSummary}</td><td>${origin}</td><td>${date}</td><td>${tx.reason || ''}</td><td>${status}</td></tr>`;
-    });
-    let rows = txs.length;
-    while (rows < 3) {
-      table.innerHTML += '<tr>' + '<td>&nbsp;</td>'.repeat(5) + '</tr>';
-      rows++;
-    }
-    timeago.render(table.querySelectorAll('.timeago'), 'fr');
-    table.querySelectorAll('.tx-open').forEach(btn => {
-      btn.addEventListener('click', () => openTransactionPopup(btn.dataset.id));
-    });
-  } catch {
-    table.innerHTML = '<tr><td colspan="5">Erreur</td></tr>';
-  }
-}
-
-async function openTransactionPopup(id) {
-  try {
-    const res = await fetch(`/api/trade_transactions/${id}`);
-    if (!res.ok) throw new Error('Erreur');
-    const tx = await res.json();
-    const dialog = document.getElementById('txDialog');
-    const content = document.getElementById('txContent');
-    const buttons = document.getElementById('txButtons');
-    const refuseBtn = document.getElementById('txRefuse');
-    const acceptBtn = document.getElementById('txAccept');
-    const closeBtn = document.getElementById('txClose');
-    const items = Object.entries(tx.resources || {}).map(([k,v]) => `<li>${v} ${resourceLabels[k] || k}</li>`).join('');
-    const typeLabel = tx.type === 'naval' ? 'cargaison' : 'caravane';
-    refuseBtn.style.display = 'none';
-    acceptBtn.style.display = 'none';
-    closeBtn.style.display = 'none';
-    if (tx.state === 'Refusée' && Number(tx.origin_id) === Number(currentSeigneurieId)) {
-      let claim = { returned: tx.resources, lost: {} };
-      if (!tx.returned) {
-        try {
-          const cRes = await fetch(`/api/trade_transactions/${id}/claim`, { method: 'POST' });
-          if (cRes.ok) {
-            claim = await cRes.json();
-            await loadAndRender(currentSeigneurieId);
-          }
-        } catch {}
-      }
-      const retItems = Object.entries(claim.returned || {}).map(([k,v]) => `<li>${v} ${resourceLabels[k] || k}</li>`).join('');
-      let lossHtml = '';
-      if (claim.lost && Object.keys(claim.lost).length) {
-        const lossItems = Object.entries(claim.lost).map(([k,v]) => `<li>${v} ${resourceLabels[k] || k}</li>`).join('');
-        lossHtml = `<p>Pertes :</p><ul>${lossItems}</ul>`;
-      }
-      content.innerHTML = `
-        <p>Votre ${typeLabel} à destination de ${tx.dest_name} a été refusée.</p>
-        <p>Les ressources suivantes vous ont été retournées :</p>
-        <ul>${retItems}</ul>
-        ${lossHtml}`;
-      buttons.style.display = '';
-      closeBtn.style.display = '';
-      closeBtn.onclick = () => dialog.close();
-    } else {
-      content.innerHTML = `
-        <p>Vous avez reçu une ${typeLabel} de ${tx.origin_name} de la Baronnie de ${tx.origin_barony_name} avec la raison suivante :</p>
-        <p>${tx.reason || ''}</p>
-        <p>Elle contient :</p>
-        <ul>${items}</ul>
-        <p>En cas de refus, les ressources seront retournées à l'envoyeur (perdu si maximum d'une ressource dépassée).</p>`;
-      if (tx.state === 'En Attente' && Number(tx.destination_id) === Number(currentSeigneurieId)) {
-        buttons.style.display = '';
-        refuseBtn.style.display = '';
-        acceptBtn.style.display = '';
-        closeBtn.style.display = 'none';
-        refuseBtn.onclick = async () => { dialog.close(); await decideTx(id, 'refuse'); };
-        acceptBtn.onclick = async () => { dialog.close(); await decideTx(id, 'accept'); };
-      } else {
-        buttons.style.display = '';
-        closeBtn.style.display = '';
-        refuseBtn.style.display = 'none';
-        acceptBtn.style.display = 'none';
-        closeBtn.onclick = () => dialog.close();
-      }
-    }
-    dialog.showModal();
-    timeago.render(dialog.querySelectorAll('.timeago'), 'fr');
-  } catch {}
-}
-
 async function decideTx(id, action) {
   try {
     const payload = { action };
@@ -3252,9 +2889,9 @@ async function renderPendingTransactions() {
     const txs = res.ok ? await res.json() : [];
     table.innerHTML = '<tr><th>Ressources</th><th>Origine</th><th>Mise a jour</th><th>Date</th><th>Raison</th><th></th></tr>';
     txs.forEach(tx => {
-      const resSummary = Object.entries(tx.resources || {}).map(([k, v]) => `${v} ${resourceLabels[k] || k}`).join(', ');
-      const origin = `${tx.origin_name} (${tx.origin_barony_name})`;
-      const updateLabel = tx.origin_update_label || '';
+      const resSummary = Object.entries(tx.resources || {}).map(([k, v]) => `${escapeHtml(v)} ${escapeHtml(resourceLabels[k] || k)}`).join(', ');
+      const origin = `${escapeHtml(tx.origin_name)} (${escapeHtml(tx.origin_barony_name)})`;
+      const updateLabel = escapeHtml(tx.origin_update_label);
       const date = `<span class="timeago" datetime="${tx.created_at}"></span>`;
       let status;
       if (tx.state === 'En Attente') {
@@ -3265,18 +2902,19 @@ async function renderPendingTransactions() {
         const label = tx.state === 'Approuvée' ? 'Approuvée' : 'Refusée';
         status = `<span title="${tx.decision_time ? new Date(tx.decision_time).toLocaleString() : ''}">${label}</span>`;
       }
-      table.innerHTML += `<tr><td>${resSummary}</td><td>${origin}</td><td>${updateLabel}</td><td>${date}</td><td>${tx.reason || ''}</td><td>${status}</td></tr>`;
+      table.innerHTML += `<tr><td>${resSummary}</td><td>${origin}</td><td>${updateLabel}</td><td>${date}</td><td>${escapeHtml(tx.reason)}</td><td>${status}</td></tr>`;
     });
     let rows = txs.length;
     while (rows < 3) {
       table.innerHTML += '<tr>' + '<td>&nbsp;</td>'.repeat(6) + '</tr>';
       rows++;
     }
-    timeago.render(table.querySelectorAll('.timeago'), 'fr');
+    renderTransactionDates(table);
     table.querySelectorAll('.tx-open').forEach(btn => {
       btn.addEventListener('click', () => openTransactionPopup(btn.dataset.id));
     });
-  } catch {
+  } catch (error) {
+    console.error('Erreur de chargement des transactions commerciales', error);
     table.innerHTML = '<tr><td colspan="6">Erreur</td></tr>';
   }
 }
@@ -3292,7 +2930,7 @@ async function openTransactionPopup(id) {
     const refuseBtn = document.getElementById('txRefuse');
     const acceptBtn = document.getElementById('txAccept');
     const closeBtn = document.getElementById('txClose');
-    const items = Object.entries(tx.resources || {}).map(([k, v]) => `<li>${v} ${resourceLabels[k] || k}</li>`).join('');
+    const items = Object.entries(tx.resources || {}).map(([k, v]) => `<li>${escapeHtml(v)} ${escapeHtml(resourceLabels[k] || k)}</li>`).join('');
     const typeLabel = tx.type === 'naval' ? 'cargaison' : 'caravane';
     const currentUpdate = gameState.updateStatus && gameState.updateStatus.current;
     const originUpdate = { year: Number(tx.origin_update_year), number: Number(tx.origin_update_number) };
@@ -3312,14 +2950,14 @@ async function openTransactionPopup(id) {
           }
         } catch {}
       }
-      const retItems = Object.entries(claim.returned || {}).map(([k, v]) => `<li>${v} ${resourceLabels[k] || k}</li>`).join('');
+      const retItems = Object.entries(claim.returned || {}).map(([k, v]) => `<li>${escapeHtml(v)} ${escapeHtml(resourceLabels[k] || k)}</li>`).join('');
       let lossHtml = '';
       if (claim.lost && Object.keys(claim.lost).length) {
-        const lossItems = Object.entries(claim.lost).map(([k, v]) => `<li>${v} ${resourceLabels[k] || k}</li>`).join('');
+        const lossItems = Object.entries(claim.lost).map(([k, v]) => `<li>${escapeHtml(v)} ${escapeHtml(resourceLabels[k] || k)}</li>`).join('');
         lossHtml = `<p>Pertes :</p><ul>${lossItems}</ul>`;
       }
       content.innerHTML = `
-        <p>Votre ${typeLabel} a destination de ${tx.dest_name} a ete refusee.</p>
+        <p>Votre ${typeLabel} a destination de ${escapeHtml(tx.dest_name)} a ete refusee.</p>
         <p>Les ressources suivantes vous ont ete retournees :</p>
         <ul>${retItems}</ul>
         ${lossHtml}`;
@@ -3328,15 +2966,15 @@ async function openTransactionPopup(id) {
       closeBtn.onclick = () => dialog.close();
     } else {
       const waitingMessage = !canAcceptNow
-        ? `<p><strong>Blocage :</strong> vous ne pourrez l'accepter qu'a partir de ${tx.origin_update_label || formatUpdateStatusLabel(originUpdate)}.</p>`
+        ? `<p><strong>Blocage :</strong> vous ne pourrez l'accepter qu'a partir de ${escapeHtml(tx.origin_update_label || formatUpdateStatusLabel(originUpdate))}.</p>`
         : '';
       const receivedMessage = tx.state === 'Approuvée' && !tx.received
         ? '<p>Cette transaction a ete approuvee. Les ressources seront ajoutees lors de votre prochaine mise a jour.</p>'
         : '';
       content.innerHTML = `
-        <p>Vous avez recu une ${typeLabel} de ${tx.origin_name} de la Baronnie de ${tx.origin_barony_name}.</p>
-        <p><strong>Mise a jour d'envoi :</strong> ${tx.origin_update_label || formatUpdateStatusLabel(originUpdate)}</p>
-        <p><strong>Raison :</strong> ${tx.reason || 'Aucune raison'}</p>
+        <p>Vous avez recu une ${typeLabel} de ${escapeHtml(tx.origin_name)} de la Baronnie de ${escapeHtml(tx.origin_barony_name)}.</p>
+        <p><strong>Mise a jour d'envoi :</strong> ${escapeHtml(tx.origin_update_label || formatUpdateStatusLabel(originUpdate))}</p>
+        <p><strong>Raison :</strong> ${escapeHtml(tx.reason || 'Aucune raison')}</p>
         <p>Elle contient :</p>
         <ul>${items}</ul>
         ${waitingMessage}
@@ -3354,7 +2992,7 @@ async function openTransactionPopup(id) {
       }
     }
     dialog.showModal();
-    timeago.render(dialog.querySelectorAll('.timeago'), 'fr');
+    renderTransactionDates(dialog);
   } catch {}
 }
 

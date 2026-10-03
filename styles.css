@@ -597,6 +597,22 @@ main {
   border-radius: 4px;
   font-weight: 600;
 }
+
+/* Ciblage des sorts */
+.spell-target-control {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 12px;
+}
+.spell-target-control select {
+  max-width: 100%;
+}
+.cast-spell:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 .log-controls {
   display: flex;
   flex-direction: column;
@@ -1482,7 +1498,7 @@ th.multi-col {
 }
 
 @media (max-width: 640px) {
-  .app-header {
+.app-header {
     padding: 8px;
   }
 
