@@ -3985,6 +3985,21 @@ function showLoading(panel, show){
   if(el) el.style.display = show ? '' : 'none';
 }
 
+async function readUpdatePolicyResponse(response) {
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.toLowerCase().includes('application/json')) {
+    if (response.status === 404) {
+      throw new Error('La version du serveur ne fournit pas encore l’API des mises à jour. Vérifiez le déploiement et redémarrez l’application.');
+    }
+    throw new Error(`Réponse inattendue du serveur pour les mises à jour (HTTP ${response.status}).`);
+  }
+  const data = await response.json();
+  if (response.status === 401) throw new Error('Connexion requise.');
+  if (response.status === 403) throw new Error('Accès administrateur requis.');
+  if (!response.ok) throw new Error(data.error || `Erreur du serveur (HTTP ${response.status}).`);
+  return data;
+}
+
 async function loadUpdatePolicyPanel() {
   const el = id => document.getElementById(id);
   const fields = el('updatePolicyFields'), status = el('updatePolicyStatus');
@@ -3994,8 +4009,7 @@ async function loadUpdatePolicyPanel() {
   status.textContent = 'Chargement…';
   try {
     const response = await fetch(API_BASE + '/api/admin/update_policy');
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Chargement impossible.');
+    const data = await readUpdatePolicyResponse(response);
     phase.replaceChildren(...data.definitions.map(entry => new Option(entry.label, entry.number)));
     blocked.checked = data.policy.blocked; limited.checked = data.policy.limitEnabled;
     phase.value = data.policy.limit.number; year.value = data.policy.limit.year;
@@ -4008,8 +4022,7 @@ async function loadUpdatePolicyPanel() {
       fields.disabled = true; status.textContent = 'Enregistrement…';
       try {
         const result = await fetch(API_BASE + '/api/admin/update_policy', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(policy) });
-        const saved = await result.json();
-        if (!result.ok) throw new Error(saved.error || 'Enregistrement impossible.');
+        await readUpdatePolicyResponse(result);
         status.textContent = 'Règles enregistrées pour tous les joueurs.';
       } catch (error) { status.textContent = error.message; }
       finally { fields.disabled = false; }

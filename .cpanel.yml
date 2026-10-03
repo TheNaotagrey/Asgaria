@@ -2,8 +2,7 @@
 ---
 deployment:
   tasks:
-    - export DEPLOYPATH=/home/wkkgb451/repositories/Asgaria
-    - /usr/bin/git pull
-    - cd $DEPLOYPATH
-    - npm install
-    - touch tmp/restart.txt
+    - /usr/bin/git -C /home/wkkgb451/repositories/Asgaria pull origin live
+    - cd /home/wkkgb451/repositories/Asgaria && npm install
+    - mkdir -p /home/wkkgb451/repositories/Asgaria/tmp
+    - touch /home/wkkgb451/repositories/Asgaria/tmp/restart.txt

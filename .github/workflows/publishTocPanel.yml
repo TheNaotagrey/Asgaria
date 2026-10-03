@@ -63,5 +63,21 @@ jobs:
 
             echo "✅ Application deployed and restarted successfully!"
 
+      - name: Vérifier que la nouvelle API répond en production
+        run: |
+          for attempt in {1..12}; do
+            status=$(curl --silent --show-error --max-time 10 --output api-response.txt --write-out '%{http_code}' \
+              --header 'Cache-Control: no-cache' \
+              "https://www.asgaria.org/api/admin/update_policy?deploy_check=${{ github.sha }}") || status=000
+            if [ "$status" = 403 ] && grep -q '"error"' api-response.txt; then
+              echo "L'API des mises à jour répond sur le serveur déployé."
+              exit 0
+            fi
+            echo "Tentative $attempt/12 : réponse HTTP $status, attente du redémarrage."
+            sleep 5
+          done
+          echo "Le site ne sert pas la nouvelle API après le déploiement."
+          exit 1
+
       - name: ✅ Deployment Success
-        run: echo "🎉 Deployment to api.exampledomain.com was successful!"
+        run: echo "Déploiement vers www.asgaria.org vérifié."
