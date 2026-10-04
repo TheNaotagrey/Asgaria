@@ -13,19 +13,50 @@ const state = {
   barony: { id: 1, name: 'Valmont', kingdom_name: 'Asgaria', duchy_name: 'Monts', county_name: 'Val' },
   seigneur: { name: 'Louis de Valmont', religion_name: 'Foi ancienne', overlord_name: 'Duc des Monts' },
   employment: { employed: 30, slaves: 0 }, idh: 8,
+  idhDetails: Array.from({ length: 45 }, (_, index) => ({
+    label: `Contribution ${index + 1} — bâtiments, infrastructures et effets de la baronnie avec un libellé très long`, amount: index % 2 ? -1 : 1
+  })),
   production: { or_: 5, vivres: -100, points_magique: 30 },
   capacities: { vivres: 500, points_magique: 2000, hommes_darmes: 50 },
   updateStatus: { current: { year: 1026, number: 1 }, next: { year: 1026, number: 2 }, canAdvance: true, blockers: [] }
 };
 let transactions = [];
 let transactionError = false;
+let adminMode = false;
+const buildingProperties = [{ id: 1, label: 'Champs de céréales', type: 'champ', produces: 'vivres', production: 100,
+  workers_per_building: 5, costs: '{"or_":20,"pierre":5}', max: '10', effects: '[]', available_seigneur: 1 }];
+const infrastructureProperties = [
+  { id: 1, label: 'Atelier de transformation', type: 'civil', costs: '{"or_":50}', max: '5', available_seigneur: 1,
+    description: 'Transforme les ressources et emploie les habitants disponibles.',
+    effects: '[{"type":"instant_production","resource":"pierre","amount":5,"costs":{"or_":2}},{"type":"variable_workers","resource":"fer","amount":2,"max_workers":10}]' },
+  { id: 2, label: 'Caserne', type: 'militaire', costs: '{"or_":80}', max: '5', available_seigneur: 1,
+    description: 'Augmente la capacité militaire.', effects: '[{"type":"storage","resource":"hommes_darmes","amount":50}]' },
+  { id: 3, label: 'Comptoir commercial', type: 'commercial', costs: '{"or_":100}', max: '5', available_seigneur: 1,
+    description: 'Permet davantage de transactions terrestres.', effects: '[]' }
+];
+Object.assign(state, {
+  buildings: { 1: { built: 2, active: 1 } },
+  infrastructures: { 1: { built: 1, effect_0_remaining: 3, effect_1_workers: 2 }, 2: { built: 1 }, 3: { built: 1 } },
+  baronyProps: { id: 1, barony_id: 1, water_access: 1, field_limit: 10, effects: '[]' },
+  unlockedPages: { magie: true }
+});
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (url.pathname.startsWith('/api/')) {
     const data = url.pathname === '/api/my_seigneurie' ? state
-      : url.pathname === '/api/me' ? { id: 1, first_name: 'Marie', last_name: 'Dupont', is_admin: false }
+      : url.pathname === '/api/me' ? { id: 1, first_name: 'Marie', last_name: 'Dupont', is_admin: adminMode }
       : url.pathname === '/api/test_mode' ? { enabled: false }
-      : url.pathname === '/api/trade_transactions' ? transactions : [];
+      : url.pathname === '/api/trade_transactions' ? transactions
+      : url.pathname === '/api/building_properties' ? buildingProperties
+      : url.pathname === '/api/infrastructure_properties' ? infrastructureProperties
+      : url.pathname === '/api/religions' ? [{ id: 1, name: 'Foi ancienne' }]
+      : url.pathname === '/api/cultures' ? [{ id: 1, name: 'Culture de Valmont' }]
+      : url.pathname === '/api/seigneurs' ? [{ id: 1, name: 'Louis de Valmont', user_id: 1 }]
+      : url.pathname === '/api/seigneuries' ? [{ id: 1, seigneur_id: 1, baronnie_id: 1 }]
+      : url.pathname === '/api/baronies' ? [{ id: 1, name: 'Valmont' }, { id: 2, name: 'Hautbois' }]
+      : url.pathname === '/api/trade_routes' ? [{ id: 1, barony_id_1: 1, barony_id_2: 2, path: [1, 2] }]
+      : url.pathname === '/api/spells' ? [{ id: 1, type: 'base', label: 'Bénédiction des récoltes', description: 'Améliore les récoltes.', costs: '{"points_magique":10}', effects: '[]' }]
+      : url.pathname === '/api/spell_targets' ? { targets: [{ seigneurie_id: 1, barony_name: 'Valmont', distance: 0 }] } : [];
     if (/^\/api\/trade_transactions\/\d+$/.test(url.pathname)) {
       const transaction = transactions.find(tx => tx.id === Number(url.pathname.split('/').pop()));
       res.setHeader('Content-Type', 'application/json');
@@ -47,11 +78,15 @@ const server = http.createServer((req, res) => {
   try {
     fs.mkdirSync(output, { recursive: true });
     const page = await browser.newPage();
+    await page.addInitScript(() => localStorage.setItem('gestionActiveTab', 'sommaire'));
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.route('https://**', route => route.abort());
     const url = `http://127.0.0.1:${server.address().port}/gestion.html`;
-    for (const width of [1440, 1280, 1024, 390]) {
+    for (const admin of [false, true]) {
+      adminMode = admin;
+      const summaryPrefix = admin ? 'sommaire-admin' : 'sommaire';
+      for (const width of [1440, 1280, 1024, 390]) {
       await page.setViewportSize({ width, height: 1000 });
       await page.goto(url);
       await page.waitForSelector('#basicResourcesTable tr');
@@ -62,12 +97,13 @@ const server = http.createServer((req, res) => {
       const after = await page.locator('#popAndTx').boundingBox();
       assert.equal(before.y, after.y, `Opening preview shifts population at ${width}px`);
       assert.match(await page.locator('.update-preview').innerText(), /Famine : 2 morts/);
+      assert.match(await page.locator('.preview-variation.prod-negative').innerText(), /-100/);
       assert.match(await page.locator('.update-preview').innerText(), /20 perdus/);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `Page overflows at ${width}px`);
-      await page.screenshot({ path: path.join(output, `sommaire-${width}-ouvert.png`), fullPage: true });
+      await page.screenshot({ path: path.join(output, `${summaryPrefix}-${width}-ouvert.png`), fullPage: true });
       await page.locator('.update-preview summary').click();
       assert.equal((await page.locator('#popAndTx').boundingBox()).y, before.y);
-      await page.screenshot({ path: path.join(output, `sommaire-${width}-ferme.png`), fullPage: true });
+      await page.screenshot({ path: path.join(output, `${summaryPrefix}-${width}-ferme.png`), fullPage: true });
       const boxes = await page.locator('#resourceTables > div > table').evaluateAll(tables => tables.map(table => {
         const r = table.getBoundingClientRect();
         return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
@@ -78,14 +114,16 @@ const server = http.createServer((req, res) => {
           `Resource tables overlap at ${width}px`);
       }
       await page.locator('#resourceTables').scrollIntoViewIfNeeded();
-      await page.screenshot({ path: path.join(output, `sommaire-${width}-ressources.png`), fullPage: true });
+      await page.screenshot({ path: path.join(output, `${summaryPrefix}-${width}-ressources.png`), fullPage: true });
       if (width <= 1150) {
         await page.locator('.update-preview summary').click();
         await page.locator('.summary-update-panel').evaluate(panel => { panel.scrollTop = panel.scrollHeight; });
         await page.locator('.summary-update-panel').scrollIntoViewIfNeeded();
-        await page.screenshot({ path: path.join(output, `sommaire-${width}-prevision-defilee.png`), fullPage: true });
+        await page.screenshot({ path: path.join(output, `${summaryPrefix}-${width}-prevision-defilee.png`), fullPage: true });
       }
     }
+    }
+    adminMode = false;
     state.seigneurie.beginner_protection = 0;
     state.updateStatus.canAdvance = false;
     state.updateStatus.blockers = [{ message: 'La population employée dépasse la population totale.' }];
@@ -113,8 +151,101 @@ const server = http.createServer((req, res) => {
     await page.waitForSelector('#basicResourcesTable tr');
     assert.match(await page.locator('#pendingTxTable').innerText(), /Impossible de charger/);
     assert.equal(await page.locator('#pendingTxTable th').count(), 6);
+    transactionError = false;
+    for (const admin of [false, true]) {
+      adminMode = admin;
+      for (const width of [1440, 1024, 390]) {
+        await page.setViewportSize({ width, height: 1000 });
+        await page.goto(url);
+        await page.waitForSelector('#basicResourcesTable tr');
+        if (admin) {
+          assert.equal(await page.locator('#popInput').count(), 1);
+          assert.equal(await page.locator('#religionSelect option').count(), 1);
+          assert.equal(await page.locator('#adminSeigneurieSelect select').isVisible(), true);
+          assert.equal(await page.locator('#adminSeigneurieSelect select').inputValue(), '1');
+        }
+        for (const tab of ['sommaire', 'infra', 'infraMili', 'ost', 'magie', 'commerce', 'proprietes']) {
+          await page.locator(`.tab-btn[data-tab="${tab}"]`).click();
+          await page.waitForSelector(`#tab-${tab}.active`);
+          assert.ok(await page.locator(`#tab-${tab} .admin-table`).count() > 0, `No table in ${tab}`);
+          const styles = await page.locator(`#tab-${tab} .admin-table`).evaluateAll(tables => tables.map(table => {
+            const style = getComputedStyle(table);
+            return [style.borderCollapse, style.borderTopWidth, style.borderTopColor, style.borderRadius];
+          }));
+          for (const style of styles) assert.deepEqual(style, ['separate', '1px', 'rgb(204, 211, 220)', '6px']);
+          if (tab === 'infra' || tab === 'infraMili' || tab === 'commerce') {
+            const tableId = tab === 'infra' ? 'civilInfraTable' : tab === 'infraMili' ? 'militaryInfraTable' : 'commercialInfraTable';
+            const cells = await page.locator(`#${tableId}`).evaluate(table =>
+              [...table.rows].map(row => row.cells.length));
+            assert.ok(cells.every(count => count === cells[0]), 'Infrastructure header does not match body');
+            assert.equal(cells[0], tab === 'infra' ? 9 : 8);
+          }
+          if (tab === 'magie') {
+            assert.equal(await page.locator('.cast-spell').count(), 1);
+            assert.match(await page.locator('#spellTargetSelect').innerText(), /Valmont/);
+          }
+          assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `${tab} overflows in ${admin ? 'admin' : 'player'} at ${width}`);
+          const overflowingControls = await page.locator(`#tab-${tab} .admin-table :is(input,select)`).evaluateAll(controls => controls.filter(control => {
+            const parent = control.closest('td').getBoundingClientRect();
+            const box = control.getBoundingClientRect();
+            return box.width > parent.width + 1;
+          }).map(control => control.className || control.id));
+          assert.deepEqual(overflowingControls, [], `Controls overflow in ${tab}`);
+          await page.screenshot({ path: path.join(output, `${admin ? 'admin' : 'joueur'}-${width}-${tab}.png`), fullPage: true });
+          if (width === 390) {
+            const wrappers = page.locator(`#tab-${tab} :is(#productionInfra, #civilInfra, #militaryInfra, #commercialInfra, #spellList, #tradeRoutes)`);
+            for (const wrapper of await wrappers.all()) {
+              const needsScroll = await wrapper.evaluate(el => el.scrollWidth > el.clientWidth + 1);
+              if (needsScroll) {
+                await wrapper.evaluate(el => { el.scrollLeft = el.scrollWidth; });
+                assert.ok(await wrapper.evaluate(el => el.scrollLeft) > 0, `Actions inaccessible in ${tab}`);
+              }
+            }
+            await page.screenshot({ path: path.join(output, `${admin ? 'admin' : 'joueur'}-${width}-${tab}-actions.png`), fullPage: true });
+          }
+        }
+      }
+    }
+    for (const admin of [false, true]) {
+      adminMode = admin;
+      for (const width of [1440, 390]) {
+        await page.setViewportSize({ width, height: 800 });
+        await page.goto(url);
+        const trigger = page.locator('#populationSummary .tooltip').last();
+        await trigger.waitFor();
+        const popup = page.locator('#gestionTooltip');
+        await trigger.hover();
+        await popup.waitFor({ state: 'visible' });
+        const box = await popup.boundingBox();
+        assert.ok(box.x >= 11 && box.x + box.width <= width - 11);
+        assert.ok(box.y >= 11 && box.y + box.height <= 789);
+        assert.equal(await popup.locator('tr').count(), 45);
+        assert.ok(await popup.evaluate(el => el.scrollHeight > el.clientHeight));
+        assert.ok(await popup.evaluate(el => {
+          const r = el.getBoundingClientRect();
+          return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
+        }), 'Tooltip is clipped behind its table');
+        await popup.hover();
+        await popup.evaluate(el => { el.scrollTop = el.scrollHeight; });
+        assert.ok(await popup.evaluate(el => el.scrollTop > 0));
+        assert.equal(await popup.isVisible(), true);
+        await page.screenshot({ path: path.join(output, `${admin ? 'admin' : 'joueur'}-${width}-idh-tooltip.png`), fullPage: true });
+        await page.keyboard.press('Escape');
+        assert.equal(await popup.isVisible(), false);
+        await trigger.focus();
+        await page.keyboard.press('Enter');
+        assert.equal(await popup.evaluate(el => document.activeElement === el), true);
+        await page.keyboard.press('Escape');
+        assert.equal(await popup.isVisible(), false);
+        assert.equal(await trigger.evaluate(el => document.activeElement === el), true);
+        await trigger.click();
+        assert.equal(await popup.isVisible(), true);
+        await page.locator('.tab-btn[data-tab="infra"]').click();
+        assert.equal(await popup.isVisible(), false);
+      }
+    }
     assert.deepEqual(errors, []);
-    console.log('UI vérifiée : 4 largeurs, prévision ouverte/fermée sans déplacement, protection active/inactive, famine, stockage, transactions vides/remplies/erreur et consultation, aucun chevauchement, débordement ni erreur JavaScript.');
+    console.log('UI vérifiée : sommaire à 4 largeurs ; 7 onglets en modes joueur et administrateur à 1440, 1024 et 390 px ; styles communs, champs admin, actions spéciales, sélection de seigneurie, magie et transactions. Aucun chevauchement, débordement de page ni erreur JavaScript.');
     console.log(`Captures : ${output}`);
   } finally { await browser.close(); server.close(); }
 })().catch(error => { console.error(error); server.close(); process.exitCode = 1; });

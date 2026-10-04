@@ -74,6 +74,7 @@ Ce dépôt propose un serveur Express/Node.js avec une base SQLite et plusieurs 
 - L'API publique, c'est-à-dire l'API accessible sans connexion et documentée dans `Documentation/API_PUBLIQUE.md`, est strictement en lecture seule : elle ne doit servir qu'à récupérer des données (`fetch`) et ne doit jamais créer, modifier ou supprimer des données.
 - Après toute modification du code, exécuter les vérifications disponibles (`npm test`, même si aucun test n'est défini) et corriger les erreurs le cas échéant.
 - En général, pour chaque modification où c'est applicable, fournir au minimum un test/check exécuté et une capture d'écran de validation de l'interface impactée.
+- Pour les changements de l’interface de gestion, vérifier systématiquement les modes joueur et administrateur sur ordinateur et mobile, avec les champs éditables et les tableaux des onglets concernés.
 - Après toute modification de l'API publique (routes, paramètres, schémas JSON, tables/champs exposés), mettre à jour `Documentation/API_PUBLIQUE.md` dans le même changement.
 - Toute interface utilisateur destinée aux utilisateurs finaux doit être intégralement en français (100% des textes affichés).
 

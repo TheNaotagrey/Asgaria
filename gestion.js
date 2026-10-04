@@ -181,6 +181,7 @@ async function adminUpdateBaronyProps(fields) {
 document.addEventListener('DOMContentLoaded', init);
 
 async function init() {
+  initGestionTooltips();
   try {
     const res = await fetch('/api/me');
     currentUser = res.ok ? await res.json() : null;
@@ -197,7 +198,7 @@ async function init() {
   const params = new URLSearchParams(location.search);
   const sid = params.get('seigneurie_id');
   await loadAndRender(sid);
-  await setupAdminSelector(sid);
+  await setupAdminSelector(currentSeigneurieId || sid);
   if (newRouteBtn) newRouteBtn.addEventListener('click', startTradeRouteCreation);
 
   document.addEventListener('click', async e => {
@@ -362,7 +363,8 @@ function renderUpdatePreview(inventory, production, capacities = {}, population 
         notes.push(`Stockage dépassé : ${next - capacities[resource]} perdus`);
         next = capacities[resource];
       }
-      const delta = next - current;
+      // Food consumption remains visible in full, even when the stock reaches zero.
+      const delta = resource === 'vivres' ? Number(amount) : next - current;
       return `<tr><td>${escapeHtml(resourceLabels[resource] || resource)}</td><td class="preview-variation ${delta > 0 ? 'prod-positive' : delta < 0 ? 'prod-negative' : ''}">${delta > 0 ? '+' : ''}${escapeHtml(delta)}</td><td class="preview-information">${escapeHtml(notes.join(' · ')) || '—'}</td></tr>`;
     }).join('');
 }
@@ -412,6 +414,7 @@ async function openLatestUpdateReport() {
 }
 
 async function loadAndRender(seigneurieId) {
+  document.dispatchEvent(new Event('gestion:refresh'));
   currentSeigneurieId = seigneurieId || null;
   try {
     const [res, bRes, iRes, tRes] = await Promise.all([
@@ -972,6 +975,10 @@ async function loadAndRender(seigneurieId) {
         if (btn) btn.addEventListener('click', openEffectsEditor);
       }
     }
+    document.querySelectorAll('.tooltip').forEach(trigger => {
+      trigger.tabIndex = 0;
+      trigger.setAttribute('aria-label', 'Afficher le détail des contributions');
+    });
   } catch (e) {
     document.getElementById('summary').textContent = 'Erreur de chargement';
   }
@@ -1199,7 +1206,12 @@ async function handleInfraTableChange(e) {
 
 function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId, editable = false) {
   const { buildings = {}, infrastructures = {}, s = {}, bpMap = {}, ipMap = {}, productionDetails = {}, baronyProps = {} } = gameState || {};
-  let html = `<table class="admin-table" id="${tableId}"><tr><th>Nom</th><th>Construits</th><th>Max</th><th>Effets</th><th>Requis</th><th>Coût</th><th>Construire</th><th>Détruire</th><th class="multi-col"></th></tr>`;
+  const hasSpecialActions = list.some(ip => {
+    const effects = safeParse(ip.effects, []);
+    return Array.isArray(effects) && effects.some(effect =>
+      effect.type === 'instant_production' || effect.type === 'variable_workers');
+  });
+  let html = `<table class="admin-table" id="${tableId}"><tr><th>Nom</th><th>Construits</th><th>Max</th><th>Effets</th><th>Requis</th><th>Coût</th><th>Construire</th><th>Détruire</th>${hasSpecialActions ? '<th class="multi-col">Actions spéciales</th>' : ''}</tr>`;
   for (const ip of list) {
     const entry = infraBuilt[ip.id] || infraBuilt[String(ip.id)] || 0;
     const built = typeof entry === 'object' ? (entry.built || 0) : entry;
@@ -1359,7 +1371,7 @@ function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId, editable = fa
         extraHtml = tables.join('');
       }
     } catch {}
-    html += `<td class="multi-col">${extraHtml}</td></tr>`;
+    html += `${hasSpecialActions ? `<td class="multi-col">${extraHtml}</td>` : ''}</tr>`;
   }
   html += '</table>';
   return html;
@@ -3160,6 +3172,124 @@ async function setupAdminSelector(selectedId){
     loadAndRender(id);
   });
   container.appendChild(select);
+}
+
+function getGestionTooltipPosition(anchor, size, viewport) {
+  const margin = 12;
+  const gap = 6;
+  const topBoundary = Math.max(0, viewport.top || 0);
+  const width = Math.min(size.width, Math.max(0, viewport.width - margin * 2));
+  const below = Math.max(0, viewport.height - anchor.bottom - margin - gap);
+  const above = Math.max(0, anchor.top - topBoundary - margin - gap);
+  const placeBelow = size.height <= below || below >= above;
+  const height = Math.min(size.height, placeBelow ? below : above);
+  return {
+    left: Math.max(margin, Math.min(anchor.left + anchor.width / 2 - width / 2, viewport.width - margin - width)),
+    top: placeBelow ? anchor.bottom + gap : anchor.top - gap - height,
+    width,
+    height
+  };
+}
+
+function initGestionTooltips() {
+  const popup = document.createElement('div');
+  popup.id = 'gestionTooltip';
+  popup.className = 'gestion-tooltip';
+  popup.setAttribute('role', 'tooltip');
+  popup.tabIndex = -1;
+  popup.hidden = true;
+  const usesPopover = typeof popup.showPopover === 'function';
+  if (usesPopover) popup.setAttribute('popover', 'manual');
+  document.body.appendChild(popup);
+  let active = null;
+  let hideTimer;
+
+  function hide() {
+    clearTimeout(hideTimer);
+    if (active) active.removeAttribute('aria-describedby');
+    active = null;
+    if (usesPopover && popup.matches(':popover-open')) popup.hidePopover();
+    popup.hidden = true;
+  }
+  function scheduleHide() {
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(hide, 150);
+  }
+  function positionPopup() {
+    if (!active) return;
+    const anchor = active.getBoundingClientRect();
+    const topBoundary = Math.max(0,
+      document.querySelector('.app-header')?.getBoundingClientRect().bottom || 0,
+      document.querySelector('.tab-buttons')?.getBoundingClientRect().bottom || 0);
+    if (!active.isConnected || anchor.bottom <= topBoundary || anchor.top >= window.innerHeight) { hide(); return; }
+    popup.style.maxHeight = '360px';
+    const position = getGestionTooltipPosition(anchor, popup.getBoundingClientRect(), {
+      width: window.innerWidth, height: window.innerHeight, top: topBoundary
+    });
+    popup.style.left = `${position.left}px`;
+    popup.style.top = `${position.top}px`;
+    popup.style.width = `${position.width}px`;
+    popup.style.maxHeight = `${position.height}px`;
+  }
+  function show(trigger) {
+    clearTimeout(hideTimer);
+    if (active === trigger && !popup.hidden) return;
+    const source = trigger.querySelector('.tooltip-table');
+    if (!source) return;
+    hide();
+    active = trigger;
+    const table = source.cloneNode(true);
+    table.className = 'gestion-tooltip-table';
+    popup.replaceChildren(table);
+    trigger.setAttribute('aria-describedby', popup.id);
+    popup.style.maxHeight = '360px';
+    popup.style.width = '';
+    popup.hidden = false;
+    if (usesPopover) popup.showPopover();
+    positionPopup();
+    popup.scrollTop = 0;
+  }
+  document.addEventListener('pointerover', event => {
+    if (popup.contains(event.target)) { clearTimeout(hideTimer); return; }
+    const trigger = event.target.closest('.tooltip');
+    if (trigger) show(trigger);
+  });
+  document.addEventListener('pointerout', event => {
+    if (active && (active.contains(event.target) || popup.contains(event.target))) {
+      if (event.relatedTarget && (active.contains(event.relatedTarget) || popup.contains(event.relatedTarget))) return;
+      scheduleHide();
+    }
+  });
+  document.addEventListener('focusin', event => {
+    if (popup.contains(event.target)) { clearTimeout(hideTimer); return; }
+    const trigger = event.target.closest('.tooltip');
+    if (trigger) show(trigger); else hide();
+  });
+  document.addEventListener('focusout', event => {
+    if (active && (active.contains(event.target) || popup.contains(event.target))) scheduleHide();
+  });
+  document.addEventListener('click', event => {
+    const trigger = event.target.closest('.tooltip');
+    if (trigger) show(trigger); else if (!popup.contains(event.target)) hide();
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && active) {
+      const trigger = active;
+      const restoreFocus = popup.contains(document.activeElement);
+      if (restoreFocus) trigger.focus();
+      hide();
+    } else if (event.target.closest('.tooltip') && ['Enter', ' ', 'ArrowDown'].includes(event.key)) {
+      event.preventDefault();
+      show(event.target.closest('.tooltip'));
+      popup.focus();
+    }
+  });
+  // Follow scrolling anchors, but never keep a popup from a previous render or tab.
+  document.addEventListener('scroll', event => {
+    if (event.target !== popup && !popup.contains(event.target)) positionPopup();
+  }, true);
+  document.addEventListener('gestion:refresh', hide);
+  window.addEventListener('resize', hide);
 }
 
 function buildTooltipValue(val, details, suffix = '') {

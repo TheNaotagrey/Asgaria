@@ -1546,6 +1546,35 @@ th.multi-col {
 }
 
 /* Tables des ressources */
+.gestion-page .tooltip:hover .tooltip-table,
+.gestion-page .tooltip .tooltip-table { display: none; }
+.gestion-page .tooltip:focus-visible { outline: 2px solid #1d56a4; outline-offset: 3px; }
+.gestion-tooltip {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  max-width: min(520px, calc(100vw - 24px));
+  max-height: min(360px, calc(100vh - 24px));
+  overflow: auto;
+  background: #fff;
+  color: #333;
+  border: 1px solid #b8c4d3;
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  font-size: 0.9rem;
+  line-height: 1.4;
+  z-index: 2000;
+}
+.gestion-tooltip[hidden] { display: none; }
+.gestion-tooltip-table { width: 100%; border-collapse: collapse; }
+.gestion-tooltip-table td { padding: 7px 10px; border-bottom: 1px solid #e2e6ec; }
+.gestion-tooltip-table tr:last-child td { border-bottom: 0; }
+.gestion-tooltip-table tr:nth-child(even) { background: #f8fafc; }
+.gestion-tooltip-table td:first-child { white-space: normal; overflow-wrap: anywhere; }
+.gestion-tooltip-table td:last-child { text-align: right; white-space: nowrap; vertical-align: top; }
+
 #summary {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 400px;
@@ -1569,7 +1598,7 @@ th.multi-col {
 #popAndTx { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); }
 #popAndTx .resource-table-container { min-width: 0; }
 
-#summary .admin-table {
+.gestion-page .admin-table {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
@@ -1579,18 +1608,75 @@ th.multi-col {
   background: #fff;
 }
 
-#summary .admin-table th,
-#summary .admin-table td {
+.gestion-page .admin-table th,
+.gestion-page .admin-table td {
   border: 0;
   border-right: 1px solid #e2e6ec;
   border-bottom: 1px solid #e2e6ec;
   padding: 8px 10px;
 }
 
-#summary .admin-table tr > :last-child { border-right: 0; }
-#summary .admin-table tbody:last-child tr:last-child td { border-bottom: 0; }
-#summary .admin-table th { background: #edf1f6; position: static; text-align: left; }
-#summary .admin-table tbody tr:nth-child(even) { background: #f8fafc; }
+.gestion-page .admin-table tr > :last-child { border-right: 0; }
+.gestion-page .admin-table tbody:last-child tr:last-child > td { border-bottom: 0; }
+.gestion-page .admin-table th { background: #edf1f6; position: static; text-align: left; }
+.gestion-page .admin-table tbody > tr:nth-child(even) { background: #f8fafc; }
+.gestion-page .admin-table td { vertical-align: top; }
+.gestion-page .admin-table input,
+.gestion-page .admin-table select {
+  max-width: 100%;
+  min-width: 0;
+  border: 1px solid #b8c4d3;
+  border-radius: 4px;
+  padding: 5px 6px;
+  background: #fff;
+  color: #333;
+  font: inherit;
+  box-sizing: border-box;
+}
+.gestion-page .admin-table :is(input, select, button):focus-visible {
+  outline: 2px solid #1d56a4;
+  outline-offset: 2px;
+}
+.gestion-page .admin-table button { border-radius: 4px; white-space: nowrap; }
+.gestion-page .admin-table .destroy-btn { background: #b32626; }
+.gestion-page .admin-table .destroy-btn:hover { background: #8f2020; }
+.gestion-page .auth-area { flex-wrap: wrap; max-width: 100%; }
+.gestion-page #adminSeigneurieSelect select {
+  max-width: 100%;
+  padding: 6px 10px;
+  border: 1px solid #b8c4d3;
+  border-radius: 4px;
+  background: #fff;
+  color: #333;
+}
+.gestion-page .admin-table .admin-table { margin: 0 0 8px; font-size: 0.85rem; }
+.gestion-page .admin-table .admin-table:last-child { margin-bottom: 0; }
+.gestion-page .admin-table .admin-table th,
+.gestion-page .admin-table .admin-table td { padding: 6px; }
+.gestion-page :is(#productionInfra, #civilInfra, #militaryInfra, #commercialInfra, #tradeRoutes, #spellList) {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.gestion-page :is(#buildingsTable, #civilInfraTable, #militaryInfraTable, #commercialInfraTable) {
+  width: 100%;
+  font-size: 0.9rem;
+}
+.gestion-page th.multi-col { display: table-cell; }
+.gestion-page .multi-col { min-width: 300px; border: 0 !important; border-bottom: 1px solid #e2e6ec !important; }
+.gestion-page th.multi-col { border-bottom: 1px solid #e2e6ec !important; }
+.gestion-page #commercialAndTx { align-items: start; }
+.gestion-page #commercialAndTx h2 { margin-top: 0; }
+.gestion-page #baronyProps > .admin-table { max-width: 850px; }
+.gestion-page #baronyProps > .admin-table tr > :first-child { width: 45%; }
+.gestion-page #ostMilitaryResourcesTable { table-layout: fixed; overflow-wrap: anywhere; }
+.gestion-page #ostMilitaryResourcesTable th { font-size: 0.85rem; padding: 8px 6px; }
+.gestion-page #ostMilitaryResourcesTable tr > :first-child { width: 30%; }
+.gestion-page #ostMilitaryResourcesTable tr > :nth-child(2) { width: 20%; }
+.gestion-page #ostMilitaryResourcesTable tr > :nth-child(3) { width: 26%; }
+.gestion-page .trade-routes, .gestion-page .trade-map { min-width: 0; }
+.gestion-page .infra-built-input,
+.gestion-page .building-built-input,
+.gestion-page .activate-input { min-width: 4em; }
 #summary h2 { margin: 0 0 12px; font-size: 1.1rem; }
 .pending-transactions-wrap { overflow-x: auto; }
 #summary .table-empty-state { padding: 28px 12px; text-align: center; color: #647083; }
