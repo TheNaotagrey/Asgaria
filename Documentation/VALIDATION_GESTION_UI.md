@@ -27,6 +27,16 @@ actions spéciales imbriquées et sorts disponibles :
 - champs administrateur contenus dans leurs cellules et seigneurie courante sélectionnée ;
 - en-têtes d’infrastructures alignés sur les cellules, avec actions spéciales si présentes ;
 - sélection d’une cible de sort et visibilité des commandes sur mobile.
+- commerce, en modes joueur et administrateur à 1440 et 390 px : explication du
+  quota atteint au survol d’un bouton désactivé, infobulle contenue dans l’écran,
+  proposition de la liaison maritime manquante lorsque la route terrestre existe,
+  transmission de la seigneurie sélectionnée et rafraîchissement de l’or après construction.
+- relevé condensé en modes joueur et administrateur à 1440 et 390 px : seules les
+  variations sont affichées, libellés français dans les pertes, état sans changement
+  sans tableau superflu et absence de débordement de la fenêtre ;
+- décisions commerciales masquées pour une période future, visibles pour une période
+  présente ou passée, avec explication du blocage. Les tests HTTP vérifient également
+  le refus serveur des deux décisions futures en modes joueur et administrateur.
 - infobulle d’IDH avec 45 contributions longues, dans les deux modes à 1440 et 390 px :
   affichage hors des tableaux, limites de l’écran, liste défilante, survol, clic,
   navigation au clavier et fermeture avec Échap ou changement d’onglet.

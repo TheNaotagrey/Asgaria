@@ -236,6 +236,11 @@ test('le serveur valide construction, taxe, période, relevé et confidentialit�
         (id,origin_id,destination_id,origin_update_year,origin_update_number,resources,type,state,returned)
         VALUES (82,1,2,?,?,?,?,'En Attente',0)`,
       [previous.year, previous.number, '{"or_":1}', 'land']);
+      for (const [id, period] of [[83, next], [84, previous], [85, { year: previous.year - 1, number: 10 }], [86, { year: previous.year - 1, number: 10 }]]) {
+        await run(dbForReturns, `INSERT INTO trade_transactions
+          (id,origin_id,destination_id,origin_update_year,origin_update_number,resources,type,state)
+          VALUES (?,1,2,?,?,'{"or_":1}','land','En Attente')`, [id, period.year, period.number]);
+      }
       await run(dbForReturns, `CREATE TRIGGER reject_test_return BEFORE UPDATE OF returned ON trade_transactions
         WHEN NEW.id=81 BEGIN SELECT RAISE(ABORT, 'erreur de test'); END`);
     } finally { await new Promise(resolve => dbForReturns.close(resolve)); }
@@ -256,6 +261,24 @@ test('le serveur valide construction, taxe, période, relevé et confidentialit�
     const otherLogin = await request(port, 'POST', '/api/login', { email: 'autre@test.invalid', password: 'mot-de-passe' });
     assert.equal(otherLogin.status, 200);
     const otherCookie = otherLogin.cookie;
+    for (const decisionCookie of [otherCookie, adminLogin.cookie]) {
+      for (const action of ['accept', 'refuse']) {
+        const futureDecision = await request(port, 'POST', '/api/trade_transactions/83/decision',
+          { action, seigneurie_id: 2 }, decisionCookie);
+        assert.equal(futureDecision.status, 400, JSON.stringify(futureDecision.data));
+        assert.match(futureDecision.data.error, /acceptée ou refusée avant/);
+      }
+    }
+    const unchangedTradeDb = new sqlite3.Database(path.join(dir, 'asgaria.db'));
+    try {
+      const futureTrade = await get(unchangedTradeDb, 'SELECT state,decision_time FROM trade_transactions WHERE id=83');
+      assert.equal(futureTrade.state, 'En Attente');
+      assert.equal(futureTrade.decision_time, null);
+    } finally { await new Promise(resolve => unchangedTradeDb.close(resolve)); }
+    for (const [id, action] of [[84, 'accept'], [85, 'accept'], [86, 'refuse']]) {
+      const allowedDecision = await request(port, 'POST', `/api/trade_transactions/${id}/decision`, { action }, otherCookie);
+      assert.equal(allowedDecision.status, 200, JSON.stringify(allowedDecision.data));
+    }
     const refusal = await request(port, 'POST', '/api/trade_transactions/82/decision', { action: 'refuse' }, otherCookie);
     assert.equal(refusal.status, 200, JSON.stringify(refusal.data));
     const secondDecision = await request(port, 'POST', '/api/trade_transactions/82/decision', { action: 'accept' }, otherCookie);

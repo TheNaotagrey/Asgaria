@@ -952,7 +952,7 @@ th.multi-col {
 
 #updateReportDialog {
   box-sizing: border-box;
-  width: min(760px, calc(100vw - 24px));
+  width: min(560px, calc(100vw - 24px));
   max-height: 85vh;
   overflow-y: auto;
 }
@@ -1574,6 +1574,9 @@ th.multi-col {
 .gestion-tooltip-table tr:nth-child(even) { background: #f8fafc; }
 .gestion-tooltip-table td:first-child { white-space: normal; overflow-wrap: anywhere; }
 .gestion-tooltip-table td:last-child { text-align: right; white-space: nowrap; vertical-align: top; }
+.gestion-tooltip-table td:only-child { text-align: left; white-space: normal; }
+.trade-action-blocked { display: inline-block; cursor: help; }
+.trade-action-blocked .trade-btn { pointer-events: none; }
 
 #summary {
   display: grid;
@@ -1857,6 +1860,9 @@ th.multi-col {
 .update-report-table td:not(:first-child) {
   text-align: right;
 }
+
+.update-report-events { margin: 14px 0 0; padding-left: 20px; }
+.update-report-events li + li { margin-top: 6px; }
 
 .update-panel-actions {
   display: flex;

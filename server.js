@@ -3808,8 +3808,8 @@ app.post('/api/trade_transactions/:id/decision', async (req, res) => {
       }
       const currentUpdate = normalizeSeigneurieUpdate(player);
       const originUpdate = normalizeUpdatePosition({ year: Number(trade.origin_update_year), number: Number(trade.origin_update_number) });
-      if (action === 'accept' && compareUpdatePositions(currentUpdate, originUpdate) < 0) {
-        const error = new Error(`Cette transaction ne peut pas être acceptée avant ${formatUpdateLabel(originUpdate)}.`);
+      if (compareUpdatePositions(currentUpdate, originUpdate) < 0) {
+        const error = new Error(`Cette transaction ne peut pas être acceptée ou refusée avant ${formatUpdateLabel(originUpdate)}.`);
         error.status = 400; throw error;
       }
       const newState = action === 'accept' ? 'Approuvée' : 'Refusée';

@@ -23,6 +23,7 @@ const state = {
 let transactions = [];
 let transactionError = false;
 let adminMode = false;
+let lastBuildPayload = null;
 const buildingProperties = [{ id: 1, label: 'Champs de céréales', type: 'champ', produces: 'vivres', production: 100,
   workers_per_building: 5, costs: '{"or_":20,"pierre":5}', max: '10', effects: '[]', available_seigneur: 1 }];
 const infrastructureProperties = [
@@ -43,6 +44,17 @@ Object.assign(state, {
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (url.pathname.startsWith('/api/')) {
+    if (url.pathname === '/api/users/me/trade_links/build' && req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => { body += chunk; });
+      req.on('end', () => {
+        lastBuildPayload = JSON.parse(body);
+        state.inventaire.or_ -= 3;
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true }));
+      });
+      return;
+    }
     const data = url.pathname === '/api/my_seigneurie' ? state
       : url.pathname === '/api/me' ? { id: 1, first_name: 'Marie', last_name: 'Dupont', is_admin: adminMode }
       : url.pathname === '/api/test_mode' ? { enabled: false }
@@ -54,7 +66,7 @@ const server = http.createServer((req, res) => {
       : url.pathname === '/api/seigneurs' ? [{ id: 1, name: 'Louis de Valmont', user_id: 1 }]
       : url.pathname === '/api/seigneuries' ? [{ id: 1, seigneur_id: 1, baronnie_id: 1 }]
       : url.pathname === '/api/baronies' ? [{ id: 1, name: 'Valmont' }, { id: 2, name: 'Hautbois' }]
-      : url.pathname === '/api/trade_routes' ? [{ id: 1, barony_id_1: 1, barony_id_2: 2, path: [1, 2] }]
+      : url.pathname === '/api/trade_routes' ? [{ id: 1, barony_id_1: 1, barony_id_2: 2, path: [] }]
       : url.pathname === '/api/spells' ? [{ id: 1, type: 'base', label: 'Bénédiction des récoltes', description: 'Améliore les récoltes.', costs: '{"points_magique":10}', effects: '[]' }]
       : url.pathname === '/api/spell_targets' ? { targets: [{ seigneurie_id: 1, barony_name: 'Valmont', distance: 0 }] } : [];
     if (/^\/api\/trade_transactions\/\d+$/.test(url.pathname)) {
@@ -242,6 +254,100 @@ const server = http.createServer((req, res) => {
         assert.equal(await popup.isVisible(), true);
         await page.locator('.tab-btn[data-tab="infra"]').click();
         assert.equal(await popup.isVisible(), false);
+      }
+    }
+    transactions = [{ id: 7, origin_id: 2, destination_id: 1, origin_name: 'Charles', origin_barony_name: 'Hautbois',
+      resources: { vivres: 100 }, type: 'land', state: 'En Attente', origin_update_year: 1026,
+      origin_update_number: 2, origin_update_label: 'Mars 1026', reason: 'Aide alimentaire' }];
+    for (const admin of [false, true]) {
+      adminMode = admin;
+      for (const width of [1440, 390]) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.goto(url);
+        await page.waitForSelector('#basicResourcesTable tr');
+        await page.evaluate(() => showUpdateReport({
+          current_update_label: 'Mars 1026',
+          before: { population: 100, inventory: { or_: 500, pierre: 40, points_magique: 1990, vivres: 50 } },
+          after: { population: 98, inventory: { or_: 505, pierre: 40, points_magique: 2000, vivres: 0 } },
+          delta: { population: -2, inventory: { or_: 5, pierre: 0, points_magique: 10, vivres: -50 } },
+          events: [{ title: 'Famine', details: '2 habitants sont morts faute de vivres.' },
+            { title: 'Perte par débordement', details: '20 points_magique, 10 hommes_darmes, 5 lingot_or' }]
+        }));
+        const report = page.locator('#updateReportDialog');
+        assert.equal(await report.locator('tbody tr').count(), 4);
+        const reportText = await report.innerText();
+        assert.doesNotMatch(reportText, /points_magique|hommes_darmes|lingot_or|Pierre/);
+        assert.match(reportText, /Points magiques/);
+        assert.match(reportText, /Hommes d'armes/);
+        assert.match(reportText, /Lingots d'or/);
+        assert.equal(await report.locator('.prod-positive').count(), 2);
+        assert.equal(await report.locator('.prod-negative').count(), 2);
+        assert.ok(await report.evaluate(el => el.scrollWidth <= el.clientWidth));
+        await page.screenshot({ path: path.join(output, `${admin ? 'admin' : 'joueur'}-${width}-releve-condense.png`), fullPage: true });
+        await page.locator('#updateReportClose').click();
+        await page.evaluate(() => showUpdateReport({ before: { population: 100, inventory: { pierre: 40 } },
+          after: { population: 100, inventory: { pierre: 40 } }, events: [] }));
+        assert.equal(await report.locator('table').count(), 0);
+        assert.match(await report.innerText(), /Aucun changement/);
+        assert.equal(await report.locator('ul').count(), 0);
+        await page.locator('#updateReportClose').click();
+        await page.locator('.tx-open').click();
+        await page.locator('#txDialog[open]').waitFor();
+        assert.equal(await page.locator('#txAccept').isVisible(), false);
+        assert.equal(await page.locator('#txRefuse').isVisible(), false);
+        assert.match(await page.locator('#txContent').innerText(), /accepter ou refuser.*Mars 1026/);
+        await page.screenshot({ path: path.join(output, `${admin ? 'admin' : 'joueur'}-${width}-transaction-future.png`), fullPage: true });
+        await page.locator('#txClose').click();
+        for (const number of [1, 2, 3]) {
+          await page.evaluate(number => { gameState.updateStatus.current.number = number; }, number);
+          await page.locator('.tx-open').click();
+          await page.locator('#txDialog[open]').waitFor();
+          assert.equal(await page.locator('#txAccept').isVisible(), number >= 2);
+          assert.equal(await page.locator('#txRefuse').isVisible(), number >= 2);
+          await page.keyboard.press('Escape');
+        }
+      }
+    }
+    state.landTxMax = 5;
+    state.landTransactions = 5;
+    for (const admin of [false, true]) {
+      adminMode = admin;
+      for (const width of [1440, 390]) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.goto(url);
+        await page.waitForSelector('#basicResourcesTable tr');
+        await page.locator('.tab-btn[data-tab="commerce"]').click();
+        assert.match(await page.locator('#tab-commerce').innerText(), /Transactions effectuées/);
+        assert.match(await page.locator('#tradeLimitsTable').innerText(), /Effectuées.*Limite par mise à jour/s);
+        const blocked = page.locator('.trade-action-blocked');
+        await blocked.waitFor();
+        assert.equal(await blocked.locator('button').isDisabled(), true);
+        await blocked.scrollIntoViewIfNeeded();
+        await blocked.hover();
+        const tooltip = page.locator('.gestion-tooltip');
+        await tooltip.waitFor({ state: 'visible' });
+        assert.match(await tooltip.innerText(), /Quota terrestre atteint : 5\/5/);
+        assert.match(await tooltip.innerText(), /prochaine mise à jour/);
+        const box = await tooltip.boundingBox();
+        assert.ok(box.x >= 0 && box.x + box.width <= width);
+        await page.screenshot({ path: path.join(output, `${admin ? 'admin' : 'joueur'}-${width}-commerce-quota.png`), fullPage: true });
+        await page.keyboard.press('Escape');
+        await page.evaluate(() => {
+          tradeAdjacency = { 1: [{ id: 2, distance: 1 }], 2: [{ id: 1, distance: 1 }] };
+          baronyZones = { 1: [1], 2: [1] };
+          seaZoneAdjacency = { 1: [] };
+          maritimeZoneMapState = { 1: { id: 1, name: 'Mer commune' } };
+          openTradeRouteDialog({ id: 2, name: 'Hautbois' });
+        });
+        assert.equal(await page.locator('#tradeRouteMethod').inputValue(), 'naval');
+        assert.equal(await page.locator('#tradeRouteMethod option').count(), 1);
+        await page.screenshot({ path: path.join(output, `${admin ? 'admin' : 'joueur'}-${width}-commerce-liaison-manquante.png`), fullPage: true });
+        const goldBefore = await page.evaluate(() => gameState.inv.or_);
+        await page.locator('#tradeRouteSave').click();
+        await page.waitForFunction(gold => gameState.inv.or_ === gold - 3, goldBefore);
+        assert.equal(lastBuildPayload.seigneurie_id, 1);
+        assert.equal(lastBuildPayload.type, 'naval');
+        assert.deepEqual(lastBuildPayload.path, [1]);
       }
     }
     assert.deepEqual(errors, []);

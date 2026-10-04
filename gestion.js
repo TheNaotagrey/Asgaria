@@ -246,6 +246,10 @@ function clearGestionSections() {
   if (tradeLimits) tradeLimits.innerHTML = '';
 }
 
+function formatUpdateReportText(value) {
+  return String(value || '').replace(/\b[a-z][a-z_]*\b/g, key => resourceLabels[key] || key);
+}
+
 function showUpdateReport(report) {
   if (!report) return;
   const dialog = document.getElementById('updateReportDialog');
@@ -253,7 +257,7 @@ function showUpdateReport(report) {
   const closeBtn = document.getElementById('updateReportClose');
   if (!dialog || !content || !closeBtn) return;
   const items = (Array.isArray(report.events) ? report.events : [])
-    .map(event => `<li><strong>${escapeHtml(event.title || 'Événement')} :</strong> ${escapeHtml(event.details || '')}</li>`)
+    .map(event => `<li><strong>${escapeHtml(formatUpdateReportText(event.title || 'Événement'))} :</strong> ${escapeHtml(formatUpdateReportText(event.details))}</li>`)
     .join('');
   const before = report.before || {};
   const after = report.after || {};
@@ -261,25 +265,26 @@ function showUpdateReport(report) {
   const beforeInventory = before.inventory || {};
   const afterInventory = after.inventory || {};
   const deltaInventory = delta.inventory || {};
+  const variation = key => Number(deltaInventory[key] ?? (Number(afterInventory[key] || 0) - Number(beforeInventory[key] || 0)));
   const keys = [...new Set([...Object.keys(beforeInventory), ...Object.keys(afterInventory), ...Object.keys(deltaInventory)])]
-    .filter(key => Number(beforeInventory[key] || 0) || Number(afterInventory[key] || 0) || Number(deltaInventory[key] || 0));
+    .filter(key => variation(key) !== 0);
   const signed = value => `${Number(value) > 0 ? '+' : ''}${escapeHtml(value ?? 0)}`;
+  const variationCell = value => `<td class="${value > 0 ? 'prod-positive' : 'prod-negative'}">${signed(value)}</td>`;
+  const populationDelta = Number(delta.population ?? (Number(after.population || 0) - Number(before.population || 0)));
+  const populationRow = populationDelta ? `<tr><td>Population</td><td>${escapeHtml(before.population ?? 0)}</td>
+    ${variationCell(populationDelta)}<td>${escapeHtml(after.population ?? 0)}</td></tr>` : '';
   const resourceRows = keys.map(key => `<tr>
     <td>${escapeHtml(resourceLabels[key] || key)}</td>
     <td>${escapeHtml(beforeInventory[key] ?? 0)}</td>
-    <td>${signed(deltaInventory[key])}</td>
+    ${variationCell(variation(key))}
     <td>${escapeHtml(afterInventory[key] ?? 0)}</td>
   </tr>`).join('');
   content.innerHTML = `
-    <h2>Relevé de mise à jour</h2>
-    <p class="update-report-period">Période traitée : ${escapeHtml(formatUpdateStatusLabel(report.from_update || before.update) || '—')} →
-      <strong>${escapeHtml(report.current_update_label || formatUpdateStatusLabel(report.current_update) || 'Mise à jour')}</strong></p>
-    ${report.before && report.after ? `<table class="admin-table update-report-table"><thead><tr>
-      <th>État</th><th>Avant</th><th>Variation</th><th>Après</th>
-    </tr></thead><tbody><tr><td>Population</td><td>${escapeHtml(before.population ?? 0)}</td>
-      <td>${signed(delta.population)}</td><td>${escapeHtml(after.population ?? 0)}</td></tr>
-      ${resourceRows || '<tr><td colspan="4">Aucune variation de ressources.</td></tr>'}</tbody></table>` : ''}
-    <h3>Événements appliqués</h3>${items ? `<ul>${items}</ul>` : '<p>Aucun événement signalé pour cette période.</p>'}
+    <h2>Mise à jour : ${escapeHtml(report.current_update_label || formatUpdateStatusLabel(report.current_update) || 'Relevé')}</h2>
+    ${report.before && report.after ? (populationRow || resourceRows ? `<table class="admin-table update-report-table"><thead><tr>
+      <th>Ressource</th><th>Avant</th><th>Variation</th><th>Après</th>
+    </tr></thead><tbody>${populationRow}${resourceRows}</tbody></table>` : '<p>Aucun changement de population ou de ressources.</p>') : ''}
+    ${items ? `<ul class="update-report-events">${items}</ul>` : ''}
   `;
   closeBtn.onclick = () => dialog.close();
   dialog.showModal();
@@ -415,6 +420,8 @@ async function openLatestUpdateReport() {
 
 async function loadAndRender(seigneurieId) {
   document.dispatchEvent(new Event('gestion:refresh'));
+  newRouteMode = false;
+  eligibleTargets = {};
   currentSeigneurieId = seigneurieId || null;
   try {
     const [res, bRes, iRes, tRes] = await Promise.all([
@@ -977,7 +984,7 @@ async function loadAndRender(seigneurieId) {
     }
     document.querySelectorAll('.tooltip').forEach(trigger => {
       trigger.tabIndex = 0;
-      trigger.setAttribute('aria-label', 'Afficher le détail des contributions');
+      if (!trigger.hasAttribute('aria-label')) trigger.setAttribute('aria-label', 'Afficher le détail des contributions');
     });
   } catch (e) {
     document.getElementById('summary').textContent = 'Erreur de chargement';
@@ -2695,7 +2702,8 @@ function ensureTradeRouteDialog() {
     saveBtn.addEventListener('click', async () => {
       const target = tradeRouteDialogData.target;
       if (!target) return;
-      const payload = { barony_id: target.id, type: tradeRouteDialogData.method };
+      const selectedSeigneurieId = currentSeigneurieId;
+      const payload = { barony_id: target.id, type: tradeRouteDialogData.method, seigneurie_id: selectedSeigneurieId };
       if (tradeRouteDialogData.method === 'land') {
         if (!isTradeRoutePathComplete(currentTradeBaronyId, target.id, tradeRouteDialogData.landSelections)) {
           updateTradeRouteDialogHint('Le chemin terrestre doit être complet.');
@@ -2721,7 +2729,9 @@ function ensureTradeRouteDialog() {
           return;
         }
         dialog.close();
-        await renderTradeRoutes(currentTradeBaronyId);
+        newRouteMode = false;
+        eligibleTargets = {};
+        await loadAndRender(selectedSeigneurieId);
       } catch {
         alert('Construction impossible');
       }
@@ -2737,7 +2747,8 @@ function openTradeRouteDialog(target) {
   if (!dialog || !target || !methodSelect) return;
   ensureTradeRouteDialog();
   tradeRouteDialogData.target = target;
-  tradeRouteDialogData.methods = getBuildMethods(target.id);
+  const existingTypes = new Set(tradeLinksState.filter(link => link.partner_id === target.id).map(link => link.type));
+  tradeRouteDialogData.methods = getBuildMethods(target.id).filter(method => !existingTypes.has(method));
   if (!tradeRouteDialogData.methods.length) {
     alert('Aucun trajet valide vers cette baronnie.');
     return;
@@ -2819,9 +2830,9 @@ function renderTradeLimits() {
   const table = document.getElementById('tradeLimitsTable');
   if (!table || !gameState) return;
   table.innerHTML =
-    '<tr><th>Type</th><th>Présent</th><th>Max/mois</th></tr>' +
-    `<tr><td>Terrestres</td><td>${gameState.landTransactions || 0}</td><td>${gameState.landTxMax || 0}</td></tr>` +
-    `<tr><td>Maritimes</td><td>${gameState.navalTransactions || 0}</td><td>${gameState.navalTxMax || 0}</td></tr>`;
+    '<tr><th>Type</th><th>Effectuées</th><th>Limite par mise à jour</th></tr>' +
+    `<tr><td>Terrestres</td><td>${gameState.landTransactions || 0}</td><td>${gameState.landTxMax || 'Illimitée'}</td></tr>` +
+    `<tr><td>Maritimes</td><td>${gameState.navalTransactions || 0}</td><td>${gameState.navalTxMax || 'Illimitée'}</td></tr>`;
 }
 
 async function renderTradeRoutes(baronyId) {
@@ -2865,6 +2876,10 @@ async function renderTradeRoutes(baronyId) {
         ? (gameState.landTxMax !== 0 && gameState.landTransactions >= gameState.landTxMax)
         : (gameState.navalTxMax !== 0 && gameState.navalTransactions >= gameState.navalTxMax);
       const pathLength = link.type === 'land' ? buildFullLandPath(link).length : buildFullSeaPath(link).length;
+      const quotaReason = limitReached
+        ? `Quota ${link.type === 'land' ? 'terrestre' : 'maritime'} atteint : ${link.type === 'land' ? gameState.landTransactions : gameState.navalTransactions}/${link.type === 'land' ? gameState.landTxMax : gameState.navalTxMax} échanges utilisés pour cette mise à jour. Le compteur sera réinitialisé à la prochaine mise à jour.`
+        : '';
+      const tradeButton = `<button class="trade-btn control-btn" data-id="${link.partner_id}" data-method="${link.type}"${limitReached ? ' disabled' : ''}>Commercer</button>`;
       return `<tr class="trade-link-row" data-link-id="${link.id}" data-link-type="${link.type}">
         <td>${link.type === 'land' ? 'Terre' : 'Mer'}</td>
         <td>${link.partner_id}</td>
@@ -2872,7 +2887,7 @@ async function renderTradeRoutes(baronyId) {
         <td>${escapeHtml(link.seigneur_name)}</td>
         <td>${getTradeLinkDistance(link)}</td>
         <td title="${escapeHtml(buildTradeLinkSummary(link))}">${pathLength}</td>
-        <td><button class="trade-btn control-btn" data-id="${link.partner_id}" data-method="${link.type}"${limitReached ? ' disabled' : ''}>Commercer</button></td>
+        <td>${limitReached ? `<span class="tooltip trade-action-blocked" tabindex="0" aria-label="${escapeHtml(quotaReason)}">${tradeButton}<table class="tooltip-table"><tr><td>${escapeHtml(quotaReason)}</td></tr></table></span>` : tradeButton}</td>
       </tr>`;
     }).join('');
     container.innerHTML = `<table class="admin-table"><tr><th>Type</th><th>#</th><th>Baronnie</th><th>Propriétaire</th><th>Distance</th><th>Chemin</th><th></th></tr>${rows}</table>`;
@@ -3105,7 +3120,7 @@ async function openTransactionPopup(id) {
       closeBtn.onclick = () => dialog.close();
     } else {
       const waitingMessage = !canAcceptNow
-        ? `<p><strong>Blocage :</strong> vous ne pourrez l'accepter qu'a partir de ${escapeHtml(tx.origin_update_label || formatUpdateStatusLabel(originUpdate))}.</p>`
+        ? `<p><strong>Décision indisponible :</strong> vous pourrez accepter ou refuser cet échange à partir de ${escapeHtml(tx.origin_update_label || formatUpdateStatusLabel(originUpdate))}.</p>`
         : '';
       const receivedMessage = tx.state === 'Approuvée' && !tx.received
         ? '<p>Cette transaction a ete approuvee. Les ressources seront ajoutees lors de votre prochaine mise a jour.</p>'
