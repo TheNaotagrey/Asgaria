@@ -41,6 +41,7 @@ Ce dépôt propose un serveur Express/Node.js avec une base SQLite et plusieurs 
 - **adminUpdateReports.js** : onglet administrateur « Comparaison des relevés », lecture des mises à jour persistantes, contrôle arithmétique et comparaison facultative avec des valeurs attendues saisies localement.
 - L'onglet "Routes commerciales" d'**admin.js** inclut un import Excel (`.xlsx/.xls`) des paires de baronnies avec création en masse des routes manquantes via l'API serveur.
 - **gestion.js** : gestion des seigneuries, ressources et sorts côté joueur, y compris l’interface de commerce qui affiche désormais les chemins terrestres/maritimes, prévisualise les trajets au survol et permet de construire des liaisons avec choix explicite du chemin.
+- **scripts/validateGestionUI.cjs** : vérifie le sommaire dans un navigateur Playwright avec des réponses API isolées et produit des captures sur ordinateur et mobile (sans modifier les données du jeu). Instructions dans `Documentation/VALIDATION_GESTION_UI.md`.
 - **src/updateCycle.js** : logique partagée du calendrier des "Mises à Jour" joueur (10 phases par an, libellés, comparaison, progression et dates de déblocage), utilisée par `server.js` et couverte par des tests.
 - **src/tradeValidation.js** : valide et normalise les ressources d'une transaction commerciale avant que `server.js` n'applique les débits atomiques.
 - **src/tradePersistence.js** : applique de façon atomique les débits, compteurs et enregistrements liés à la création de liaisons et aux transactions commerciales.

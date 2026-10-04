@@ -345,34 +345,50 @@ async function readApiError(response, fallback) {
   return formatUpdateError(data, response.status) || fallback;
 }
 
-function renderUpdatePanel(updateStatus, inventory = {}, production = {}) {
-  const container = document.getElementById('playerUpdatePanel');
-  if (!container || !updateStatus) return;
-  const blockers = Array.isArray(updateStatus.blockers) ? updateStatus.blockers : [];
-  const previewRows = Object.entries(production)
+function renderUpdatePreview(inventory, production, capacities = {}, population = 0) {
+  return Object.entries(production)
     .filter(([, amount]) => Number(amount))
     .sort(([left], [right]) => (resourceLabels[left] || left).localeCompare(resourceLabels[right] || right, 'fr'))
     .map(([resource, amount]) => {
       const current = Number(inventory[resource]) || 0;
-      const delta = Number(amount) || 0;
-      return `<tr><td>${escapeHtml(resourceLabels[resource] || resource)}</td><td>${escapeHtml(current)}</td><td>${delta > 0 ? '+' : ''}${escapeHtml(delta)}</td><td>${escapeHtml(current + delta)}</td></tr>`;
+      const projected = current + Number(amount);
+      let next = Math.max(0, projected);
+      const notes = [];
+      if (resource === 'vivres' && projected < 0) {
+        const deaths = Math.min(Number(population) || 0, Math.ceil(Math.ceil(-projected / 15) / 2));
+        notes.push(`Famine : ${deaths} ${deaths === 1 ? 'mort' : 'morts'}`);
+      }
+      if (typeof capacities[resource] === 'number' && next > capacities[resource]) {
+        notes.push(`Stockage dépassé : ${next - capacities[resource]} perdus`);
+        next = capacities[resource];
+      }
+      const delta = next - current;
+      return `<tr><td>${escapeHtml(resourceLabels[resource] || resource)}</td><td class="preview-variation ${delta > 0 ? 'prod-positive' : delta < 0 ? 'prod-negative' : ''}">${delta > 0 ? '+' : ''}${escapeHtml(delta)}</td><td class="preview-information">${escapeHtml(notes.join(' · ')) || '—'}</td></tr>`;
     }).join('');
+}
+
+function renderUpdatePanel(updateStatus, inventory = {}, production = {}) {
+  const container = document.getElementById('playerUpdatePanel');
+  if (!container || !updateStatus) return;
+  const blockers = Array.isArray(updateStatus.blockers) ? updateStatus.blockers : [];
+  const previewWasOpen = container.querySelector('.update-preview')?.open || false;
+  const previewRows = renderUpdatePreview(inventory, production, gameState.capacities, gameState.s?.population);
   container.innerHTML = `
     <div class="update-panel-card">
-      <div class="update-panel-title">Progression des mises à jour</div>
-      <div class="update-period-label">État enregistré</div>
-      <div class="update-panel-value">${escapeHtml(updateStatus.currentLabel || formatUpdateStatusLabel(updateStatus.current) || '—')}</div>
-      <div class="update-next-period"><span>Prochaine période</span><strong>${escapeHtml(updateStatus.nextLabel || formatUpdateStatusLabel(updateStatus.next) || '—')}</strong></div>
+      <h2 class="update-panel-value">Mise à jour : ${escapeHtml(formatUpdateStatusLabel(updateStatus.current) || updateStatus.currentLabel || '—')}</h2>
+      <div class="update-next-period"><span>Prochaine mise à jour</span><strong>${escapeHtml(formatUpdateStatusLabel(updateStatus.next) || updateStatus.nextLabel || '—')}</strong></div>
       ${blockers.length ? `<section class="update-blockers" aria-live="polite"><strong>Blocages à résoudre</strong><ul>${blockers.map(blocker => `<li>${escapeHtml(blocker.message || 'Mise à jour indisponible.')}</li>`).join('')}</ul></section>` : updateStatus.canAdvance ? '<p class="update-ready">Aucun blocage détecté. La mise à jour est disponible.</p>' : `<p class="update-blockers update-date-note">La prochaine période sera disponible à partir du ${escapeHtml(updateStatus.unlockLabel || 'la date indiquée par les organisateurs')}.</p>`}
-      <details class="update-preview"${blockers.length ? '' : ' open'}>
-        <summary>Valeurs prévues</summary>
-        <p class="update-preview-note">Projection indicative de l’inventaire actuel et de sa variation périodique affichée. Les effets conditionnels et la réception des échanges peuvent modifier le résultat final.</p>
-        ${previewRows ? `<div class="update-preview-table-wrap"><table class="admin-table update-report-table"><thead><tr><th>Ressource</th><th>Actuel</th><th>Variation affichée</th><th>Indicatif</th></tr></thead><tbody>${previewRows}</tbody></table></div>` : '<p>Aucune variation périodique affichée.</p>'}
-      </details>
       <div class="update-panel-actions">
-        <button id="advanceUpdateBtn" class="control-btn"${updateStatus.canAdvance && !updateAdvancePending ? '' : ' disabled'}>Mise à jour</button>
+        <button id="advanceUpdateBtn" class="control-btn"${updateStatus.canAdvance && !updateAdvancePending ? '' : ' disabled'}>Passer à la prochaine mise à jour</button>
         ${latestUpdateReportId ? '<button id="latestUpdateReportBtn" class="control-btn secondary">Voir le dernier relevé</button>' : ''}
       </div>
+      <details class="update-preview"${previewWasOpen ? ' open' : ''}>
+        <summary>Prévision</summary>
+        <div class="update-preview-content">
+        <p class="update-preview-note">Variations après consommation et limites de stockage, hors réception des échanges.</p>
+        ${previewRows ? `<div class="update-preview-table-wrap"><table class="admin-table update-preview-table"><thead><tr><th>Ressource</th><th>Variation</th><th>Informations</th></tr></thead><tbody>${previewRows}</tbody></table></div>` : '<p>Aucune variation prévue.</p>'}
+        </div>
+      </details>
     </div>
   `;
   const btn = document.getElementById('advanceUpdateBtn');
@@ -531,6 +547,7 @@ async function loadAndRender(seigneurieId) {
 
     const summary = document.getElementById('summary');
     summary.innerHTML = `
+      <div class="summary-content">
       <div class="summary-header-row">
         <div id="infoTables" class="resource-tables summary-info-tables">
           <div class="resource-table-container">
@@ -540,13 +557,14 @@ async function loadAndRender(seigneurieId) {
             <table id="deJureTable" class="admin-table"></table>
           </div>
         </div>
-        <div id="playerUpdatePanel" class="summary-update-panel"></div>
       </div>
       <div id="popAndTx" class="resource-tables">
         <div id="populationSummary" class="resource-table-container"></div>
         <div class="resource-table-container">
-          <h2>Transactions en Attente</h2>
+          <h2>Transactions en attente</h2>
+          <div class="pending-transactions-wrap">
           <table id="pendingTxTable" class="admin-table"></table>
+          </div>
         </div>
       </div>
       <div id="resourceTables" class="resource-tables">
@@ -563,6 +581,8 @@ async function loadAndRender(seigneurieId) {
           <table id="militaryResourcesTable" class="admin-table"></table>
         </div>
       </div>
+      </div>
+      <aside id="playerUpdatePanel" class="summary-update-panel" aria-label="Mise à jour de la seigneurie"></aside>
     `;
 
     const genTable = document.getElementById('generalInfoTable');
@@ -611,7 +631,7 @@ async function loadAndRender(seigneurieId) {
       <table class="admin-table">
         <tr><th>Info</th><th>Nombre</th></tr>
         <tr><td>Population totale</td><td>${popField}</td></tr>
-        <tr><td>Protection débutante</td><td>${beginnerProtection ? 'Active (jusqu’à 120 habitants)' : 'Terminée définitivement'}</td></tr>
+        ${beginnerProtection ? '<tr class="beginner-protection"><td>Protection débutante</td><td>Active (jusqu’à 120 habitants)</td></tr>' : ''}
         <tr><td>Population employée</td><td>${employedHtml}</td></tr>
         <tr><td>Esclaves</td><td>${slaveField}</td></tr>
         <tr><td>IDH</td><td>${idhHtml}</td></tr>
@@ -2990,13 +3010,15 @@ async function decideTx(id, action) {
 async function renderPendingTransactions() {
   const table = document.getElementById('pendingTxTable');
   if (!table) return;
+  const header = '<thead><tr><th>Ressources</th><th>Origine</th><th>Mise à jour</th><th>Date</th><th>Raison</th><th>Statut</th></tr></thead>';
   try {
     const url = currentSeigneurieId
       ? `/api/trade_transactions?seigneurie_id=${currentSeigneurieId}`
       : '/api/trade_transactions';
     const res = await fetch(url);
-    const txs = res.ok ? await res.json() : [];
-    table.innerHTML = '<tr><th>Ressources</th><th>Origine</th><th>Mise a jour</th><th>Date</th><th>Raison</th><th></th></tr>';
+    if (!res.ok) throw new Error('Transactions indisponibles');
+    const txs = await res.json();
+    const rows = [];
     txs.forEach(tx => {
       const resSummary = Object.entries(tx.resources || {}).map(([k, v]) => `${escapeHtml(v)} ${escapeHtml(resourceLabels[k] || k)}`).join(', ');
       const origin = `${escapeHtml(tx.origin_name)} (${escapeHtml(tx.origin_barony_name)})`;
@@ -3004,27 +3026,23 @@ async function renderPendingTransactions() {
       const date = `<span class="timeago" datetime="${tx.created_at}"></span>`;
       let status;
       if (tx.state === 'En Attente') {
-        status = `<button class="tx-open" data-id="${tx.id}">...</button>`;
+        status = `<button class="tx-open" data-id="${tx.id}">Consulter</button>`;
       } else if (tx.state === 'Approuvée' && !tx.received) {
-        status = '<span title="Les ressources seront recues lors de votre prochaine mise a jour.">En attente de reception</span>';
+        status = '<span title="Les ressources seront reçues lors de votre prochaine mise à jour.">En attente de réception</span>';
       } else {
         const label = tx.state === 'Approuvée' ? 'Approuvée' : 'Refusée';
         status = `<span title="${tx.decision_time ? new Date(tx.decision_time).toLocaleString() : ''}">${label}</span>`;
       }
-      table.innerHTML += `<tr><td>${resSummary}</td><td>${origin}</td><td>${updateLabel}</td><td>${date}</td><td>${escapeHtml(tx.reason)}</td><td>${status}</td></tr>`;
+      rows.push(`<tr><td>${resSummary}</td><td>${origin}</td><td>${updateLabel}</td><td>${date}</td><td>${escapeHtml(tx.reason)}</td><td>${status}</td></tr>`);
     });
-    let rows = txs.length;
-    while (rows < 3) {
-      table.innerHTML += '<tr>' + '<td>&nbsp;</td>'.repeat(6) + '</tr>';
-      rows++;
-    }
+    table.innerHTML = `${header}<tbody>${rows.join('') || '<tr><td colspan="6" class="table-empty-state">Aucune transaction en attente.</td></tr>'}</tbody>`;
     renderTransactionDates(table);
     table.querySelectorAll('.tx-open').forEach(btn => {
       btn.addEventListener('click', () => openTransactionPopup(btn.dataset.id));
     });
   } catch (error) {
     console.error('Erreur de chargement des transactions commerciales', error);
-    table.innerHTML = '<tr><td colspan="6">Erreur</td></tr>';
+    table.innerHTML = `${header}<tbody><tr><td colspan="6" class="table-empty-state prod-negative">Impossible de charger les transactions. Rechargez la page.</td></tr></tbody>`;
   }
 }
 

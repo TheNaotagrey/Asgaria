@@ -4,3 +4,4 @@ sessions.db
 /tmp/
 app.log
 *.db
+/artifacts/gestion-ui/

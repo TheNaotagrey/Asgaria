@@ -4,6 +4,25 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
+test('la prévision affiche les variations nettes, la famine et les pertes par stockage', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'gestion.js'), 'utf8');
+  const start = source.indexOf('function renderUpdatePreview(');
+  const end = source.indexOf('\nfunction renderUpdatePanel(', start);
+  const context = { resourceLabels: { vivres: 'Vivres', points_magique: 'Points magiques' }, escapeHtml: value => String(value) };
+  vm.createContext(context);
+  vm.runInContext(source.slice(start, end), context);
+  const html = context.renderUpdatePreview({ vivres: 50, points_magique: 1990, or_: 10 },
+    { vivres: -100, points_magique: 30, or_: 5 }, { points_magique: 2000 }, 100);
+  assert.match(html, /prod-negative">-50/);
+  assert.match(html, /Famine : 2 morts/);
+  assert.match(html, /prod-positive">\+10/);
+  assert.match(html, /Stockage dépassé : 20 perdus/);
+  assert.match(html, /prod-positive">\+5/);
+  assert.match(context.renderUpdatePreview({ vivres: 0 }, { vivres: -1500 }, {}, 3), /Famine : 3 morts/);
+  assert.doesNotMatch(context.renderUpdatePreview({ vivres: 100 }, { vivres: -50 }, {}, 100), /Famine/);
+  assert.equal(context.renderUpdatePreview({}, { vivres: 0 }, {}, 100), '');
+});
+
 test('le rendu des dates transmet chaque élément à timeago et prévoit un repli local', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'gestion.js'), 'utf8');
   const start = source.indexOf('function renderTransactionDates(');

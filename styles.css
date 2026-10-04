@@ -1546,6 +1546,57 @@ th.multi-col {
 }
 
 /* Tables des ressources */
+#summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 400px;
+  gap: 24px;
+  align-items: start;
+}
+
+.summary-content { min-width: 0; }
+
+#summary #resourceTables {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  align-items: start;
+}
+#resourceTables .admin-table { table-layout: fixed; overflow-wrap: anywhere; }
+#resourceTables .admin-table tr > :first-child { width: 30%; }
+#resourceTables .admin-table tr > :nth-child(3) { width: 26%; }
+#summary #resourceTables th { font-size: 0.85rem; padding: 8px 6px; overflow-wrap: normal; }
+#summary #pendingTxTable { table-layout: fixed; font-size: 0.85rem; overflow-wrap: anywhere; }
+#summary #pendingTxTable th, #summary #pendingTxTable td { padding: 8px 6px; }
+#popAndTx { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); }
+#popAndTx .resource-table-container { min-width: 0; }
+
+#summary .admin-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid #ccd3dc;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #fff;
+}
+
+#summary .admin-table th,
+#summary .admin-table td {
+  border: 0;
+  border-right: 1px solid #e2e6ec;
+  border-bottom: 1px solid #e2e6ec;
+  padding: 8px 10px;
+}
+
+#summary .admin-table tr > :last-child { border-right: 0; }
+#summary .admin-table tbody:last-child tr:last-child td { border-bottom: 0; }
+#summary .admin-table th { background: #edf1f6; position: static; text-align: left; }
+#summary .admin-table tbody tr:nth-child(even) { background: #f8fafc; }
+#summary h2 { margin: 0 0 12px; font-size: 1.1rem; }
+.pending-transactions-wrap { overflow-x: auto; }
+#summary .table-empty-state { padding: 28px 12px; text-align: center; color: #647083; }
+#summary .table-empty-state.prod-negative { color: #a42c2c; }
+.beginner-protection { color: #23733d; font-weight: 700; }
+
 .resource-tables {
   display: flex;
   gap: 20px;
@@ -1570,15 +1621,14 @@ th.multi-col {
 }
 
 .summary-update-panel {
-  width: min(100%, 440px);
-  flex: 0 1 440px;
-  margin-left: auto;
+  min-width: 0;
+  width: 100%;
 }
 
 .update-panel-card {
   border: 1px solid #d7d3c6;
-  background: #faf6ec;
-  padding: 12px;
+  background: #fff;
+  padding: 18px;
   border-radius: 8px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
 }
@@ -1591,7 +1641,7 @@ th.multi-col {
 }
 
 .update-panel-value {
-  margin-top: 6px;
+  margin: 0;
   font-size: 1.35rem;
   font-weight: 700;
   color: #3b3122;
@@ -1610,7 +1660,7 @@ th.multi-col {
   justify-content: space-between;
   align-items: baseline;
   gap: 12px;
-  padding-top: 8px;
+  padding-top: 12px;
   border-top: 1px solid #e6dece;
 }
 
@@ -1670,6 +1720,42 @@ th.multi-col {
 .update-preview-table-wrap {
   max-height: 230px;
   overflow: auto;
+}
+
+#summary .update-panel-value { font-size: 1.35rem; line-height: 1.35; }
+#summary .update-preview-table { margin-bottom: 0; font-size: 0.85rem; }
+#summary .update-preview-table th,
+#summary .update-preview-table td { padding: 8px; }
+#summary .preview-variation { text-align: right; white-space: nowrap; font-weight: 700; }
+.preview-information { font-size: 0.8rem; line-height: 1.4; }
+.update-panel-actions { flex-wrap: wrap; }
+
+@media (max-width: 1150px) {
+  #summary { grid-template-columns: minmax(0, 1fr); }
+  .summary-update-panel { grid-row: 1; position: relative; z-index: 5; }
+  .update-preview { position: relative; }
+  .update-preview-content {
+    position: absolute;
+    top: calc(100% + 10px);
+    left: -19px;
+    right: -19px;
+    padding: 12px 18px 18px;
+    background: #fff;
+    border: 1px solid #d7d3c6;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    max-height: 340px;
+    overflow: auto;
+  }
+  #summary .resource-table-container { min-width: min(100%, 250px); }
+}
+
+@media (max-width: 1300px) {
+  #summary #popAndTx { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 640px) {
+  #summary #pendingTxTable { min-width: 560px; }
 }
 
 .update-report-period {
