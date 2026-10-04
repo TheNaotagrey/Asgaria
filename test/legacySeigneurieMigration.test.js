@@ -44,7 +44,7 @@ async function startAndRead(directory) {
       if (child.exitCode !== null) throw new Error('Le serveur de test a quitté prématurément.');
       const database = new sqlite3.Database(path.join(directory, 'asgaria.db'), sqlite3.OPEN_READONLY);
       try {
-        const rows = await query(database, 'SELECT id, baronnie_id, tax_rate, spells_cast, type FROM seigneuries ORDER BY id');
+        const rows = await query(database, 'SELECT id, baronnie_id, tax_rate, spells_cast, type, beginner_protection FROM seigneuries ORDER BY id');
         if (rows.length === 2) return rows;
       } catch (error) {
         if (attempt === 99) throw error;
@@ -85,11 +85,16 @@ test('la migration conserve les joueurs historiques et reste idempotente', async
     }
 
     const expected = [
-      { id: 1, baronnie_id: 42, tax_rate: 11, spells_cast: 3, type: 'seigneur' },
-      { id: 2, baronnie_id: null, tax_rate: 5, spells_cast: 0, type: 'seigneur' }
+      { id: 1, baronnie_id: 42, tax_rate: 11, spells_cast: 3, type: 'seigneur', beginner_protection: 0 },
+      { id: 2, baronnie_id: null, tax_rate: 5, spells_cast: 0, type: 'seigneur', beginner_protection: 0 }
     ];
     assert.deepEqual(await startAndRead(directory), expected);
     assert.deepEqual(await startAndRead(directory), expected);
+    const migrated = new sqlite3.Database(path.join(directory, 'asgaria.db'), sqlite3.OPEN_READONLY);
+    try {
+      const reports = await query(migrated, "SELECT name FROM sqlite_master WHERE name IN ('player_update_reports','idx_player_update_reports_player_created') ORDER BY name");
+      assert.deepEqual(reports.map(row => row.name), ['idx_player_update_reports_player_created', 'player_update_reports']);
+    } finally { await new Promise(resolve => migrated.close(resolve)); }
   } finally {
     const resolved = fs.realpathSync(directory);
     assert.equal(path.dirname(resolved), fs.realpathSync(os.tmpdir()));

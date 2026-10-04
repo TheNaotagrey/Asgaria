@@ -2216,6 +2216,17 @@ function renderTable(container, rows, opts){
     headRow.appendChild(th);
     columnMeta.push({ key: col.key, label: col.label || col.key, th, index: columnMeta.length });
   });
+  const placeExtraColumns = row => {
+    if (!opts.extraColumnsAfter || !normalizedExtraColumns.length) return;
+    const fieldIndex = opts.fields.indexOf(opts.extraColumnsAfter);
+    if (fieldIndex < 0) return;
+    const extraCells = Array.from(row.children).slice(opts.fields.length + 1, opts.fields.length + 1 + normalizedExtraColumns.length);
+    const anchor = row.children[fieldIndex + 2] || null;
+    extraCells.forEach(cell => row.insertBefore(cell, anchor));
+  };
+  placeExtraColumns(headRow);
+  columnMeta.sort((a, b) => Array.from(headRow.children).indexOf(a.th) - Array.from(headRow.children).indexOf(b.th));
+  columnMeta.forEach((column, index) => { column.index = index; });
   const actionsHeader = document.createElement('th');
   const columnToggleBtn = document.createElement('button');
   columnToggleBtn.type = 'button';
@@ -2518,13 +2529,15 @@ function renderTable(container, rows, opts){
 
   const renderRow = (item)=>{
     const tr = document.createElement('tr');
+    const fieldInputs = {};
     let td = document.createElement('td');
     td.textContent = item.id;
     applyHiddenToCell(td, 'id');
     tr.appendChild(td);
     opts.fields.forEach(f=>{
       td = document.createElement('td');
-      td.appendChild(makeInput(item[f], f, item));
+      fieldInputs[f] = makeInput(item[f], f, item);
+      td.appendChild(fieldInputs[f]);
       applyHiddenToCell(td, f);
       tr.appendChild(td);
     });
@@ -2535,14 +2548,15 @@ function renderTable(container, rows, opts){
       applyHiddenToCell(tdExtra, col.key);
       tr.appendChild(tdExtra);
     });
+    placeExtraColumns(tr);
     td = document.createElement('td');
     const btn = document.createElement('button');
     btn.textContent = 'Enregistrer';
     btn.addEventListener('click', async ()=>{
       const previousRelations = captureRelationValues(item);
       const payload = {};
-      opts.fields.forEach((f,i)=>{
-        const el = tr.children[i+1].firstChild;
+      opts.fields.forEach(f=>{
+        const el = fieldInputs[f];
         if(el.getValue){
           payload[f] = el.getValue();
         } else if(opts.selects && opts.selects[f]){
@@ -2634,6 +2648,7 @@ function renderTable(container, rows, opts){
         applyHiddenToCell(td, col.key);
         addRow.appendChild(td);
       });
+      placeExtraColumns(addRow);
       const addTd = document.createElement('td');
       const addBtn = document.createElement('button');
       addBtn.textContent = 'Ajouter';
@@ -3057,13 +3072,66 @@ async function loadSeigneuries(){
   const seigneursSelect = sortByName(seigneurs);
   const baroniesSelect = sortByName(baronies);
   const seigneuriesById = seigneuries.slice().sort((a,b)=>a.id - b.id);
+  const readOnlyValue = (item, field) => {
+    const span = document.createElement('span');
+    span.textContent = item[field] == null ? '—' : String(item[field]);
+    return span;
+  };
+  const protectionControl = item => {
+    const wrapper = document.createElement('label');
+    wrapper.className = BOOLEAN_TOGGLE_CLASS;
+    const toggle = document.createElement('input');
+    toggle.type = 'checkbox';
+    toggle.checked = Number(item.beginner_protection) === 1;
+    toggle.disabled = !toggle.checked;
+    toggle.title = toggle.checked
+      ? 'Protection active. Sa désactivation est définitive.'
+      : 'Protection terminée : elle ne peut pas être réactivée.';
+    const status = document.createElement('span');
+    status.textContent = toggle.checked ? 'Active' : 'Terminée';
+    toggle.addEventListener('change', async () => {
+      if (toggle.checked) return;
+      if (!window.confirm('Désactiver définitivement la protection débutante de cette seigneurie ? Elle ne pourra pas être réactivée.')) {
+        toggle.checked = true;
+        return;
+      }
+      toggle.disabled = true;
+      try {
+        const response = await fetch(API_BASE + `/api/seigneuries/${item.id}/beginner_protection`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ beginner_protection: 0 })
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Modification impossible.');
+        item.beginner_protection = 0;
+        status.textContent = 'Terminée';
+        toggle.title = 'Protection terminée : elle ne peut pas être réactivée.';
+        showSaveIndicator(wrapper.parentElement);
+      } catch (error) {
+        toggle.checked = true;
+        toggle.disabled = false;
+        alert(error.message || 'Modification impossible.');
+      }
+    });
+    wrapper.appendChild(toggle);
+    wrapper.appendChild(status);
+    return wrapper;
+  };
   renderTable(document.getElementById('tableSeigneuries'), seigneuriesById, {
     endpoint:'seigneuries',
     fields:['baronnie_id','seigneur_id','type','population','update_year','update_number',...inventaireFields],
     selects:{baronnie_id:baroniesSelect, seigneur_id:seigneursSelect, type:PlayerTypes.types},
     labels:{type:'Type', baronnie_id:'Baronnie', seigneur_id:'Seigneur', population:'Population', update_year:'Année MJ', update_number:'No MJ', ...inventaireLabels},
     beforeSave:(payload,item)=>{ if(item && item.inventaire_id) payload.inventaire_id = item.inventaire_id; },
-    deleteConfig: defaultDeleteConfig('la seigneurie', 'baronnie_id')
+    deleteConfig: defaultDeleteConfig('la seigneurie', 'baronnie_id'),
+    extraColumnsAfter: 'population',
+    extraColumns: [
+      { key: 'beginner_protection', label: 'Protection débutante', render: protectionControl },
+      { key: 'tax_rate', label: 'Taxe (écus)', render: item => readOnlyValue(item, 'tax_rate') },
+      { key: 'spells_cast', label: 'Sorts lancés', render: item => readOnlyValue(item, 'spells_cast') },
+      { key: 'land_transactions', label: 'Échanges terrestres', render: item => readOnlyValue(item, 'land_transactions') },
+      { key: 'naval_transactions', label: 'Échanges maritimes', render: item => readOnlyValue(item, 'naval_transactions') }
+    ]
   });
 }
 

@@ -30,3 +30,17 @@ test('les sorts chargent une destination et la transmettent au serveur', () => {
   assert.match(source, /id="spellTargetSelect"/);
   assert.match(source, /target_seigneurie_id: targetSeigneurieId/);
 });
+
+test('Gestion tient compte des esclaves une seule fois pour les travailleurs disponibles', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'gestion.js'), 'utf8');
+  const start = source.indexOf('function availableWorkers(');
+  const end = source.indexOf('\nfunction compareUpdateStatus(', start);
+  assert.ok(start >= 0 && end > start);
+  const context = {};
+  vm.createContext(context);
+  vm.runInContext(source.slice(start, end), context);
+  const details = [{ label: 'Champ', amount: 8 }, { label: 'Esclaves', amount: -3 }];
+  assert.equal(context.availableWorkers(10, { employed: 5, slaves: 3 }, details), 5);
+  assert.equal(context.availableWorkers(10, { employed: 5, slaves: 3 }, details, 8), 13);
+  assert.equal(context.availableWorkers(10, { employed: 0, slaves: 12 }, details), 14);
+});

@@ -86,16 +86,18 @@ let tagLabels = {};
 let tagCounts = {};
 let currentUser = null;
 let currentSeigneurieId = null;
+let updateAdvancePending = false;
+let latestUpdateReportId = null;
 const params = new URLSearchParams(location.search);
 let transactionToOpen = params.get('transactionId');
 const updateLabels = {
-  1: 'Fevrier',
+  1: 'Février',
   2: 'Mars',
   3: 'Avril',
   4: 'Mai',
   5: 'Juin',
   6: 'Juillet',
-  7: 'Aout',
+  7: 'Août',
   8: 'Septembre',
   9: 'Octobre',
   10: 'Hiver'
@@ -103,7 +105,12 @@ const updateLabels = {
 
 function formatUpdateStatusLabel(update) {
   if (!update || !update.year || !update.number) return '';
-  return `${updateLabels[update.number] || 'Mise a jour'} ${update.year}`;
+  return `${updateLabels[update.number] || 'Mise à jour'} ${update.year}`;
+}
+
+function availableWorkers(population, employment, employmentDetails, currentlyAssigned = 0) {
+  const demand = (employmentDetails || []).reduce((total, detail) => total + Math.max(0, Number(detail.amount) || 0), 0);
+  return Number(population || 0) + Number(employment.slaves || 0) - demand + Number(currentlyAssigned || 0);
 }
 
 function compareUpdateStatus(left, right) {
@@ -180,11 +187,17 @@ async function init() {
   } catch {
     currentUser = null;
   }
+  if (!currentUser) {
+    setTabVisibility(false);
+    const summary = document.getElementById('summary');
+    if (summary) summary.innerHTML = '<div class="empty-state">Connectez-vous pour accéder à votre seigneurie. <a href="index.html?auth">Ouvrir la connexion</a></div>';
+    return;
+  }
+  const newRouteBtn = document.getElementById('newTradeRouteBtn');
   const params = new URLSearchParams(location.search);
   const sid = params.get('seigneurie_id');
   await loadAndRender(sid);
   await setupAdminSelector(sid);
-  const newRouteBtn = document.getElementById('newTradeRouteBtn');
   if (newRouteBtn) newRouteBtn.addEventListener('click', startTradeRouteCreation);
 
   document.addEventListener('click', async e => {
@@ -233,25 +246,56 @@ function clearGestionSections() {
 }
 
 function showUpdateReport(report) {
-  if (!report || !Array.isArray(report.events) || !report.events.length) return;
+  if (!report) return;
   const dialog = document.getElementById('updateReportDialog');
   const content = document.getElementById('updateReportContent');
   const closeBtn = document.getElementById('updateReportClose');
   if (!dialog || !content || !closeBtn) return;
-  const items = report.events
-    .map(event => `<li><strong>${event.title || 'Evenement'}:</strong> ${event.details || ''}</li>`)
+  const items = (Array.isArray(report.events) ? report.events : [])
+    .map(event => `<li><strong>${escapeHtml(event.title || 'Événement')} :</strong> ${escapeHtml(event.details || '')}</li>`)
     .join('');
+  const before = report.before || {};
+  const after = report.after || {};
+  const delta = report.delta || {};
+  const beforeInventory = before.inventory || {};
+  const afterInventory = after.inventory || {};
+  const deltaInventory = delta.inventory || {};
+  const keys = [...new Set([...Object.keys(beforeInventory), ...Object.keys(afterInventory), ...Object.keys(deltaInventory)])]
+    .filter(key => Number(beforeInventory[key] || 0) || Number(afterInventory[key] || 0) || Number(deltaInventory[key] || 0));
+  const signed = value => `${Number(value) > 0 ? '+' : ''}${escapeHtml(value ?? 0)}`;
+  const resourceRows = keys.map(key => `<tr>
+    <td>${escapeHtml(resourceLabels[key] || key)}</td>
+    <td>${escapeHtml(beforeInventory[key] ?? 0)}</td>
+    <td>${signed(deltaInventory[key])}</td>
+    <td>${escapeHtml(afterInventory[key] ?? 0)}</td>
+  </tr>`).join('');
   content.innerHTML = `
-    <p><strong>${report.current_update_label || 'Mise a jour'}</strong></p>
-    <ul>${items}</ul>
+    <h2>Relevé de mise à jour</h2>
+    <p class="update-report-period">Période traitée : ${escapeHtml(formatUpdateStatusLabel(report.from_update || before.update) || '—')} →
+      <strong>${escapeHtml(report.current_update_label || formatUpdateStatusLabel(report.current_update) || 'Mise à jour')}</strong></p>
+    ${report.before && report.after ? `<table class="admin-table update-report-table"><thead><tr>
+      <th>État</th><th>Avant</th><th>Variation</th><th>Après</th>
+    </tr></thead><tbody><tr><td>Population</td><td>${escapeHtml(before.population ?? 0)}</td>
+      <td>${signed(delta.population)}</td><td>${escapeHtml(after.population ?? 0)}</td></tr>
+      ${resourceRows || '<tr><td colspan="4">Aucune variation de ressources.</td></tr>'}</tbody></table>` : ''}
+    <h3>Événements appliqués</h3>${items ? `<ul>${items}</ul>` : '<p>Aucun événement signalé pour cette période.</p>'}
   `;
   closeBtn.onclick = () => dialog.close();
   dialog.showModal();
 }
 
 async function triggerUpdateAdvance() {
+  if (updateAdvancePending) return;
+  const btn = document.getElementById('advanceUpdateBtn');
+  const update = gameState.updateStatus && gameState.updateStatus.current;
+  if (!update || !Number.isInteger(Number(update.year)) || !Number.isInteger(Number(update.number))) {
+    alert('Rechargez la seigneurie avant de lancer la mise à jour.');
+    return;
+  }
+  updateAdvancePending = true;
+  if (btn) btn.disabled = true;
   try {
-    const payload = {};
+    const payload = { expected_update: { year: Number(update.year), number: Number(update.number) } };
     if (currentSeigneurieId) payload.seigneurie_id = currentSeigneurieId;
     const res = await fetch('/api/seigneurie/advance_update', {
       method: 'POST',
@@ -260,34 +304,94 @@ async function triggerUpdateAdvance() {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      alert(data.error || 'Mise a jour impossible');
+      alert(formatUpdateError(data, res.status));
       return;
     }
     await loadAndRender(currentSeigneurieId);
-    showUpdateReport(data.report);
-  } catch {
-    alert('Mise a jour impossible');
+    if (data.report) showUpdateReport(data.report);
+  } catch (error) {
+    alert(error && error.message ? `Impossible de joindre le serveur : ${error.message}` : 'Impossible de joindre le serveur pour appliquer la mise à jour. Vérifiez votre connexion puis rechargez la page.');
+  } finally {
+    updateAdvancePending = false;
+    if (btn && btn.isConnected) btn.disabled = !(gameState.updateStatus && gameState.updateStatus.canAdvance);
+    renderUpdatePanel(gameState.updateStatus, gameState.inv, gameState.production);
   }
 }
 
-function renderUpdatePanel(updateStatus) {
+function formatUpdateError(data, status) {
+  const knownMessages = {
+    population_overload: 'La mise à jour est bloquée : la population employée dépasse la population totale. Réduisez l’emploi avant de réessayer.',
+    date_locked: 'La prochaine mise à jour n’est pas encore disponible. Consultez la date affichée dans les blocages.',
+    update_conflict: 'La période a changé depuis le chargement de cette page. Rechargez la seigneurie avant de réessayer.',
+    updates_frozen: 'Toutes les mises à jour sont suspendues par l’administration.',
+    update_limit: 'La limite de mises à jour configurée par les organisateurs est atteinte.',
+    inventory_missing: 'L’inventaire de cette seigneurie est introuvable. Contactez un organisateur.',
+    player_not_found: 'Cette seigneurie est introuvable ou n’est plus accessible.'
+  };
+  const message = data && (data.error || data.message);
+  if (data && data.code && knownMessages[data.code]) return knownMessages[data.code];
+  if (message) return String(message);
+  if (status === 401 || status === 403) return 'Vous n’êtes pas autorisé à appliquer cette mise à jour.';
+  if (status === 409) return 'La période a changé depuis le chargement de cette page. Rechargez la seigneurie avant de réessayer.';
+  return `La mise à jour a été refusée par le serveur (erreur ${status || 'inconnue'}). Rechargez la page; si le problème persiste, contactez un organisateur.`;
+}
+
+async function readApiError(response, fallback) {
+  const body = await response.text().catch(() => '');
+  let data = {};
+  try { data = body ? JSON.parse(body) : {}; } catch (_) {
+    if (body) data.error = body;
+  }
+  return formatUpdateError(data, response.status) || fallback;
+}
+
+function renderUpdatePanel(updateStatus, inventory = {}, production = {}) {
   const container = document.getElementById('playerUpdatePanel');
   if (!container || !updateStatus) return;
   const blockers = Array.isArray(updateStatus.blockers) ? updateStatus.blockers : [];
-  const tooltip = blockers.map(blocker => blocker.message).filter(Boolean).join('&#10;');
+  const previewRows = Object.entries(production)
+    .filter(([, amount]) => Number(amount))
+    .sort(([left], [right]) => (resourceLabels[left] || left).localeCompare(resourceLabels[right] || right, 'fr'))
+    .map(([resource, amount]) => {
+      const current = Number(inventory[resource]) || 0;
+      const delta = Number(amount) || 0;
+      return `<tr><td>${escapeHtml(resourceLabels[resource] || resource)}</td><td>${escapeHtml(current)}</td><td>${delta > 0 ? '+' : ''}${escapeHtml(delta)}</td><td>${escapeHtml(current + delta)}</td></tr>`;
+    }).join('');
   container.innerHTML = `
     <div class="update-panel-card">
-      <div class="update-panel-title">Mise a jour courante</div>
-      <div class="update-panel-value">${updateStatus.currentLabel || formatUpdateStatusLabel(updateStatus.current)}</div>
+      <div class="update-panel-title">Progression des mises à jour</div>
+      <div class="update-period-label">État enregistré</div>
+      <div class="update-panel-value">${escapeHtml(updateStatus.currentLabel || formatUpdateStatusLabel(updateStatus.current) || '—')}</div>
+      <div class="update-next-period"><span>Prochaine période</span><strong>${escapeHtml(updateStatus.nextLabel || formatUpdateStatusLabel(updateStatus.next) || '—')}</strong></div>
+      ${blockers.length ? `<section class="update-blockers" aria-live="polite"><strong>Blocages à résoudre</strong><ul>${blockers.map(blocker => `<li>${escapeHtml(blocker.message || 'Mise à jour indisponible.')}</li>`).join('')}</ul></section>` : updateStatus.canAdvance ? '<p class="update-ready">Aucun blocage détecté. La mise à jour est disponible.</p>' : `<p class="update-blockers update-date-note">La prochaine période sera disponible à partir du ${escapeHtml(updateStatus.unlockLabel || 'la date indiquée par les organisateurs')}.</p>`}
+      <details class="update-preview"${blockers.length ? '' : ' open'}>
+        <summary>Valeurs prévues</summary>
+        <p class="update-preview-note">Projection indicative de l’inventaire actuel et de sa variation périodique affichée. Les effets conditionnels et la réception des échanges peuvent modifier le résultat final.</p>
+        ${previewRows ? `<div class="update-preview-table-wrap"><table class="admin-table update-report-table"><thead><tr><th>Ressource</th><th>Actuel</th><th>Variation affichée</th><th>Indicatif</th></tr></thead><tbody>${previewRows}</tbody></table></div>` : '<p>Aucune variation périodique affichée.</p>'}
+      </details>
       <div class="update-panel-actions">
-        <button id="advanceUpdateBtn" class="control-btn"${updateStatus.canAdvance ? '' : ' disabled'}>Mise a Jour</button>
-        ${blockers.length ? `<span class="update-warning-icon" title="${tooltip}">!</span>` : ''}
+        <button id="advanceUpdateBtn" class="control-btn"${updateStatus.canAdvance && !updateAdvancePending ? '' : ' disabled'}>Mise à jour</button>
+        ${latestUpdateReportId ? '<button id="latestUpdateReportBtn" class="control-btn secondary">Voir le dernier relevé</button>' : ''}
       </div>
     </div>
   `;
   const btn = document.getElementById('advanceUpdateBtn');
   if (btn) {
     btn.addEventListener('click', triggerUpdateAdvance);
+  }
+  const reportBtn = document.getElementById('latestUpdateReportBtn');
+  if (reportBtn) reportBtn.addEventListener('click', openLatestUpdateReport);
+}
+
+async function openLatestUpdateReport() {
+  if (!latestUpdateReportId) return;
+  try {
+    const res = await fetch(`/api/seigneurie/update_reports/${encodeURIComponent(latestUpdateReportId)}`);
+    const data = res.ok ? await res.json() : null;
+    if (!res.ok || !data) throw new Error('Relevé indisponible');
+    showUpdateReport(data.report || data);
+  } catch {
+    alert('Le dernier relevé est indisponible.');
   }
 }
 
@@ -302,6 +406,7 @@ async function loadAndRender(seigneurieId) {
     ]);
     if (!res.ok) throw new Error('Erreur');
     const data = await res.json();
+    latestUpdateReportId = data.latest_update_report_id || null;
     const isAdmin = currentUser && currentUser.is_admin && currentUser.act_as_admin !== false;
     if (!data.seigneurie) {
       currentSeigneurieId = null;
@@ -420,7 +525,7 @@ async function loadAndRender(seigneurieId) {
     const spellRangeDetails = data.spellRangeDetails || [];
     const spellMaxDetails = data.spellMaxDetails || [];
     const updateStatus = data.updateStatus || null;
-    gameState = { s, employment, buildings, infrastructures, bpMap, ipMap, buildingBonuses, buildingBonusDetails, productionDetails, spellSuccess, basicSpellDiscount, advancedSpellDiscount, spellRange, spellMax, spellsCast, landTxMax, navalTxMax, landTransactions, navalTransactions, spellSuccessDetails, basicSpellDiscountDetails, advancedSpellDiscountDetails, spellRangeDetails, spellMaxDetails, inv, capacities, isAdmin, baronyProps, updateStatus };
+    gameState = { s, employment, employmentDetails, buildings, infrastructures, bpMap, ipMap, buildingBonuses, buildingBonusDetails, productionDetails, production: data.production || {}, spellSuccess, basicSpellDiscount, advancedSpellDiscount, spellRange, spellMax, spellsCast, landTxMax, navalTxMax, landTransactions, navalTransactions, spellSuccessDetails, basicSpellDiscountDetails, advancedSpellDiscountDetails, spellRangeDetails, spellMaxDetails, inv, capacities, isAdmin, baronyProps, updateStatus };
 
     await renderTradeRoutes(barony.id);
 
@@ -477,7 +582,7 @@ async function loadAndRender(seigneurieId) {
       <tr><td>Comté</td><td>${barony.county_name || 'Aucun'}</td></tr>
       <tr><td>Baronnie</td><td>${barony.name || 'Aucune'}</td></tr>
     `;
-    renderUpdatePanel(updateStatus);
+    renderUpdatePanel(updateStatus, inv, data.production || {});
 
     const popSummary = document.getElementById('populationSummary');
     let employedHtml = employment.employed;
@@ -490,8 +595,11 @@ async function loadAndRender(seigneurieId) {
     if (employment.employed > s.population) {
       employedHtml = `<span style="color:red">${employedHtml}</span>`;
     }
-    const taxOptions = Array.from({ length: 13 }, (_, i) =>
-      `<option value="${i}" ${i === (s.tax_rate ?? 5) ? 'selected' : ''}>${i}</option>`
+    const beginnerProtection = Number(s.beginner_protection) === 1;
+    const maxTaxRate = beginnerProtection ? 5 : 12;
+    const selectedTaxRate = Number(s.tax_rate ?? 5);
+    const taxOptions = Array.from({ length: Math.max(maxTaxRate, selectedTaxRate) + 1 }, (_, i) =>
+      `<option value="${i}" ${i > maxTaxRate ? 'disabled' : ''} ${i === selectedTaxRate ? 'selected' : ''}>${i}</option>`
     ).join('');
 
     const popField = isAdmin ? `<input type="number" id="popInput" value="${s.population}" style="width:6em">` : s.population;
@@ -503,6 +611,7 @@ async function loadAndRender(seigneurieId) {
       <table class="admin-table">
         <tr><th>Info</th><th>Nombre</th></tr>
         <tr><td>Population totale</td><td>${popField}</td></tr>
+        <tr><td>Protection débutante</td><td>${beginnerProtection ? 'Active (jusqu’à 120 habitants)' : 'Terminée définitivement'}</td></tr>
         <tr><td>Population employée</td><td>${employedHtml}</td></tr>
         <tr><td>Esclaves</td><td>${slaveField}</td></tr>
         <tr><td>IDH</td><td>${idhHtml}</td></tr>
@@ -629,7 +738,7 @@ async function loadAndRender(seigneurieId) {
     const civilDiv = document.getElementById('civilInfra');
     const miliDiv = document.getElementById('militaryInfra');
     const commercialDiv = document.getElementById('commercialInfra');
-    const freePop = s.population + employment.slaves - employment.employed;
+    const freePop = availableWorkers(s.population, employment, employmentDetails);
     if (prodDiv) {
       let html = '<table class="admin-table" id="buildingsTable">';
       html += '<tr><th>Nom</th><th>Production</th><th>Employés</th><th>Requis</th><th>Construits</th><th>Max</th><th>Activer</th><th>Prod. Tot.</th><th>Emp. Tot.</th><th>Coût</th><th>Construire</th><th>Détruire</th></tr>';
@@ -789,7 +898,7 @@ async function loadAndRender(seigneurieId) {
           let maxActivate = built;
           if (bp.workers_per_building) {
             const available = freePop + active * workersPer;
-            maxActivate = Math.min(built, Math.floor(available / workersPer));
+            maxActivate = Math.min(built, Math.max(active, Math.floor(available / workersPer)));
           }
           html += `<td><input type="number" min="0" max="${maxActivate}" value="${active}" class="activate-input" style="width:4em" data-id="${bp.id}"></td>`;
         } else {
@@ -866,13 +975,13 @@ async function handleBuildingTableClick(e) {
         console.log('[build] Construction réussie');
         await loadAndRender(currentSeigneurieId);
       } else {
-        const msg = await resp.text().catch(() => '');
+        const msg = await readApiError(resp, 'Construction du bâtiment impossible.');
         console.warn('[build] Construction refusée', resp.status, msg);
-        alert('Construction impossible');
+        alert(msg);
       }
     } catch (err) {
       console.error('[build] Erreur réseau ou serveur', err);
-      alert('Erreur réseau lors de la construction');
+      alert(`Erreur réseau lors de la construction : ${err.message || 'serveur injoignable'}. Vérifiez votre connexion puis réessayez.`);
     }
   } else if (e.target.classList.contains('destroy-btn')) {
     const id = e.target.dataset.id;
@@ -889,11 +998,11 @@ async function handleBuildingTableClick(e) {
       if (resp.ok) {
         await loadAndRender(currentSeigneurieId);
       } else {
-        const msg = await resp.text().catch(() => '');
-        alert('Destruction impossible');
+        const msg = await readApiError(resp, 'Destruction du bâtiment impossible.');
+        alert(msg);
       }
     } catch (err) {
-      alert('Erreur réseau lors de la destruction');
+      alert(`Erreur réseau lors de la destruction : ${err.message || 'serveur injoignable'}. Vérifiez votre connexion puis réessayez.`);
     }
   }
 }
@@ -907,8 +1016,8 @@ async function handleBuildingActivationChange(e) {
     const bp = gameState.bpMap[id];
     const info = gameState.buildings[id] || { built: 0, active: 0 };
     const workersPer = bp ? (bp.workers_per_building || 0) : 0;
-    const available = gameState.s.population + gameState.employment.slaves - gameState.employment.employed + (info.active || 0) * workersPer;
-    if (workersPer && quantity * workersPer > available) {
+    const available = availableWorkers(gameState.s.population, gameState.employment, gameState.employmentDetails, (info.active || 0) * workersPer);
+    if (workersPer && quantity > (info.active || 0) && quantity * workersPer > available) {
       alert('Population non employée insuffisante');
       return;
     }
@@ -925,13 +1034,13 @@ async function handleBuildingActivationChange(e) {
       if (resp.ok) {
         await loadAndRender(currentSeigneurieId);
       } else {
-        const msg = await resp.text().catch(() => '');
+        const msg = await readApiError(resp, 'Activation du bâtiment impossible.');
         console.warn('[build] Activation refusée', resp.status, msg);
-        alert('Activation impossible');
+        alert(msg);
       }
     } catch (err) {
       console.error('[build] Erreur réseau lors de l\'activation', err);
-      alert('Activation impossible');
+      alert(`Erreur réseau lors de l’activation : ${err.message || 'serveur injoignable'}. Vérifiez votre connexion puis réessayez.`);
     }
   } else if (e.target.classList.contains('building-built-input')) {
     const id = e.target.dataset.id;
@@ -956,13 +1065,13 @@ async function handleInfraTableClick(e) {
       if (resp.ok) {
         await loadAndRender(currentSeigneurieId);
       } else {
-        const msg = await resp.text().catch(() => '');
+        const msg = await readApiError(resp, 'Construction de l’infrastructure impossible.');
         console.warn('[infra] Construction refusée', resp.status, msg);
-        alert('Construction impossible');
+        alert(msg);
       }
     } catch (err) {
       console.error('[infra] Erreur réseau lors de la construction', err);
-      alert('Construction impossible');
+      alert(`Erreur réseau lors de la construction : ${err.message || 'serveur injoignable'}. Vérifiez votre connexion puis réessayez.`);
     }
   } else if (e.target.classList.contains('instant-btn')) {
     const id = e.target.dataset.id;
@@ -982,13 +1091,13 @@ async function handleInfraTableClick(e) {
       if(resp.ok){
         await loadAndRender(currentSeigneurieId);
       }else{
-        const msg = await resp.text().catch(() => '');
+        const msg = await readApiError(resp, 'Conversion de production impossible.');
         console.warn('[infra] Conversion refusée', resp.status, msg);
-        alert('Conversion impossible');
+        alert(msg);
       }
     } catch (err) {
       console.error('[infra] Erreur réseau lors de la conversion', err);
-      alert('Conversion impossible');
+      alert(`Erreur réseau lors de la conversion : ${err.message || 'serveur injoignable'}. Vérifiez votre connexion puis réessayez.`);
     }
   } else if (e.target.classList.contains('infra-destroy-btn')) {
     const id = e.target.dataset.id;
@@ -1005,13 +1114,13 @@ async function handleInfraTableClick(e) {
       if(resp.ok){
         await loadAndRender(currentSeigneurieId);
       } else {
-        const msg = await resp.text().catch(()=> '');
+        const msg = await readApiError(resp, 'Destruction de l’infrastructure impossible.');
         console.warn('[infra] Destruction refusée', resp.status, msg);
-        alert('Destruction impossible');
+        alert(msg);
       }
     } catch (err) {
       console.error('[infra] Erreur réseau lors de la destruction', err);
-      alert('Destruction impossible');
+      alert(`Erreur réseau lors de la destruction : ${err.message || 'serveur injoignable'}. Vérifiez votre connexion puis réessayez.`);
     }
   }
 }
@@ -1029,14 +1138,14 @@ async function handleInfraTableChange(e) {
     if(!eff) return;
     const maxWorkers = (eff.max_workers || 0) * built;
     const current = entry[`effect_${idx}_workers`] || 0;
-    const freePop = gameState.s.population + gameState.employment.slaves - gameState.employment.employed + current;
+    const freePop = availableWorkers(gameState.s.population, gameState.employment, gameState.employmentDetails, current);
     if(qty > maxWorkers){
       alert('Nombre trop élevé');
       e.target.value = current;
       updateVarWorkers(e.target);
       return;
     }
-    if(qty > freePop){
+    if(qty > current && qty > freePop){
       alert('Population non employée insuffisante');
       e.target.value = current;
       updateVarWorkers(e.target);
@@ -1053,13 +1162,13 @@ async function handleInfraTableChange(e) {
       if(resp.ok){
         await loadAndRender(currentSeigneurieId);
       }else{
-        const msg = await resp.text().catch(()=> '');
+        const msg = await readApiError(resp, 'Affectation des travailleurs impossible.');
         console.warn('[infra] Assignation refusée', resp.status, msg);
-        alert('Affectation impossible');
+        alert(msg);
       }
     } catch(err){
       console.error('[infra] Erreur réseau affectation', err);
-      alert('Affectation impossible');
+      alert(`Erreur réseau lors de l’affectation : ${err.message || 'serveur injoignable'}. Vérifiez votre connexion puis réessayez.`);
     }
   } else if (e.target.classList.contains('infra-built-input')) {
     const id = e.target.dataset.id;
