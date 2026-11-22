@@ -37,8 +37,22 @@ jobs:
             echo "📂 Navigating to app directory..."
             cd /home/wkkgb451/repositories/Asgaria
             
-            echo "🚀 Pull from Git"
-            git pull --ff-only origin live
+            echo "📥 Récupération de la version à déployer"
+            git fetch origin live
+            deployment_revision=$(git rev-parse FETCH_HEAD)
+
+            if [ -n "$(git ls-tree --name-only "$deployment_revision" -- asgaria.db)" ]; then
+              echo "Déploiement refusé : cette version contient encore une base de données suivie par Git."
+              exit 1
+            fi
+
+            # Retire uniquement le suivi Git et conserve le fichier du serveur.
+            if git ls-files --error-unmatch -- asgaria.db >/dev/null 2>&1; then
+              git rm --cached -- asgaria.db
+            fi
+
+            echo "🚀 Application du code sans remplacement de la base"
+            git merge --ff-only "$deployment_revision"
 
       - name: 🔁 Restart Node.js App via Passenger
         uses: appleboy/ssh-action@master

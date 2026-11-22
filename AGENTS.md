@@ -79,6 +79,8 @@ Ce dépôt propose un serveur Express/Node.js avec une base SQLite et plusieurs 
 - La table `admin_change_logs` trace les modifications effectuées via l'administration/`mapEditor` (table, entrée, utilisateur, description, données structurées et timestamp) et est consultable depuis l'onglet "Logs" d'`admin.html`.
 - La table `user_table_preferences` stocke les préférences de visibilité de colonnes de l'administration par utilisateur.
 
+- **.github/workflows/publishTocPanel.yml**, **test/deploymentDatabase.test.js** : le déploiement récupère d’abord la révision `live`, refuse une version qui suit encore `asgaria.db`, puis retire uniquement son entrée de l’index serveur (`git rm --cached`) avant la mise à jour en avance directe. Le fichier local du serveur est conservé. Les tests rejouent le conflit initial, les déploiements suivants et les refus sans écraser les données. Chaque environnement utilise son propre fichier via `DATABASE_PATH`.
+
 ## Instructions
 - Garder ce fichier à jour : toute modification importante de l'architecture, des dépendances ou des relations entre scripts doit être répercutée ici.
 - Ajouter ou supprimer des scripts majeurs nécessite d'actualiser la section "Scripts et relations principales".

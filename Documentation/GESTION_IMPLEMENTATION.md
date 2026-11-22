@@ -284,3 +284,11 @@ Les voisins terrestres directs sont accessibles sans route commerciale. Ils sont
 La migration `src/constructionCatalogMigration.js` restaure ces deux tables pour les bases précédemment fusionnées dans `construction_catalog`. Elle conserve les identifiants utilisés par les possessions et les prérequis. Les anciens spécialistes rejoignent les bâtiments et reçoivent un autre identifiant uniquement si leur numéro est déjà occupé par un bâtiment. La migration se fait sous transaction et supprime le catalogue consolidé et ses vues. Une base historique à deux tables reçoit simplement les champs facultatifs des spécialistes.
 
 Le recrutement, les constructions pirates localisées et le débit de PC attendent encore leurs mécanismes de jeu. Le serveur refuse ces actions explicitement.
+
+### Conservation des bases au déploiement
+
+La production utilise sa propre base désignée par `DATABASE_PATH` dans cPanel. Le développement utilise la copie locale lorsque cette variable est absente ou vide. Les bases ne sont pas transférées par le workflow.
+
+Pour les serveurs qui suivent encore `asgaria.db`, le workflow récupère la révision distante et vérifie qu’elle ne contient plus ce fichier. Il retire ensuite uniquement son suivi Git côté serveur avec `git rm --cached`, ce qui conserve le fichier sur disque, puis applique la révision en avance directe. Une version qui réintroduit la base dans Git est refusée. Toute autre modification serveur qui bloque la fusion fait échouer le déploiement. Aucun remplacement forcé de fichiers n’est exécuté.
+
+La correction du workflow doit être poussée sur `live` pour que le prochain déploiement utilise cette transition. Relancer une ancienne exécution réutilise son ancienne version du workflow.
