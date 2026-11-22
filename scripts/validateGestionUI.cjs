@@ -11,7 +11,7 @@ const state = {
   seigneurie: { id: 1, type: 'seigneur', population: 100, tax_rate: 5, beginner_protection: 1 },
   inventaire: { or_: 500, vivres: 50, points_magique: 1990, hommes_darmes: 10 },
   barony: { id: 1, name: 'Valmont', kingdom_name: 'Asgaria', duchy_name: 'Monts', county_name: 'Val' },
-  seigneur: { name: 'Louis de Valmont', religion_name: 'Foi ancienne', overlord_name: 'Duc des Monts' },
+  seigneur: { name: 'Louis de Valmont', player_name:'Propriétaire Valmont', religion_name: 'Foi ancienne', overlord_name: 'Duc des Monts' },
   employment: { employed: 30, slaves: 0 }, idh: 8,
   idhDetails: Array.from({ length: 45 }, (_, index) => ({
     label: `Contribution ${index + 1} — bâtiments, infrastructures et effets de la baronnie avec un libellé très long`, amount: index % 2 ? -1 : 1
@@ -25,14 +25,14 @@ let transactionError = false;
 let adminMode = false;
 let lastBuildPayload = null;
 const buildingProperties = [{ id: 1, label: 'Champs de céréales', type: 'champ', produces: 'vivres', production: 100,
-  workers_per_building: 5, costs: '{"or_":20,"pierre":5}', max: '10', effects: '[]', available_seigneur: 1 }];
+  workers_per_building: 5, costs: '{"or_":20,"pierre":5}', max: '10', effects: '[]', player_type: 'seigneur' }];
 const infrastructureProperties = [
-  { id: 1, label: 'Atelier de transformation', type: 'civil', costs: '{"or_":50}', max: '5', available_seigneur: 1,
+  { id: 1, label: 'Atelier de transformation', type: 'civil', costs: '{"or_":50}', max: '5', player_type: 'seigneur',
     description: 'Transforme les ressources et emploie les habitants disponibles.',
     effects: '[{"type":"instant_production","resource":"pierre","amount":5,"costs":{"or_":2}},{"type":"variable_workers","resource":"fer","amount":2,"max_workers":10}]' },
-  { id: 2, label: 'Caserne', type: 'militaire', costs: '{"or_":80}', max: '5', available_seigneur: 1,
+  { id: 2, label: 'Caserne', type: 'militaire', costs: '{"or_":80}', max: '5', player_type: 'seigneur',
     description: 'Augmente la capacité militaire.', effects: '[{"type":"storage","resource":"hommes_darmes","amount":50}]' },
-  { id: 3, label: 'Comptoir commercial', type: 'commercial', costs: '{"or_":100}', max: '5', available_seigneur: 1,
+  { id: 3, label: 'Comptoir commercial', type: 'commercial', costs: '{"or_":100}', max: '5', player_type: 'seigneur',
     description: 'Permet davantage de transactions terrestres.', effects: '[]' }
 ];
 Object.assign(state, {
@@ -55,7 +55,8 @@ const server = http.createServer((req, res) => {
       });
       return;
     }
-    const data = url.pathname === '/api/my_seigneurie' ? state
+    const data = url.pathname === '/api/seigneurie/influence/link_influence' ? { influence: [{ id: 1, name: 'Monts', amount: 2, available: 10 }] }
+      : url.pathname === '/api/my_seigneurie' ? state
       : url.pathname === '/api/me' ? { id: 1, first_name: 'Marie', last_name: 'Dupont', is_admin: adminMode }
       : url.pathname === '/api/test_mode' ? { enabled: false }
       : url.pathname === '/api/trade_transactions' ? transactions
@@ -102,6 +103,7 @@ const server = http.createServer((req, res) => {
       await page.setViewportSize({ width, height: 1000 });
       await page.goto(url);
       await page.waitForSelector('#basicResourcesTable tr');
+      assert.match(await page.locator('#generalInfoTable').innerText(), /Propriétaire Valmont/);
       assert.match(await page.locator('#pendingTxTable').innerText(), /Aucune transaction en attente/);
       assert.equal(await page.locator('.beginner-protection').count(), 1);
       const before = await page.locator('#popAndTx').boundingBox();

@@ -11,11 +11,12 @@ jobs:
 
     steps:
       - name: 🧩 Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: ⚙️ Set up Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v6
         with:
+          # Version de Node.js pour les commandes de ce workflow.
           node-version: '22'
 
       - name: 📦 Install dependencies
@@ -32,11 +33,12 @@ jobs:
           password: ${{ secrets.SSH_PASSWORD }}
           port: ${{ secrets.SSH_PORT }}
           script: |
+            set -e
             echo "📂 Navigating to app directory..."
             cd /home/wkkgb451/repositories/Asgaria
             
             echo "🚀 Pull from Git"
-            git pull origin live
+            git pull --ff-only origin live
 
       - name: 🔁 Restart Node.js App via Passenger
         uses: appleboy/ssh-action@master
@@ -46,6 +48,7 @@ jobs:
           password: ${{ secrets.SSH_PASSWORD }}
           port: ${{ secrets.SSH_PORT }}
           script: |
+            set -e
             echo "🔧 Activating virtual environment..."
             source /home/wkkgb451/nodevenv/repositories/Asgaria/18/bin/activate
 

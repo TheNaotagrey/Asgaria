@@ -21,7 +21,7 @@ const extraResources = [
 ];
 const resourceLabels = Object.fromEntries([...basicResources, ...luxuryResources, ...militaryResources, ...extraResources]);
 const resourceSelect = Object.entries(resourceLabels).map(([id, name]) => ({ id, name }));
-const pageSelect = [{ id: 'magie', name: 'Magie' }];
+const pageSelect = [{ id: 'magie', name: 'Magie' }, { id: 'hotel_des_ventes', name: 'Hôtel des ventes' }];
 
 let buildingPropsSelect = [];
 let infraPropsSelect = [];
@@ -67,14 +67,29 @@ function escapeHtml(value) {
   })[character]);
 }
 
+function renderConstructionCost(resource, quantity, available) {
+  if (resource === 'points_croyance') {
+    return `<span title="Paiement en points de croyance à venir">${quantity} points de croyance</span>`;
+  }
+  const label = resourceLabels[resource] || resource;
+  const stock = Number(available || 0);
+  const cost = `${escapeHtml(label)}: ${escapeHtml(quantity)}`;
+  if (stock >= Number(quantity)) return `<span>${cost}</span>`;
+  const message = resource === 'rhum'
+    ? `${stock} ${stock === 1 ? 'rhum' : 'rhums'} en stock`
+    : `${stock} ${label.toLocaleLowerCase('fr')} en stock`;
+  return `<span class="tooltip construction-cost-missing" tabindex="0" aria-label="${escapeHtml(message)}" style="color:red">${cost}<table class="tooltip-table"><tr><td>${escapeHtml(message)}</td></tr></table></span>`;
+}
+
 function renderTransactionDates(container) {
   const dates = container.querySelectorAll('.timeago');
+  dates.forEach(element => element.setAttribute('datetime', GameRules.utcTimestamp(element.getAttribute('datetime'))));
   if (dates.length && window.timeago && typeof window.timeago.render === 'function') {
     dates.forEach(element => window.timeago.render(element, 'fr'));
     return;
   }
   dates.forEach(element => {
-    const date = new Date(element.dateTime);
+    const date = new Date(element.getAttribute('datetime'));
     element.textContent = Number.isNaN(date.getTime())
       ? ''
       : date.toLocaleString('fr-CA', { dateStyle: 'medium', timeStyle: 'short' });
@@ -86,7 +101,9 @@ let tagLabels = {};
 let tagCounts = {};
 let currentUser = null;
 let currentSeigneurieId = null;
+let gestionLoadVersion = 0;
 let updateAdvancePending = false;
+let taxSavePending = false;
 let latestUpdateReportId = null;
 const params = new URLSearchParams(location.search);
 let transactionToOpen = params.get('transactionId');
@@ -109,7 +126,9 @@ function formatUpdateStatusLabel(update) {
 }
 
 function availableWorkers(population, employment, employmentDetails, currentlyAssigned = 0) {
-  const demand = (employmentDetails || []).reduce((total, detail) => total + Math.max(0, Number(detail.amount) || 0), 0);
+  const demand = employmentDetails && employmentDetails.length
+    ? employmentDetails.reduce((total, detail) => total + Math.max(0, Number(detail.amount) || 0), 0)
+    : Number(employment.employed || 0) + Number(employment.slaves || 0);
   return Number(population || 0) + Number(employment.slaves || 0) - demand + Number(currentlyAssigned || 0);
 }
 
@@ -182,6 +201,7 @@ document.addEventListener('DOMContentLoaded', init);
 
 async function init() {
   initGestionTooltips();
+  initTradeHistory();
   try {
     const res = await fetch('/api/me');
     currentUser = res.ok ? await res.json() : null;
@@ -195,11 +215,11 @@ async function init() {
     return;
   }
   const newRouteBtn = document.getElementById('newTradeRouteBtn');
+  if (newRouteBtn) newRouteBtn.addEventListener('click', startTradeRouteCreation);
   const params = new URLSearchParams(location.search);
   const sid = params.get('seigneurie_id');
   await loadAndRender(sid);
   await setupAdminSelector(currentSeigneurieId || sid);
-  if (newRouteBtn) newRouteBtn.addEventListener('click', startTradeRouteCreation);
 
   document.addEventListener('click', async e => {
     if (!newRouteMode) return;
@@ -218,7 +238,7 @@ function setTabVisibility(hasSeigneurie) {
     if (btn.dataset.defaultDisplay === undefined) {
       btn.dataset.defaultDisplay = btn.style.display || '';
     }
-    if (!hasSeigneurie && btn.dataset.tab !== 'sommaire') {
+    if (!hasSeigneurie && btn.dataset.tab !== 'sommaire' && !(btn.dataset.tab === 'messagerie' && currentUser)) {
       btn.style.display = 'none';
     } else {
       btn.style.display = btn.dataset.defaultDisplay || '';
@@ -291,7 +311,7 @@ function showUpdateReport(report) {
 }
 
 async function triggerUpdateAdvance() {
-  if (updateAdvancePending) return;
+  if (updateAdvancePending || taxSavePending) return;
   const btn = document.getElementById('advanceUpdateBtn');
   const update = gameState.updateStatus && gameState.updateStatus.current;
   if (!update || !Number.isInteger(Number(update.year)) || !Number.isInteger(Number(update.number))) {
@@ -379,20 +399,27 @@ function renderUpdatePanel(updateStatus, inventory = {}, production = {}) {
   if (!container || !updateStatus) return;
   const blockers = Array.isArray(updateStatus.blockers) ? updateStatus.blockers : [];
   const previewWasOpen = container.querySelector('.update-preview')?.open || false;
+  const festivalWasOpen = container.querySelector('details.festival-panel')?.open || false;
+  const festivalDraft = container.querySelector('#festivalForm')
+    ? Object.fromEntries(Object.keys(HappinessRules.festivalValues).map(key => [key, container.querySelector(`#festivalForm [name="${key}"]`).value])) : null;
   const previewRows = renderUpdatePreview(inventory, production, gameState.capacities, gameState.s?.population);
   container.innerHTML = `
     <div class="update-panel-card">
       <h2 class="update-panel-value">Mise à jour : ${escapeHtml(formatUpdateStatusLabel(updateStatus.current) || updateStatus.currentLabel || '—')}</h2>
       <div class="update-next-period"><span>Prochaine mise à jour</span><strong>${escapeHtml(formatUpdateStatusLabel(updateStatus.next) || updateStatus.nextLabel || '—')}</strong></div>
+      ${gameState.revoltPreview ? `<p class="revolt-preview ${gameState.revoltPreview.chance ? 'revolt-warning' : 'revolt-safe'}" aria-live="polite"><strong>Risque de révolte : ${escapeHtml(gameState.revoltPreview.chance)}%</strong> · IDH prévu ${escapeHtml(gameState.revoltPreview.idh)}.${gameState.revoltPreview.reason === 'protected' ? ' Protection débutante active.' : gameState.revoltPreview.chance ? ' Consultez les conséquences dans la prévision.' : ''}</p>` : ''}
       ${blockers.length ? `<section class="update-blockers" aria-live="polite"><strong>Blocages à résoudre</strong><ul>${blockers.map(blocker => `<li>${escapeHtml(blocker.message || 'Mise à jour indisponible.')}</li>`).join('')}</ul></section>` : updateStatus.canAdvance ? '<p class="update-ready">Aucun blocage détecté. La mise à jour est disponible.</p>' : `<p class="update-blockers update-date-note">La prochaine période sera disponible à partir du ${escapeHtml(updateStatus.unlockLabel || 'la date indiquée par les organisateurs')}.</p>`}
       <div class="update-panel-actions">
-        <button id="advanceUpdateBtn" class="control-btn"${updateStatus.canAdvance && !updateAdvancePending ? '' : ' disabled'}>Passer à la prochaine mise à jour</button>
+        <button id="advanceUpdateBtn" class="control-btn"${updateStatus.canAdvance && !updateAdvancePending && !taxSavePending ? '' : ' disabled'}>Passer à la prochaine mise à jour</button>
         ${latestUpdateReportId ? '<button id="latestUpdateReportBtn" class="control-btn secondary">Voir le dernier relevé</button>' : ''}
       </div>
+      ${taxSavePending ? '<p class="update-preview-note" role="status">Enregistrement de la taxe…</p>' : ''}
+      ${renderFestivalPanel()}
       <details class="update-preview"${previewWasOpen ? ' open' : ''}>
         <summary>Prévision</summary>
         <div class="update-preview-content">
         <p class="update-preview-note">Variations après consommation et limites de stockage, hors réception des échanges.</p>
+        ${renderRevoltPreview(gameState.revoltPreview)}
         ${previewRows ? `<div class="update-preview-table-wrap"><table class="admin-table update-preview-table"><thead><tr><th>Ressource</th><th>Variation</th><th>Informations</th></tr></thead><tbody>${previewRows}</tbody></table></div>` : '<p>Aucune variation prévue.</p>'}
         </div>
       </details>
@@ -404,6 +431,98 @@ function renderUpdatePanel(updateStatus, inventory = {}, production = {}) {
   }
   const reportBtn = document.getElementById('latestUpdateReportBtn');
   if (reportBtn) reportBtn.addEventListener('click', openLatestUpdateReport);
+  initFestivalForm();
+  const festivalForm = container.querySelector('#festivalForm');
+  if (festivalDraft && festivalForm) {
+    Object.entries(festivalDraft).forEach(([key, value]) => { festivalForm.elements[key].value = value; });
+    festivalForm.dispatchEvent(new Event('input'));
+  }
+  const festivalDetails = container.querySelector('details.festival-panel');
+  if (festivalDetails) festivalDetails.open = festivalWasOpen;
+}
+
+function renderRevoltPreview(risk) {
+  if (!risk) return '';
+  if (risk.reason === 'protected') return '<p class="revolt-preview">Protection débutante : aucune révolte à la prochaine mise à jour.</p>';
+  if (!risk.chance) return `<p class="revolt-preview">IDH prévu : ${escapeHtml(risk.idh)}. Aucun risque de révolte.</p>`;
+  const losses = risk.possibleLosses || {};
+  const target = risk.target === 'granary' ? 'Un grenier' : risk.target === 'market' ? 'Le marché' : `${risk.buildings} infrastructure${risk.buildings > 1 ? 's' : ''} au hasard`;
+  const stolen = Object.entries(losses.stolen || {});
+  return `<section class="revolt-preview revolt-warning">
+    <div class="revolt-metrics"><div><span>Risque de révolte</span><strong>${escapeHtml(risk.chance)}%</strong></div><div><span>IDH prévu</span><strong>${escapeHtml(risk.idh)}</strong></div></div>
+    <p class="revolt-condition">Pertes possibles uniquement si la révolte éclate.</p>
+    <h4>Pertes humaines</h4><ul class="revolt-casualties"><li><strong>${escapeHtml(losses.civilians || 0)}</strong> habitants</li><li><strong>${escapeHtml(losses.soldiers || 0)}</strong> hommes d’armes</li><li><strong>${escapeHtml(losses.slaves || 0)}</strong> esclaves</li></ul>
+    <div class="revolt-destruction"><h4>Destruction</h4><p>${escapeHtml(target)}, si présent.</p><small>Seules les infrastructures destructibles sont concernées.</small></div>
+    <details class="revolt-stolen"><summary>Ressources volées : ${escapeHtml(losses.stolenPercent ?? risk.stolenPercent)}%${stolen.length ? ` · ${stolen.length} types` : ''}</summary>
+      ${stolen.length ? `<table class="admin-table revolt-loss-table"><thead><tr><th>Ressource</th><th>Perte possible</th></tr></thead><tbody>${stolen.map(([key, value]) => `<tr><td>${escapeHtml(resourceLabels[key] || key)}</td><td>−${escapeHtml(value)}</td></tr>`).join('')}</tbody></table>` : '<p>Aucune ressource à voler dans les stocks prévus.</p>'}</details>
+    <p class="revolt-condition">Ces pertes s’ajoutent aux variations ci-dessous. Une famine peut réduire l’IDH.</p></section>`;
+}
+
+function previewTaxRate(rate) {
+  const previousRate = Number(gameState.s.tax_rate) || 0;
+  const population = Number(gameState.s.population) || 0;
+  gameState.production.or_ = (Number(gameState.production.or_) || 0)
+    + Math.floor(population * rate / 100) - Math.floor(population * previousRate / 100);
+  gameState.s = { ...gameState.s, tax_rate: rate };
+  gameState.revoltPreview = HappinessRules.updateHappinessPreview({ player: gameState.s,
+    inventory: gameState.inv, infrastructures: gameState.infrastructures,
+    infrastructureProperties: Object.values(gameState.ipMap), lord: gameState.lord, barony: gameState.barony,
+    baronyProperties: gameState.baronyProps, festivalBonus: gameState.festival?.bonus || 0,
+    projection: { production: gameState.production, capacities: gameState.capacities } });
+  renderUpdatePanel(gameState.updateStatus, gameState.inv, gameState.production);
+}
+
+function renderFestivalPanel() {
+  if ((gameState.s?.type || 'seigneur') !== 'seigneur') return '';
+  if (gameState.festival) return `<section class="festival-panel"><h3>Fête populaire prévue</h3><p>Bonus de <strong>+${escapeHtml(gameState.festival.bonus)} IDH</strong> pour la prochaine mise à jour uniquement. Les ressources ont été dépensées.</p></section>`;
+  return `<details class="festival-panel"><summary>Organiser une fête populaire</summary>
+    <p>Choisissez les ressources à dépenser maintenant. Le bonus de 0 à 3 IDH sera utilisé une seule fois, à la prochaine mise à jour.</p>
+    <form id="festivalForm"><div class="festival-fields">${Object.keys(HappinessRules.festivalValues).map(key => `<label>${escapeHtml(resourceLabels[key] || key)}<input type="number" name="${key}" min="0" max="${Number(gameState.inv[key]) || 0}" step="1" value="0"><small>Disponible : ${Number(gameState.inv[key]) || 0}</small></label>`).join('')}</div>
+    <p id="festivalQuote" aria-live="polite"></p><p id="festivalError" class="prod-negative" role="alert"></p><button type="submit" class="control-btn" disabled>Dépenser et organiser la fête</button></form></details>`;
+}
+
+function initFestivalForm() {
+  const form = document.getElementById('festivalForm');
+  if (!form) return;
+  let pending = false;
+  const resources = () => Object.fromEntries(Object.keys(HappinessRules.festivalValues).map(key => [key, Number(form.elements[key].value)]));
+  const refresh = () => {
+    const chosen = resources();
+    const quote = HappinessRules.festivalQuote(chosen, gameState.s.population);
+    const remaining = { ...gameState.inv };
+    Object.entries(chosen).forEach(([key, amount]) => { remaining[key] = Math.max(0, (Number(remaining[key]) || 0) - amount); });
+    const risk = gameState.revoltPreview ? HappinessRules.updateHappinessPreview({
+      player: gameState.s, inventory: remaining, infrastructures: gameState.infrastructures,
+      infrastructureProperties: Object.values(gameState.ipMap), lord: gameState.lord, barony: gameState.barony,
+      baronyProperties: gameState.baronyProps, festivalBonus: quote.bonus,
+      projection: { production: gameState.production, capacities: gameState.capacities }
+    }) : null;
+    form.querySelector('#festivalQuote').textContent = `Valeur : ${quote.value} points. Bonus : +${quote.bonus} IDH. Seuils à dépasser : ${quote.thresholds.join(', ')}.${risk ? ` Risque après fête : ${risk.chance}%.` : ''}`;
+    form.querySelector('button').disabled = pending || taxSavePending || !form.checkValidity() || !Object.values(chosen).some(value => value > 0) || updateAdvancePending;
+  };
+  form.addEventListener('input', refresh);
+  refresh();
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (!form.checkValidity()) return;
+    const button = form.querySelector('button');
+    if (button.disabled) return;
+    pending = true;
+    const context = currentSeigneurieId;
+    const loadVersion = gestionLoadVersion;
+    button.disabled = true;
+    form.querySelector('#festivalError').textContent = '';
+    const payload = { resources: resources(), expected_update: gameState.updateStatus.current };
+    if (gameState.isAdmin && context) payload.seigneurie_id = context;
+    try {
+      const response = await fetch('/api/seigneurie/festival', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'La fête n’a pas pu être organisée.');
+      if (loadVersion === gestionLoadVersion) await loadAndRender(context);
+    } catch (error) {
+      if (loadVersion === gestionLoadVersion) form.querySelector('#festivalError').textContent = error.message || 'Impossible de joindre le serveur.';
+    } finally { pending = false; if (form.isConnected) refresh(); }
+  });
 }
 
 async function openLatestUpdateReport() {
@@ -418,24 +537,145 @@ async function openLatestUpdateReport() {
   }
 }
 
+function influenceLabel(duchyName, plural = false) {
+  const name = String(duchyName || 'votre duché');
+  return `Influence${plural ? 's' : ''} ${/^[aàâäeéèêëiîïoôöuùûüy]/i.test(name) ? 'd’' : 'de '}${name}`;
+}
+
+async function renderInfluencePanel(version) {
+  const panel = document.getElementById('influencePanel');
+  if (!panel) return;
+  panel.innerHTML = '<h2>Prestige, renommée et influence</h2><p>Chargement des soldes…</p>';
+  const context = currentSeigneurieId;
+  try {
+    const query = gameState.isAdmin ? `?seigneurie_id=${context}` : '';
+    const response = await fetch(`/api/seigneurie/influence${query}`, { cache: 'no-store' });
+    if (!response.ok) throw new Error(await readApiError(response, 'Soldes d’influence indisponibles.'));
+    const state = await response.json();
+    const recipientsResponse = await fetch(`/api/seigneurie/influence/recipients${query}`, { cache: 'no-store' });
+    const recipients = recipientsResponse.ok ? await recipientsResponse.json() : [];
+    if (version !== gestionLoadVersion || !panel.isConnected) return;
+    // Les anciennes fixtures peuvent ne pas exposer cette route.
+    if (!state || !Array.isArray(state.balances)) throw new Error('Soldes d’influence indisponibles.');
+    gameState.influence = state;
+    const canConvert = ['seigneur', 'eveque'].includes(gameState.s.type || 'seigneur');
+    const metric = (key, label) => `<div class="influence-metric" data-resource="${key}">
+      <label class="metric-label" for="rayonnement-${key}">${label}</label>
+      ${gameState.isAdmin ? `<input id="rayonnement-${key}" name="${key}" type="number" step="1" ${key === 'prestige' ? 'min="0"' : ''} value="${state[key]}" required aria-label="${label}">` : `<strong class="metric-value${state[key] < 0 ? ' is-negative' : ''}">${escapeHtml(state[key])}</strong>`}
+      </div>`;
+    panel.innerHTML = `${gameState.isAdmin ? '<form id="influenceAdminForm">' : '<div class="influence-stock">'}
+      <div class="influence-metrics">${metric('prestige', 'Prestige')}${metric('renommee', 'Renommée')}</div>
+      <div id="influenceBalances" class="influence-grid">${state.balances.map(b => `<div class="duchy-balance${b.duchy_id === state.duchy?.id ? ' is-home' : ''}" data-duchy-id="${b.duchy_id}"${b.duchy_id === state.duchy?.id ? ' title="Duché de jure"' : ''}>
+        <label for="influence-${b.duchy_id}">${escapeHtml(b.name)}</label>
+        ${gameState.isAdmin ? `<input id="influence-${b.duchy_id}" name="influence_${b.duchy_id}" type="number" step="1" min="0" value="${b.amount}" required aria-label="${escapeHtml(influenceLabel(b.name))}">` : `<strong>${escapeHtml(b.amount)}</strong>`}</div>`).join('') || '<p>Aucun duché renseigné.</p>'}</div>
+      ${gameState.isAdmin ? '<p class="influence-save-status" role="status" aria-live="polite"></p></form>' : '</div>'}
+      ${canConvert ? `<form id="prestigeConversionForm" class="influence-conversion">
+        <div class="influence-form-fields"><label>Quantité <input name="amount" type="number" aria-label="Prestige à convertir" min="1" step="1" max="${Math.max(0, Number(state.prestige))}" value="1" required></label>
+        <label>En <select name="target"><option value="renommee">Renommée (1:1)</option><option value="influence" ${state.duchy ? '' : 'disabled'}>${escapeHtml(influenceLabel(state.duchy?.name))} (1:2)</option></select></label>
+        <button type="submit" class="control-btn" title="Conversion irréversible" ${state.prestige > 0 ? '' : 'disabled'}>Convertir</button></div>
+        <p role="status" aria-live="polite"></p></form>` : ''}`;
+    const adminForm = panel.querySelector('#influenceAdminForm');
+    if (adminForm) {
+      adminForm.addEventListener('submit', event => event.preventDefault());
+      adminForm.addEventListener('change', async event => {
+        event.preventDefault();
+        const input = event.target;
+        if (!input.matches('input[type="number"]') || version !== gestionLoadVersion) return;
+        const changes = {}, expected = {};
+        const value = Number(input.value), key = input.name;
+        let previous;
+        if (['prestige', 'renommee'].includes(key)) {
+          previous = state[key]; changes[key] = value; expected[key] = previous;
+        } else {
+          const balance = state.balances.find(b => `influence_${b.duchy_id}` === key);
+          if (!balance) return;
+          previous = balance.amount;
+          changes.influence = [{ duchy_id: balance.duchy_id, amount: value, expected: previous }];
+        }
+        const status = adminForm.querySelector('[role="status"]');
+        if (!input.value.trim() || !input.checkValidity() || !Number.isSafeInteger(value)) {
+          input.value = previous; status.textContent = 'Saisissez un entier valide ; seule la renommée peut être négative.'; return;
+        }
+        if (value === previous) return;
+        input.disabled = true; status.textContent = 'Enregistrement…';
+        try {
+          const result = await fetch('/api/seigneurie/influence', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seigneurie_id: context, changes, expected }) });
+          if (!result.ok) throw new Error(await readApiError(result, 'Modification des soldes impossible.'));
+          if (version === gestionLoadVersion) await loadAndRender(context);
+        } catch (error) { if (input.isConnected) input.value = previous; if (status.isConnected) status.textContent = error.message || 'Modification impossible.'; }
+        finally { if (input.isConnected) input.disabled = false; }
+      });
+    }
+    if (Array.isArray(recipients) && recipients.length && state.balances.some(b => b.amount > 0)) {
+      panel.insertAdjacentHTML('beforeend', `<details class="influence-transfer"><summary>Envoyer de l’influence</summary><form id="influenceTransferForm" class="influence-form-fields">
+        <label>Destinataire <select name="destination_id">${recipients.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('')}</select></label>
+        <label>Influence <select name="duchy_id">${state.balances.filter(b => b.amount > 0).map(b => `<option value="${b.duchy_id}">${escapeHtml(b.name)} (${b.amount})</option>`).join('')}</select></label>
+        <label>Quantité <input name="amount" type="number" min="1" step="1" value="1" required style="width:6em"></label>
+        <button class="control-btn" type="submit">Envoyer</button><p role="status" aria-live="polite"></p></form></details>`);
+      const transfer = panel.querySelector('#influenceTransferForm');
+      transfer.addEventListener('submit', async event => {
+        event.preventDefault();
+        const button = transfer.querySelector('button'); button.disabled = true;
+        const payload = Object.fromEntries(['amount', 'duchy_id', 'destination_id'].map(key => [key, Number(transfer.elements[key].value)]));
+        if (gameState.isAdmin) payload.seigneurie_id = context;
+        try {
+          const result = await fetch('/api/seigneurie/influence/transfer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+          if (!result.ok) throw new Error(await readApiError(result, 'Envoi impossible.'));
+          if (version === gestionLoadVersion) await loadAndRender(context);
+        } catch (error) { if (transfer.isConnected) transfer.querySelector('[role="status"]').textContent = error.message || 'Envoi impossible.'; }
+        finally { if (button.isConnected) button.disabled = false; }
+      });
+    }
+    const form = panel.querySelector('#prestigeConversionForm');
+    if (form) form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const button = form.querySelector('button'), status = form.querySelector('[role="status"]');
+      button.disabled = true;
+      const payload = { amount: Number(form.elements.amount.value), target: form.elements.target.value };
+      if (gameState.isAdmin) payload.seigneurie_id = context;
+      try {
+        const result = await fetch('/api/seigneurie/influence/convert', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        if (!result.ok) throw new Error(await readApiError(result, 'Conversion impossible.'));
+        if (version === gestionLoadVersion) await loadAndRender(context);
+      } catch (error) { if (status.isConnected) status.textContent = error.message || 'Conversion impossible.'; }
+      finally { if (button.isConnected) button.disabled = false; }
+    });
+  } catch (error) { if (version === gestionLoadVersion && panel.isConnected) panel.innerHTML = `<h2>Prestige, renommée et influence</h2><p role="status">${escapeHtml(error.message)}</p>`; }
+}
+
 async function loadAndRender(seigneurieId) {
+  const influenceWasOpen = (seigneurieId == null || Number(seigneurieId) === Number(currentSeigneurieId)) && document.getElementById('influenceSection')?.open;
+  const previewWasOpen = document.querySelector('#playerUpdatePanel .update-preview')?.open || false;
+  const festivalWasOpen = (seigneurieId || null) === currentSeigneurieId && document.querySelector('details.festival-panel')?.open;
+  const festivalForm = (seigneurieId || null) === currentSeigneurieId && document.querySelector('#festivalForm');
+  const festivalDraft = festivalForm ? Object.fromEntries(Object.keys(HappinessRules.festivalValues).map(key => [key, festivalForm.elements[key].value])) : null;
+  const loadVersion = ++gestionLoadVersion;
   document.dispatchEvent(new Event('gestion:refresh'));
   newRouteMode = false;
   eligibleTargets = {};
+  ['tradeDestinationDialog', 'tradeRouteDialog'].forEach(id => {
+    const dialog = document.getElementById(id);
+    if (dialog?.open) dialog.close();
+  });
+  const tradeStatus = document.getElementById('tradeCreationStatus');
+  if (tradeStatus) tradeStatus.textContent = '';
+  document.dispatchEvent(new CustomEvent('gestion:auction-reset'));
   currentSeigneurieId = seigneurieId || null;
   try {
     const [res, bRes, iRes, tRes] = await Promise.all([
-      fetch(`/api/my_seigneurie${seigneurieId ? `?seigneurie_id=${seigneurieId}` : ''}`),
+      fetch(`/api/my_seigneurie${seigneurieId ? `?seigneurie_id=${seigneurieId}` : ''}`, { cache: 'no-store' }),
       fetch('/api/building_properties'),
       fetch('/api/infrastructure_properties'),
       fetch('/api/tags')
     ]);
     if (!res.ok) throw new Error('Erreur');
     const data = await res.json();
+    if (loadVersion !== gestionLoadVersion) return;
     latestUpdateReportId = data.latest_update_report_id || null;
     const isAdmin = currentUser && currentUser.is_admin && currentUser.act_as_admin !== false;
     if (!data.seigneurie) {
       currentSeigneurieId = null;
+      document.dispatchEvent(new CustomEvent('gestion:player-context', { detail: { seigneurieId: null } }));
       setTabVisibility(false);
       clearGestionSections();
       const summary = document.getElementById('summary');
@@ -451,9 +691,13 @@ async function loadAndRender(seigneurieId) {
     const allBuildingProps = bRes.ok ? await bRes.json() : [];
     const allInfraProps = iRes.ok ? await iRes.json() : [];
     const tags = tRes.ok ? await tRes.json() : [];
+    if (loadVersion !== gestionLoadVersion) return;
     tagLabels = Object.fromEntries(tags.map(t=> [String(t.id), t.label]));
     const s = data.seigneurie;
     currentSeigneurieId = s ? s.id : currentSeigneurieId;
+    document.dispatchEvent(new CustomEvent('gestion:player-context', {
+      detail: { seigneurieId: isAdmin ? currentSeigneurieId : null }
+    }));
     const inv = data.inventaire || {};
     const barony = data.barony || {};
     const seigneur = data.seigneur || {};
@@ -484,8 +728,9 @@ async function loadAndRender(seigneurieId) {
     const capacities = data.capacities || {};
     const buildingBonuses = data.buildingProductionBonus || {};
     const buildingBonusDetails = data.buildingProductionBonusDetails || {};
-    const buildingProps = allBuildingProps.filter(bp => {
-      if (!PlayerTypes.isBuildingAvailable(bp, s.type)) return false;
+    const roleBuildings = allBuildingProps.filter(bp => PlayerTypes.isBuildingAvailable(bp, s.type));
+    const roleInfrastructures = allInfraProps.filter(ip => PlayerTypes.isBuildingAvailable(ip, s.type));
+    const buildingProps = roleBuildings.filter(bp => {
       try {
         const arr = bp.absolute_restrictions ? JSON.parse(bp.absolute_restrictions) : [];
         return arr.every(p => baronyProps[p]);
@@ -493,10 +738,9 @@ async function loadAndRender(seigneurieId) {
         return true;
       }
     });
-    const bpMap = Object.fromEntries(allBuildingProps.map(b => [String(b.id), b]));
-    buildingPropsSelect = allBuildingProps.map(b => ({ id: b.id, name: b.label || b.type }));
-    const infraProps = allInfraProps.filter(ip => {
-        if (!PlayerTypes.isBuildingAvailable(ip, s.type)) return false;
+    const bpMap = Object.fromEntries(roleBuildings.map(b => [String(b.id), b]));
+    buildingPropsSelect = roleBuildings.map(b => ({ id: b.id, name: b.label || b.type }));
+    const infraProps = roleInfrastructures.filter(ip => {
         try {
           const arr = ip.absolute_restrictions ? JSON.parse(ip.absolute_restrictions) : [];
           if (Array.isArray(arr)) {
@@ -507,8 +751,8 @@ async function loadAndRender(seigneurieId) {
           return true;
         }
       });
-    const ipMap = Object.fromEntries(allInfraProps.map(b => [String(b.id), b]));
-    infraPropsSelect = allInfraProps.map(i => ({ id: i.id, name: i.label || i.type }));
+    const ipMap = Object.fromEntries(roleInfrastructures.map(b => [String(b.id), b]));
+    infraPropsSelect = roleInfrastructures.map(i => ({ id: i.id, name: i.label || i.type }));
 
     tagCounts = {};
     Object.entries(buildings).forEach(([bid, info]) => {
@@ -553,6 +797,8 @@ async function loadAndRender(seigneurieId) {
     const updateStatus = data.updateStatus || null;
     gameState = { s, employment, employmentDetails, buildings, infrastructures, bpMap, ipMap, buildingBonuses, buildingBonusDetails, productionDetails, production: data.production || {}, spellSuccess, basicSpellDiscount, advancedSpellDiscount, spellRange, spellMax, spellsCast, landTxMax, navalTxMax, landTransactions, navalTransactions, spellSuccessDetails, basicSpellDiscountDetails, advancedSpellDiscountDetails, spellRangeDetails, spellMaxDetails, inv, capacities, isAdmin, baronyProps, updateStatus };
 
+    Object.assign(gameState, { lord: data.seigneur || {}, barony: data.barony,
+      festival: data.festival || null, revoltPreview: data.revoltPreview || null });
     await renderTradeRoutes(barony.id);
 
     const summary = document.getElementById('summary');
@@ -593,12 +839,16 @@ async function loadAndRender(seigneurieId) {
       </div>
       </div>
       <aside id="playerUpdatePanel" class="summary-update-panel" aria-label="Mise à jour de la seigneurie"></aside>
+      <details id="influenceSection" class="influence-section"${influenceWasOpen ? ' open' : ''}>
+        <summary>Prestige, renommée & influences</summary>
+        <section id="influencePanel" class="resource-table-container" aria-label="Prestige, renommée et influence"></section>
+      </details>
     `;
 
     const genTable = document.getElementById('generalInfoTable');
     genTable.innerHTML = `
       <tr><th colspan="2">Informations générales</th></tr>
-      <tr><td>Nom du joueur</td><td>${currentUser ? `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim() : ''}</td></tr>
+      <tr><td>Nom du joueur</td><td>${escapeHtml(seigneur.player_name ?? (!isAdmin ? `${currentUser?.first_name || ''} ${currentUser?.last_name || ''}`.trim() : ''))}</td></tr>
       <tr><td>Nom du personnage</td><td>${seigneur.name || currentUser?.character_name || ''}</td></tr>
       <tr><td>Religion</td><td>${seigneur.religion_name || 'Inconnue'}</td></tr>
       <tr><td>Nom du Suzerain</td><td>${seigneur.overlord_name || 'Aucun'}</td></tr>
@@ -613,6 +863,17 @@ async function loadAndRender(seigneurieId) {
       <tr><td>Baronnie</td><td>${barony.name || 'Aucune'}</td></tr>
     `;
     renderUpdatePanel(updateStatus, inv, data.production || {});
+    await renderInfluencePanel(loadVersion);
+    if (loadVersion !== gestionLoadVersion) return;
+    const previewDetails = document.querySelector('#playerUpdatePanel .update-preview');
+    if (previewDetails) previewDetails.open = previewWasOpen;
+    const nextFestivalForm = document.querySelector('#festivalForm');
+    if (nextFestivalForm && festivalDraft) {
+      Object.entries(festivalDraft).forEach(([key, value]) => { nextFestivalForm.elements[key].value = value; });
+      nextFestivalForm.dispatchEvent(new Event('input'));
+    }
+    const nextFestivalDetails = document.querySelector('details.festival-panel');
+    if (nextFestivalDetails && festivalWasOpen) nextFestivalDetails.open = true;
 
     const popSummary = document.getElementById('populationSummary');
     let employedHtml = employment.employed;
@@ -682,18 +943,35 @@ async function loadAndRender(seigneurieId) {
     if (taxSelect) {
       taxSelect.addEventListener('change', async () => {
         const rate = parseInt(taxSelect.value, 10);
+        const context = currentSeigneurieId;
+        const version = gestionLoadVersion;
+        const previousRate = Number(gameState.s.tax_rate) || 0;
+        taxSavePending = true;
+        taxSelect.disabled = true;
+        previewTaxRate(rate);
         try {
           const payload = { tax_rate: rate };
-          if (currentSeigneurieId) payload.seigneurie_id = currentSeigneurieId;
+          if (context) payload.seigneurie_id = context;
           const res = await fetch('/api/tax_rate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
           });
-          if (!res.ok) throw new Error('Erreur');
-          await loadAndRender(currentSeigneurieId);
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || 'Erreur lors de la mise à jour des taxes.');
+          }
+          if (version === gestionLoadVersion) await loadAndRender(context);
         } catch (err) {
-          alert('Erreur lors de la mise à jour des taxes');
+          if (version === gestionLoadVersion) {
+            previewTaxRate(previousRate);
+            taxSelect.value = String(previousRate);
+            alert(err.message || 'Erreur lors de la mise à jour des taxes.');
+          }
+        } finally {
+          taxSavePending = false;
+          if (taxSelect.isConnected) taxSelect.disabled = false;
+          renderUpdatePanel(gameState.updateStatus, gameState.inv, gameState.production);
         }
       });
     }
@@ -771,7 +1049,7 @@ async function loadAndRender(seigneurieId) {
     const freePop = availableWorkers(s.population, employment, employmentDetails);
     if (prodDiv) {
       let html = '<table class="admin-table" id="buildingsTable">';
-      html += '<tr><th>Nom</th><th>Production</th><th>Employés</th><th>Requis</th><th>Construits</th><th>Max</th><th>Activer</th><th>Prod. Tot.</th><th>Emp. Tot.</th><th>Coût</th><th>Construire</th><th>Détruire</th></tr>';
+      html += '<tr><th>Nom</th><th>Production</th><th>' + (s.type === 'eveque' ? 'Moines par exemplaire' : 'Employés') + '</th><th>Requis</th><th>Construits</th><th>Max</th><th>Activer</th><th>Prod. Tot.</th><th>Emp. Tot.</th><th>Coût</th><th>Construire</th><th>Détruire</th></tr>';
       for (const bp of buildingProps) {
         let prodLabel = '';
         if (bp.produces) {
@@ -799,7 +1077,8 @@ async function loadAndRender(seigneurieId) {
         }
         const built = info.built || 0;
         const active = info.active || 0;
-        const workersPer = bp.workers_per_building || 0;
+        const workersPer = GameRules.constructionWorkers(s, bp);
+        const populationRatio = s.type === 'eveque' ? Number(bp.workers_per_building) || 0 : workersPer;
 
         let maxVal = Infinity;
         if (bp.max !== undefined && bp.max !== null && bp.max !== '') {
@@ -823,6 +1102,7 @@ async function loadAndRender(seigneurieId) {
             }
           }
         } catch {}
+        maxVal = Math.min(maxVal, GameRules.constructionPopulationLimit(s, bp));
         const maxValDisplay = maxVal === Infinity ? '' : maxVal;
 
         let costHtml = '';
@@ -831,11 +1111,9 @@ async function loadAndRender(seigneurieId) {
           const costs = bp.costs ? JSON.parse(bp.costs) : {};
           const parts = [];
           for (const [k, q] of Object.entries(costs)) {
-            const label = resourceLabels[k] || k;
             const ok = (inv[k] || 0) >= q;
             if (!ok) hasResources = false;
-            const color = ok ? '' : ' style="color:red"';
-            parts.push(`<span${color}>${label}: ${q}</span>`);
+            parts.push(renderConstructionCost(k, q, inv[k]));
           }
           costHtml = parts.join('<br>');
         } catch (e) {
@@ -845,7 +1123,7 @@ async function loadAndRender(seigneurieId) {
         let restrHtml = '';
         let restrictionsMet = true;
         try {
-          const infraR = bp.infra_restrictions ? JSON.parse(bp.infra_restrictions) : {};
+          const infraR = GameRules.buildingRequirements(bp, allInfraProps);
           const parts = [];
           if (infraR.buildings) {
             for (const [bid, qty] of Object.entries(infraR.buildings)) {
@@ -923,14 +1201,14 @@ async function loadAndRender(seigneurieId) {
         const empTotal = workersPer * active;
 
         const builtField = isAdmin ? `<input type="number" class="building-built-input" data-id="${bp.id}" value="${built}" style="width:6em">` : built;
-        html += `<tr data-id="${bp.id}"><td>${bp.label || bp.type}</td><td>${prod}</td><td>${workersPer}</td><td>${restrHtml}</td><td>${builtField}</td><td>${maxValDisplay}</td>`;
+        html += `<tr data-id="${bp.id}"><td>${bp.label || bp.type}</td><td>${prod}</td><td>${populationRatio.toLocaleString('fr-CA', { maximumFractionDigits: 6 })}</td><td>${restrHtml}</td><td>${builtField}</td><td>${maxValDisplay}</td>`;
         if (built > 0) {
           let maxActivate = built;
-          if (bp.workers_per_building) {
+          if (workersPer) {
             const available = freePop + active * workersPer;
             maxActivate = Math.min(built, Math.max(active, Math.floor(available / workersPer)));
           }
-          html += `<td><input type="number" min="0" max="${maxActivate}" value="${active}" class="activate-input" style="width:4em" data-id="${bp.id}"></td>`;
+          html += `<td><input type="number" min="0" max="${maxActivate}" value="${active}" class="activate-input" style="width:4em" data-id="${bp.id}" aria-label="Nombre actif : ${escapeHtml(bp.label || bp.type)}"><button type="button" class="activate-save-btn" data-id="${bp.id}">Appliquer</button></td>`;
         } else {
           html += '<td></td>';
         }
@@ -993,6 +1271,9 @@ async function loadAndRender(seigneurieId) {
 
 async function handleBuildingTableClick(e) {
   const table = document.getElementById('buildingsTable');
+  if (e.target.classList.contains('activate-save-btn')) {
+    return handleBuildingActivationChange({ target: table.querySelector(`.activate-input[data-id="${e.target.dataset.id}"]`) });
+  }
   if (e.target.classList.contains('build-btn')) {
     const id = e.target.dataset.id;
     console.log('[build] Bouton de construction cliqué pour', id);
@@ -1049,13 +1330,23 @@ async function handleBuildingActivationChange(e) {
     const quantity = parseInt(input.value, 10);
     const bp = gameState.bpMap[id];
     const info = gameState.buildings[id] || { built: 0, active: 0 };
-    const workersPer = bp ? (bp.workers_per_building || 0) : 0;
+    if (input.disabled || quantity === Number(info.active || 0)) return;
+    if (!Number.isSafeInteger(quantity) || quantity < 0 || quantity > Number(info.built || 0)) {
+      input.value = info.active || 0;
+      alert('La quantité active doit être un entier entre zéro et le nombre construit.');
+      return;
+    }
+    const workersPer = bp ? GameRules.constructionWorkers(gameState.s, bp) : 0;
     const available = availableWorkers(gameState.s.population, gameState.employment, gameState.employmentDetails, (info.active || 0) * workersPer);
     if (workersPer && quantity > (info.active || 0) && quantity * workersPer > available) {
       alert('Population non employée insuffisante');
+      input.value = info.active || 0;
       return;
     }
-
+    const save = table.querySelector(`.activate-save-btn[data-id="${id}"]`);
+    const context = currentSeigneurieId, version = gestionLoadVersion;
+    input.disabled = true;
+    if (save) { save.disabled = true; save.textContent = 'Enregistrement…'; }
     try {
       const payload = { id, quantity };
       if (currentSeigneurieId) payload.seigneurie_id = currentSeigneurieId;
@@ -1066,15 +1357,20 @@ async function handleBuildingActivationChange(e) {
       });
       console.log('[build] Activation réponse', resp.status);
       if (resp.ok) {
-        await loadAndRender(currentSeigneurieId);
+        if (version === gestionLoadVersion) await loadAndRender(context);
       } else {
+        input.value = info.active || 0;
         const msg = await readApiError(resp, 'Activation du bâtiment impossible.');
         console.warn('[build] Activation refusée', resp.status, msg);
         alert(msg);
       }
     } catch (err) {
+      input.value = info.active || 0;
       console.error('[build] Erreur réseau lors de l\'activation', err);
       alert(`Erreur réseau lors de l’activation : ${err.message || 'serveur injoignable'}. Vérifiez votre connexion puis réessayez.`);
+    } finally {
+      input.disabled = false;
+      if (save) { save.disabled = false; save.textContent = 'Appliquer'; }
     }
   } else if (e.target.classList.contains('building-built-input')) {
     const id = e.target.dataset.id;
@@ -1218,7 +1514,7 @@ function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId, editable = fa
     return Array.isArray(effects) && effects.some(effect =>
       effect.type === 'instant_production' || effect.type === 'variable_workers');
   });
-  let html = `<table class="admin-table" id="${tableId}"><tr><th>Nom</th><th>Construits</th><th>Max</th><th>Effets</th><th>Requis</th><th>Coût</th><th>Construire</th><th>Détruire</th>${hasSpecialActions ? '<th class="multi-col">Actions spéciales</th>' : ''}</tr>`;
+  let html = `<table class="admin-table" id="${tableId}"><tr><th>Nom</th><th class="infra-workers"${s.type === 'eveque' ? '>Moines par exemplaire' : ' title="Travailleurs requis par infrastructure">Trav./bât.'}</th><th>Construits</th><th>Max</th><th>Effets</th><th>Requis</th><th>Coût</th><th>Construire</th><th>Détruire</th>${hasSpecialActions ? '<th class="multi-col">Actions spéciales</th>' : ''}</tr>`;
   for (const ip of list) {
     const entry = infraBuilt[ip.id] || infraBuilt[String(ip.id)] || 0;
     const built = typeof entry === 'object' ? (entry.built || 0) : entry;
@@ -1246,6 +1542,7 @@ function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId, editable = fa
         }
       } catch {}
     }
+    maxVal = Math.min(maxVal, GameRules.constructionPopulationLimit(s, ip));
     const maxValDisplay = maxVal === Infinity ? '' : maxVal;
     let maxReached = false;
     if (maxValDisplay !== '') {
@@ -1261,11 +1558,9 @@ function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId, editable = fa
       const costs = ip.costs ? JSON.parse(ip.costs) : {};
       const parts = [];
       for (const [k, q] of Object.entries(costs)) {
-        const label = resourceLabels[k] || k;
         const ok = (inv[k] || 0) >= q;
         if (!ok) hasRes = false;
-        const color = ok ? '' : ' style="color:red"';
-        parts.push(`<span${color}>${label}: ${q}</span>`);
+        parts.push(renderConstructionCost(k, q, inv[k]));
       }
       costHtml = parts.join('<br>');
     } catch {}
@@ -1330,13 +1625,20 @@ function buildInfraTable(list, infraBuilt = {}, inv = {}, tableId, editable = fa
       restrHtml = parts.join('<br>');
     } catch {}
 
-    const canBuild = hasRes && restrOk;
+    const workersNeeded = GameRules.constructionWorkers(s, ip, true);
+    const populationRatio = s.type === 'eveque' ? Number(ip.workers_per_building) || 0 : workersNeeded;
+    const slaveCost = Math.max(0, Number(safeParse(ip.costs, {})?.esclaves) || 0);
+    const currentEmployment = Number(gameState.employment?.employed) || 0;
+    const nextEmployment = Math.max(0, Number(s.population || 0) - availableWorkers(s.population, gameState.employment || {}, gameState.employmentDetails) + workersNeeded + slaveCost);
+    const hasWorkers = nextEmployment <= Math.max(Number(s.population || 0), currentEmployment);
+    const canBuild = hasRes && restrOk && hasWorkers && !ip.pirate_site;
     const builtField = editable ? `<input type="number" class="infra-built-input" data-id="${ip.id}" value="${built}" style="width:6em">` : built;
-    html += `<tr data-id="${ip.id}"><td>${ip.label}</td><td>${builtField}</td><td>${maxValDisplay}</td><td>${effectsHtml}</td><td>${restrHtml}</td><td>${costHtml}</td>`;
+    html += `<tr data-id="${ip.id}"><td>${ip.label}</td><td class="infra-workers">${populationRatio.toLocaleString('fr-CA', { maximumFractionDigits: 6 })}</td><td>${builtField}</td><td>${maxValDisplay}</td><td>${effectsHtml}</td><td>${restrHtml}</td><td>${costHtml}</td>`;
     if (maxReached) {
       html += '<td></td>';
     } else {
-      html += `<td><button class="build-btn infra-build-btn" data-id="${ip.id}"${canBuild ? '' : ' disabled'}>Construire</button></td>`;
+      const buildButton = `<button class="build-btn infra-build-btn" data-id="${ip.id}"${canBuild ? '' : ' disabled'}>Construire</button>`;
+      html += `<td>${ip.pirate_site ? 'Construction à venir' : hasWorkers ? buildButton : `<span class="tooltip construction-blocked" tabindex="0" aria-label="Travailleurs insuffisants">${buildButton}<table class="tooltip-table"><tr><td>Travailleurs insuffisants</td></tr></table></span>`}</td>`;
     }
     if (built > 0) {
       html += `<td><button class="destroy-btn infra-destroy-btn" data-id="${ip.id}">Détruire</button></td>`;
@@ -2053,6 +2355,7 @@ function formatRestriction(name, qty) {
 
 function formatEffectText(e) {
   if (!e || typeof e !== 'object') return '';
+  if (AuctionRules.effectLabels[e.type]) return `${AuctionRules.effectLabels[e.type]} : ${e.amount}${e.type.endsWith('_discount') ? ' points' : e.type === 'auction_duration_bonus' ? ' périodes' : ''}`;
   switch (e.type) {
     case 'storage':
       return `Stockage +${e.amount} ${resourceLabels[e.resource] || e.resource}`;
@@ -2075,7 +2378,7 @@ function formatEffectText(e) {
     case 'variable_workers':
       return `${e.amount} ${resourceLabels[e.resource] || e.resource}/travailleur`;
     case 'unlock_page':
-      return `Débloque ${e.page}`;
+      return `Débloque ${pageSelect.find(page => page.id === e.page)?.name || e.page}`;
     case 'spell_success':
       return `Réussite sort +${e.amount}%`;
     case 'spell_basic_discount':
@@ -2314,9 +2617,11 @@ async function ensureTradeData() {
       fetch('/api/seigneurs'),
       fetch('/api/maritime_zones')
     ]);
-    const barData = barRes.ok ? await barRes.json() : [];
-    const seigs = seiRes.ok ? await seiRes.json() : [];
-    const zones = zoneRes.ok ? await zoneRes.json() : [];
+    if (!barRes.ok || !seiRes.ok || !zoneRes.ok) throw new Error('Données commerciales indisponibles.');
+    const barData = await barRes.json();
+    const seigs = await seiRes.json();
+    const zones = await zoneRes.json();
+    if (![barData, seigs, zones].every(Array.isArray)) throw new Error('Données commerciales invalides.');
     seigneurNameMap = Object.fromEntries(seigs.map(s => [s.id, s.name]));
     tradeBaronies = barData.map(b => ({
       id: b.id,
@@ -2325,9 +2630,10 @@ async function ensureTradeData() {
       seigneur_name: seigneurNameMap[b.seigneur_id]
     }));
     maritimeZoneMapState = Object.fromEntries(zones.map(z => [z.id, z]));
-  } catch {
+  } catch (error) {
     tradeBaronies = [];
     maritimeZoneMapState = {};
+    throw error;
   }
 }
 
@@ -2419,13 +2725,41 @@ function buildTradeLinkSummary(link) {
   ).join(' -> ');
 }
 
+// Les couches se composent en source-over ; les extrémités gardent leur couleur de carte.
+function drawTradePreview(ctx) {
+  if (!tradePreviewState || !tradeMapCore) return;
+  const endpoints = new Set(tradePreviewState.flatMap(path => [String(currentTradeBaronyId),String(path.partnerId)]));
+  const colors = ['255, 180, 0', '133, 85, 220', '0, 175, 160'];
+  ctx.save();
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 0.75;
+  tradePreviewState.forEach((path,index) => {
+    ctx.fillStyle = path.type === 'naval' ? 'rgb(0, 128, 255)' : 'rgb('+colors[index % colors.length]+')';
+    const pixels = path.type === 'land'
+      ? path.landPath.filter(id => !endpoints.has(String(id))).flatMap(id => tradeMapCore.pixelData[id] || [])
+      : path.seaPath.flatMap(id => maritimeZonePixelsState[id] || []);
+    const painted = new Set();
+    pixels.forEach(([x,y]) => {
+      if (endpoints.has(String(tradeMapCore.pixelMap[y]?.[x]))) return;
+      const key=x+','+y;
+      if (painted.has(key)) return; painted.add(key);
+      ctx.fillRect(x,y,1,1);
+    });
+  });
+  ctx.restore();
+}
+
 async function initTradeMap() {
   if (tradeMapCore) return;
   const base = document.getElementById('tradeBaseMap');
   const canvas = document.getElementById('tradeCanvas');
   if (!base || !canvas) return;
-  const baseLoaded = base.complete ? Promise.resolve() : new Promise(res => (base.onload = res));
+  const baseLoaded = base.complete ? Promise.resolve() : new Promise((resolve, reject) => {
+    base.addEventListener('load', resolve, { once: true });
+    base.addEventListener('error', () => reject(new Error('La carte commerciale est indisponible.')), { once: true });
+  });
   await baseLoaded;
+  if (!base.naturalWidth) throw new Error('La carte commerciale est indisponible.');
   canvas.width = base.naturalWidth;
   canvas.height = base.naturalHeight;
   canvas.style.width = '100%';
@@ -2436,15 +2770,7 @@ async function initTradeMap() {
     enableZoom: false,
     staticMap: true,
     onSelect: handleTradeMapSelect,
-    drawOverlay: ctx => {
-      if (!tradePreviewState || !tradePreviewState.seaPath || !tradePreviewState.seaPath.length) return;
-      ctx.save();
-      ctx.fillStyle = 'rgba(0, 128, 255, 0.45)';
-      tradePreviewState.seaPath.forEach(zoneId => {
-        (maritimeZonePixelsState[zoneId] || []).forEach(([x, y]) => ctx.fillRect(x, y, 1, 1));
-      });
-      ctx.restore();
-    },
+    drawOverlay: drawTradePreview,
     fetchData: async () => {
       const [pixels, connections, zoneConns, zoneBars, zonePixels] = await Promise.all([
         fetch('/api/barony_pixels').then(r => r.json()),
@@ -2483,15 +2809,33 @@ async function initTradeMap() {
   });
   await tradeMapCore.ready;
   window.tradeMapCore = tradeMapCore;
+  let hovered = null;
+  canvas.addEventListener('pointermove', event => {
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.floor((event.clientX-rect.left)*canvas.width/rect.width), y = Math.floor((event.clientY-rect.top)*canvas.height/rect.height);
+    const id = tradeMapCore.pixelMap[y]?.[x];
+    if (id === hovered) return; hovered = id;
+    setTradePreview(tradeLinksState.filter(link => link.partner_id===Number(id)));
+  });
+  canvas.addEventListener('pointerleave', () => { hovered=null; setTradePreview(null); });
 }
 
-function setTradePreview(link = null) {
-  tradePreviewState = link ? {
-    landPath: link.type === 'land' ? buildFullLandPath(link) : [currentTradeBaronyId, link.partner_id],
+function setTradePreview(links = null) {
+  const paths = (Array.isArray(links) ? links : links ? [links] : []).slice().sort((a,b) => a.type.localeCompare(b.type) || a.id-b.id);
+  tradePreviewState = paths.length ? paths.map(link => ({
+    type: link.type, partnerId: link.partner_id,
+    landPath: link.type === 'land' ? buildFullLandPath(link) : [],
     seaPath: link.type === 'naval' ? buildFullSeaPath(link) : []
-  } : null;
+  })) : null;
+  let caption = document.getElementById('tradePreviewCaption');
+  if (!caption) {
+    caption = document.createElement('p'); caption.id='tradePreviewCaption'; caption.className='trade-preview-caption';
+    document.getElementById('tradeSection')?.after(caption);
+  }
+  caption.textContent = paths.length ? paths.map(link => (link.type==='land'?'Trajet terrestre : ':'Trajet maritime : ')+buildTradeLinkSummary(link)).join(' · ')
+    : 'Survolez une destination ou une ligne pour voir son trajet.';
   if (!tradeMapCore) return;
-  tradeMapCore.setSelectedBaronies(tradePreviewState ? tradePreviewState.landPath : []);
+  tradeMapCore.setSelectedBaronies([]);
   tradeMapCore.drawAll();
 }
 
@@ -2528,8 +2872,8 @@ function getAvailableMethods(targetId) {
   return tradeLinksState
     .filter(link => link.partner_id === targetId)
     .filter(link => (
-      (link.type === 'land' && (!gameState.landTxMax || gameState.landTransactions < gameState.landTxMax)) ||
-      (link.type === 'naval' && (!gameState.navalTxMax || gameState.navalTransactions < gameState.navalTxMax))
+      (link.type === 'land' && gameState.landTransactions < gameState.landTxMax) ||
+      (link.type === 'naval' && gameState.navalTransactions < gameState.navalTxMax)
     ))
     .map(link => link.type);
 }
@@ -2660,6 +3004,7 @@ function updateTradeRouteDialogHint(message = '') {
   const target = tradeRouteDialogData.target;
   let text = message;
   let disabled = false;
+  let cost = null, resource = '', journey = '';
   if (!target || !currentTradeBaronyId) {
     text = 'Aucune destination sélectionnée.';
     disabled = true;
@@ -2670,16 +3015,24 @@ function updateTradeRouteDialogHint(message = '') {
     } else {
       const path = [currentTradeBaronyId, ...buildTradeRoutePath(tradeRouteDialogData.landSelections), target.id];
       const distance = computePathDistance(path, tradeAdjacency) || 0;
-      text = `${distance} segment(s) terrestres, coût ${distance * 3} Or.`;
+      cost = distance * 3; resource = 'Or'; journey = `${distance} segment${distance > 1 ? 's' : ''} terrestre${distance > 1 ? 's' : ''}`;
     }
   } else if (!isTradeLinePathComplete(currentTradeBaronyId, target.id, tradeRouteDialogData.seaSelections)) {
     text = text || 'Le chemin maritime doit partir d’une zone locale et finir sur une zone de destination.';
     disabled = true;
   } else {
-    const distance = computePathDistance(tradeRouteDialogData.seaSelections, seaZoneAdjacency) || 0;
-    text = `${distance} segment(s) maritimes, coût ${distance * 3} Or.`;
+    const zones = tradeRouteDialogData.seaSelections.length;
+    cost = zones * 5; resource = 'Rhums'; journey = `${zones} zone${zones > 1 ? 's' : ''} maritime${zones > 1 ? 's' : ''}`;
   }
-  hint.textContent = text;
+  if (cost !== null && !message) {
+    const quote = tradeRouteDialogData.influenceQuote;
+    if (!quote) { text = tradeRouteDialogData.quoteError || 'Calcul du coût en influence…'; disabled = true; }
+    else {
+      hint.innerHTML = `<div class="trade-cost-card"><div class="trade-cost-heading"><strong>Coût de création</strong><span>${escapeHtml(journey)}</span></div>
+        <dl><div><dt>${resource}</dt><dd>${cost}</dd></div>${quote.map(item => `<div><dt>${escapeHtml(influenceLabel(item.name))}</dt><dd>${item.amount}</dd></div>`).join('')}</dl></div>`;
+    }
+  }
+  if (text || disabled) hint.textContent = text;
   saveBtn.disabled = disabled;
 }
 
@@ -2747,7 +3100,9 @@ function openTradeRouteDialog(target) {
   if (!dialog || !target || !methodSelect) return;
   ensureTradeRouteDialog();
   tradeRouteDialogData.target = target;
-  const existingTypes = new Set(tradeLinksState.filter(link => link.partner_id === target.id).map(link => link.type));
+  tradeRouteDialogData.influenceQuote = null;
+  tradeRouteDialogData.quoteError = '';
+  const existingTypes = new Set(tradeLinksState.filter(link => !link.neighbor && link.partner_id === target.id).map(link => link.type));
   tradeRouteDialogData.methods = getBuildMethods(target.id).filter(method => !existingTypes.has(method));
   if (!tradeRouteDialogData.methods.length) {
     alert('Aucun trajet valide vers cette baronnie.');
@@ -2764,34 +3119,73 @@ function openTradeRouteDialog(target) {
   renderTradeRouteDialogSteps();
   updateTradeRouteDialogHint();
   dialog.showModal();
+  const version = gestionLoadVersion;
+  const query = new URLSearchParams({ barony_id: target.id });
+  if (gameState.isAdmin) query.set('seigneurie_id', currentSeigneurieId);
+  fetch(`/api/seigneurie/influence/link_influence?${query}`, { cache: 'no-store' }).then(async response => {
+    if (!response.ok) throw new Error(await readApiError(response, 'Coût en influence indisponible.'));
+    const quote = await response.json();
+    if (!Array.isArray(quote.influence) || !quote.influence.length) throw new Error('Coût en influence indisponible.');
+    if (version !== gestionLoadVersion || tradeRouteDialogData.target !== target || !dialog.open) return;
+    tradeRouteDialogData.influenceQuote = quote.influence;
+    updateTradeRouteDialogHint();
+  }).catch(error => {
+    if (version !== gestionLoadVersion || tradeRouteDialogData.target !== target || !dialog.open) return;
+    tradeRouteDialogData.quoteError = error.message;
+    updateTradeRouteDialogHint();
+  });
 }
 
 async function startTradeRouteCreation() {
-  if (newRouteMode) {
-    newRouteMode = false;
-    eligibleTargets = {};
-    await updateTradeMap(currentTradeBaronyId, tradeLinksState);
+  const status = document.getElementById('tradeCreationStatus');
+  const button = document.getElementById('newTradeRouteBtn');
+  const version = gestionLoadVersion;
+  if (button.disabled) return;
+  if (!currentTradeBaronyId) {
+    status.textContent = 'Aucune baronnie sélectionnée. Attendez le chargement du personnage ou sélectionnez-en un.';
     return;
   }
-  if (!currentTradeBaronyId) return;
+  button.disabled = true;
+  status.textContent = 'Chargement des destinations…';
+  try {
   await ensureTradeData();
+  await initTradeMap();
+  if (tradeMapCore) await tradeMapCore.ready;
+  if (version !== gestionLoadVersion) return;
   eligibleTargets = {};
   tradeBaronies.forEach(b => {
     if (!b.seigneur_id || b.id === currentTradeBaronyId) return;
-    const existingTypes = new Set(tradeLinksState.filter(link => link.partner_id === b.id).map(link => link.type));
+    const existingTypes = new Set(tradeLinksState.filter(link => !link.neighbor && link.partner_id === b.id).map(link => link.type));
     const methods = getBuildMethods(b.id).filter(method => !existingTypes.has(method));
     if (!methods.length) return;
     eligibleTargets[b.id] = { ...b, methods };
   });
   if (!Object.keys(eligibleTargets).length) {
-    alert('Aucune baronnie disponible');
+    status.textContent = 'Aucune nouvelle destination accessible parmi les baronnies gérées par un seigneur. Vérifiez les connexions terrestres ou maritimes et les liaisons déjà construites.';
     return;
   }
-  newRouteMode = true;
-  const cm = { ...tradeMapCore.colorMap };
-  Object.keys(eligibleTargets).forEach(id => { cm[id] = [0, 170, 255, 100]; });
-  tradeMapCore.setColorMap(cm);
-  tradeMapCore.currentSelectedId = null;
+  const dialog = document.getElementById('tradeDestinationDialog');
+  const select = document.getElementById('tradeDestinationSelect');
+  select.replaceChildren();
+  Object.values(eligibleTargets).sort((a, b) => formatTradeBaronyLabel(a).localeCompare(formatTradeBaronyLabel(b), 'fr')).forEach(target => {
+    const option = document.createElement('option');
+    option.value = target.id;
+    option.textContent = `${formatTradeBaronyLabel(target)}${target.seigneur_name ? ' — ' + target.seigneur_name : ''}`;
+    select.append(option);
+  });
+  document.getElementById('tradeDestinationCancel').onclick = () => dialog.close();
+  document.getElementById('tradeDestinationContinue').onclick = () => {
+    if (version !== gestionLoadVersion) { dialog.close(); return; }
+    const target = eligibleTargets[select.value];
+    dialog.close();
+    openTradeRouteDialog(target);
+  };
+  status.textContent = 'Choisissez une destination pour créer une route terrestre ou une ligne maritime.';
+  dialog.showModal();
+  } catch (error) {
+    if (version === gestionLoadVersion) status.textContent = 'Impossible de charger les destinations commerciales. Réessayez après avoir vérifié votre connexion.';
+    console.error('Chargement des destinations commerciales', error);
+  } finally { button.disabled = false; }
 }
 
 async function handleTradeMapSelect(id) {
@@ -2831,8 +3225,8 @@ function renderTradeLimits() {
   if (!table || !gameState) return;
   table.innerHTML =
     '<tr><th>Type</th><th>Effectuées</th><th>Limite par mise à jour</th></tr>' +
-    `<tr><td>Terrestres</td><td>${gameState.landTransactions || 0}</td><td>${gameState.landTxMax || 'Illimitée'}</td></tr>` +
-    `<tr><td>Maritimes</td><td>${gameState.navalTransactions || 0}</td><td>${gameState.navalTxMax || 'Illimitée'}</td></tr>`;
+    `<tr><td>Terrestres</td><td>${gameState.landTransactions || 0}</td><td>${gameState.landTxMax || 0}</td></tr>` +
+    `<tr><td>Maritimes</td><td>${gameState.navalTransactions || 0}</td><td>${gameState.navalTxMax || 0}</td></tr>`;
 }
 
 async function renderTradeRoutes(baronyId) {
@@ -2864,7 +3258,12 @@ async function renderTradeRoutes(baronyId) {
       const partner = getTradeBaronyById(partnerId) || { id: partnerId };
       return { ...line, type: 'naval', partner_id: partnerId, partner_name: partner.name || '', seigneur_name: partner.seigneur_name || '', path: Array.isArray(line.path) ? line.path : [] };
     });
-    tradeLinksState = [...landLinks, ...seaLinks].sort((a, b) => a.partner_id - b.partner_id || a.type.localeCompare(b.type));
+    await initTradeMap();
+    const neighbors = (tradeAdjacency[baronyId] || []).filter(edge => !landLinks.some(link => link.partner_id === edge.id)).map(edge => {
+      const partner = getTradeBaronyById(edge.id);
+      return partner && partner.seigneur_id ? { id: -edge.id, type: 'land', neighbor: true, barony_id_1: baronyId, barony_id_2: edge.id, partner_id: edge.id, partner_name: partner.name, seigneur_name: partner.seigneur_name || '', path: [] } : null;
+    }).filter(Boolean);
+    tradeLinksState = [...landLinks, ...neighbors, ...seaLinks].sort((a, b) => a.partner_id - b.partner_id || a.type.localeCompare(b.type));
     setTradePreview(null);
     await updateTradeMap(baronyId, tradeLinksState);
     if (!tradeLinksState.length) {
@@ -2873,15 +3272,15 @@ async function renderTradeRoutes(baronyId) {
     }
     const rows = tradeLinksState.map(link => {
       const limitReached = link.type === 'land'
-        ? (gameState.landTxMax !== 0 && gameState.landTransactions >= gameState.landTxMax)
-        : (gameState.navalTxMax !== 0 && gameState.navalTransactions >= gameState.navalTxMax);
+        ? (gameState.landTransactions >= (gameState.landTxMax || 0))
+        : (gameState.navalTransactions >= (gameState.navalTxMax || 0));
       const pathLength = link.type === 'land' ? buildFullLandPath(link).length : buildFullSeaPath(link).length;
       const quotaReason = limitReached
         ? `Quota ${link.type === 'land' ? 'terrestre' : 'maritime'} atteint : ${link.type === 'land' ? gameState.landTransactions : gameState.navalTransactions}/${link.type === 'land' ? gameState.landTxMax : gameState.navalTxMax} échanges utilisés pour cette mise à jour. Le compteur sera réinitialisé à la prochaine mise à jour.`
         : '';
       const tradeButton = `<button class="trade-btn control-btn" data-id="${link.partner_id}" data-method="${link.type}"${limitReached ? ' disabled' : ''}>Commercer</button>`;
       return `<tr class="trade-link-row" data-link-id="${link.id}" data-link-type="${link.type}">
-        <td>${link.type === 'land' ? 'Terre' : 'Mer'}</td>
+        <td>${link.neighbor ? 'Voisin' : link.type === 'land' ? 'Terre' : 'Mer'}</td>
         <td>${link.partner_id}</td>
         <td>${escapeHtml(link.partner_name)}</td>
         <td>${escapeHtml(link.seigneur_name)}</td>
@@ -2897,6 +3296,9 @@ async function renderTradeRoutes(baronyId) {
         setTradePreview(link || null);
       });
       row.addEventListener('mouseleave', () => setTradePreview(null));
+      row.tabIndex = 0;
+      row.addEventListener('focus', () => row.dispatchEvent(new Event('mouseenter')));
+      row.addEventListener('blur', () => setTradePreview(null));
     });
     container.querySelectorAll('.trade-btn').forEach(btn => {
       if (!btn.disabled) btn.addEventListener('click', () => openTradeDialog(btn.dataset.id, btn.dataset.method));
@@ -3071,6 +3473,70 @@ async function renderPendingTransactions() {
     console.error('Erreur de chargement des transactions commerciales', error);
     table.innerHTML = `${header}<tbody><tr><td colspan="6" class="table-empty-state prod-negative">Impossible de charger les transactions. Rechargez la page.</td></tr></tbody>`;
   }
+}
+
+function initTradeHistory() {
+  const dialog = document.getElementById('tradeHistoryDialog');
+  const table = document.getElementById('tradeHistoryTable');
+  const status = document.getElementById('tradeHistoryStatus');
+  const more = document.getElementById('tradeHistoryMore');
+  if (!dialog || !table || !status || !more) return;
+  let rows = [], generation = 0, loading = false, context = null;
+  const dateCell = value => {
+    if (!value) return '—';
+    const utc = GameRules.utcTimestamp(value);
+    const date = new Date(utc);
+    const title = Number.isNaN(date.getTime()) ? '' : date.toLocaleString('fr-CA', { dateStyle: 'medium', timeStyle: 'short' });
+    return `<time class="timeago" datetime="${escapeHtml(utc)}" title="${escapeHtml(title)}"></time>`;
+  };
+  function render() {
+    const headings = ['Sens', 'Joueur', 'Ressources', 'Raison', 'Date d’envoi', 'Date de décision', 'Statut'];
+    table.innerHTML = `<thead><tr>${headings.map(label => `<th>${label}</th>`).join('')}</tr></thead><tbody>${rows.map(tx => {
+      const outgoing = tx.direction === 'outgoing';
+      const name = outgoing ? tx.dest_name : tx.origin_name;
+      const barony = outgoing ? tx.dest_barony_name : tx.origin_barony_name;
+      const resources = Object.entries(tx.resources || {}).map(([key, value]) => `${escapeHtml(value)} ${escapeHtml(resourceLabels[key] || key)}`).join(', ');
+      const state = tx.state === 'Approuvée' ? (tx.received ? 'Réception effectuée' : 'Acceptée — en attente de réception')
+        : tx.state === 'Refusée' ? (tx.returned ? 'Refusée — ressources retournées' : 'Refusée — ressources à récupérer') : 'En attente de décision';
+      const direction = `<span class="trade-history-direction ${outgoing ? 'outgoing' : 'incoming'}" role="img" aria-label="${outgoing ? 'Envoi' : 'Réception'}" title="${outgoing ? 'Envoi' : 'Réception'}"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="${outgoing ? 'M4 12h16M13 5l7 7-7 7' : 'M20 12H4M11 5l-7 7 7 7'}"/></svg></span>`;
+      const cells = [direction, `${escapeHtml(name || 'Joueur indisponible')}${barony ? `<small>${escapeHtml(barony)}</small>` : ''}`,
+        resources || '—', escapeHtml(tx.reason || '—'), dateCell(tx.created_at), dateCell(tx.decision_time), escapeHtml(state)];
+      return `<tr data-id="${tx.id}">${cells.map((value, index) => `<td data-label="${headings[index]}">${value}</td>`).join('')}</tr>`;
+    }).join('')}</tbody>`;
+    table.hidden = !rows.length;
+    renderTransactionDates(table);
+  }
+  async function load() {
+    if (loading || !dialog.open) return;
+    loading = true; const token = generation;
+    more.disabled = true; status.textContent = 'Chargement de l’historique…';
+    const query = new URLSearchParams({ limit: '50' });
+    if (context) query.set('seigneurie_id', context);
+    if (rows.length) query.set('before', rows[rows.length - 1].id);
+    try {
+      const response = await fetch(`/api/trade_transactions/history?${query}`, { cache: 'no-store' });
+      const data = await response.json();
+      if (token !== generation || !dialog.open) return;
+      if (!response.ok) throw new Error(data.error || 'Impossible de charger l’historique.');
+      rows.push(...data.transactions); render();
+      status.textContent = rows.length ? '' : 'Aucune transaction pour le moment.';
+      more.hidden = !data.has_more; more.textContent = 'Voir les transactions précédentes';
+    } catch (error) {
+      if (token === generation && dialog.open) {
+        status.textContent = error.message || 'Impossible de charger l’historique.';
+        more.hidden = false; more.textContent = 'Réessayer';
+      }
+    } finally { if (token === generation) { loading = false; more.disabled = false; } }
+  }
+  document.getElementById('tradeHistoryBtn')?.addEventListener('click', () => {
+    generation++; rows = []; loading = false;
+    context = currentUser?.is_admin && currentUser.act_as_admin !== false ? currentSeigneurieId : null;
+    render(); more.hidden = true; dialog.showModal(); load();
+  });
+  document.getElementById('tradeHistoryClose')?.addEventListener('click', () => dialog.close());
+  more.addEventListener('click', load);
+  dialog.addEventListener('close', () => { generation++; loading = false; rows = []; table.innerHTML = ''; });
+  document.addEventListener('gestion:player-context', () => { if (dialog.open) dialog.close(); });
 }
 
 async function openTransactionPopup(id) {

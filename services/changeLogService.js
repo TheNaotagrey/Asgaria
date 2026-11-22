@@ -32,6 +32,7 @@ const TABLE_META = {
   maritime_zone_pixels: { label: 'pixels de zone maritime', article: 'les' },
   trade_routes: { label: 'route commerciale', article: 'la' },
   barony_properties: { label: 'propriétés de baronnie', article: 'les' },
+  construction_catalog: { label: 'Fiche du catalogue', article: 'la', nameField: 'label' },
   building_properties: { label: 'Bâtiment', article: 'le', nameField: 'label' },
   infrastructure_properties: { label: 'Infrastructure', article: "l'", nameField: 'label' },
   spells: { label: 'Sort', article: 'le', nameField: 'label' },
@@ -302,7 +303,7 @@ async function prepareChangeLog({ table, action, before, after, changes, key, db
   return { description, details };
 }
 
-async function logAdminChange(db, { table, action, before, after, changes, key, user }) {
+async function logAdminChange(db, { table, action, before, after, changes, key, user, strict = false }) {
   if (!db) return Promise.resolve();
   const entry = await prepareChangeLog({ table, action, before, after, changes, key, db });
   if (!entry) return Promise.resolve();
@@ -313,7 +314,7 @@ async function logAdminChange(db, { table, action, before, after, changes, key, 
   const detailsStr = JSON.stringify(entry.details);
   const ensureTable = () => {
     if (!db || ensuredLogTables.has(db)) return Promise.resolve();
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       db.run(
         `CREATE TABLE IF NOT EXISTS admin_change_logs (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -333,6 +334,7 @@ async function logAdminChange(db, { table, action, before, after, changes, key, 
             ensuredLogTables.add(db);
           } else {
             logger.error('Failed to ensure admin_change_logs table', err);
+            if (strict) return reject(err);
           }
           resolve();
         }
@@ -340,7 +342,7 @@ async function logAdminChange(db, { table, action, before, after, changes, key, 
     });
   };
   await ensureTable();
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     db.run(
       `INSERT INTO admin_change_logs (table_name, record_id, action, description, details, user_id, user_email, user_first_name, user_last_name)
        VALUES (?,?,?,?,?,?,?,?,?)`,
@@ -348,6 +350,7 @@ async function logAdminChange(db, { table, action, before, after, changes, key, 
       (err) => {
         if (err) {
           logger.error('Failed to write admin change log', err);
+          if (strict) return reject(err);
         }
         resolve();
       }

@@ -62,15 +62,18 @@ async function waitForServer(port, child) {
 
 test('la création administrative conserve le type, le lien d’inventaire et les états JSON', async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'asgaria-admin-create-'));
+  const databasePath = path.join(directory, 'configured.sqlite');
   const port = await getFreePort();
   const child = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
     cwd: directory,
-    env: { ...process.env, PORT: String(port), SESSION_SECRET: 'test-session-secret' },
+    env: { ...process.env, PORT: String(port), SESSION_SECRET: 'test-session-secret', DATABASE_PATH: databasePath },
     stdio: 'ignore'
   });
   try {
     await waitForServer(port, child);
-    const database = new sqlite3.Database(path.join(directory, 'asgaria.db'));
+    assert.equal(fs.existsSync(databasePath), true);
+    assert.equal(fs.existsSync(path.join(directory, 'asgaria.db')), false);
+    const database = new sqlite3.Database(databasePath);
     try {
       await run(database, 'INSERT INTO users (id,email,password,is_admin) VALUES (1,?,?,1)',
         ['admin-test@example.invalid', bcrypt.hashSync('mot-de-passe-test', 4)]);

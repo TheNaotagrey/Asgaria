@@ -961,6 +961,29 @@ th.multi-col {
   width: 100%;
 }
 
+#tradeHistoryBtn { margin-top: 12px; white-space: normal; }
+#tradeHistoryDialog { box-sizing: border-box; width: min(1100px, calc(100vw - 24px)); max-height: 85vh; overflow-y: auto; }
+#tradeHistoryDialog h2 { margin: 0 0 8px; }
+#tradeHistoryTable { width: 100%; font-size: .85rem; }
+#tradeHistoryTable td { overflow-wrap: anywhere; vertical-align: top; }
+#tradeHistoryTable td:first-child { white-space: nowrap; }
+.trade-history-direction { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; vertical-align: middle; }
+.trade-history-direction svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+.trade-history-direction.incoming { color: #24733b; }
+.trade-history-direction.outgoing { color: #b52c2c; }
+#tradeHistoryTable small { display: block; color: #667386; margin-top: 4px; }
+.trade-history-scroll { max-height: 50vh; overflow-y: auto; }
+.trade-history-note { color: #667386; font-size: .9rem; }
+#tradeHistoryDialog .dialog-buttons { flex-wrap: wrap; }
+#tradeHistoryTable[hidden], #tradeHistoryMore[hidden] { display: none; }
+@media (max-width: 700px) {
+  #tradeHistoryTable, #tradeHistoryTable tbody, #tradeHistoryTable tr, #tradeHistoryTable td { display: block; }
+  #tradeHistoryTable thead { display: none; }
+  #tradeHistoryTable tr { border: 1px solid #d8dee7; border-radius: 6px; margin-bottom: 12px; padding: 8px; }
+  #tradeHistoryTable td { border: 0; padding: 6px; }
+  #tradeHistoryTable td::before { content: attr(data-label); display: block; font-weight: 600; margin-bottom: 3px; }
+}
+
 #tab-update-reports {
   color: #272b32;
 }
@@ -1680,6 +1703,11 @@ th.multi-col {
 .gestion-page .infra-built-input,
 .gestion-page .building-built-input,
 .gestion-page .activate-input { min-width: 4em; }
+.gestion-page .activate-save-btn { margin-left: 6px; }
+.gestion-page .construction-blocked { display: inline-block; cursor: help; }
+.gestion-page .construction-blocked .infra-build-btn { pointer-events: none; }
+#tradeCreationStatus:empty { display: none; }
+#tradeDestinationSelect { display: block; box-sizing: border-box; width: 100%; margin-top: 8px; padding: 8px; }
 #summary h2 { margin: 0 0 12px; font-size: 1.1rem; }
 .pending-transactions-wrap { overflow-x: auto; }
 #summary .table-empty-state { padding: 28px 12px; text-align: center; color: #647083; }
@@ -2088,4 +2116,219 @@ th.multi-col {
   .info-panel {
     min-width: 0;
   }
+}
+/* Fêtes et risque de révolte dans le sommaire. */
+.festival-panel, .revolt-preview { margin-top: 14px; padding: 12px; border: 1px solid #b8a88b; border-radius: 8px; }
+.festival-panel summary { cursor: pointer; font-weight: 600; }
+.festival-panel h3 { margin: 0 0 8px; }
+.festival-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.festival-fields label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.festival-fields input { width: 100%; box-sizing: border-box; padding: 8px; }
+.festival-fields small { opacity: .8; }
+.revolt-warning { background: #fff3e3; color: #653c12; border-color: #bf8442; }
+.revolt-safe { background: #eff8f0; border-color: #a4bba7; color: #285c34; }
+.revolt-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.revolt-metrics span { display: block; font-size: .85rem; }
+.revolt-metrics strong { display: block; margin-top: 3px; font-size: 1.6rem; }
+.revolt-preview h4 { margin: 14px 0 7px; font-size: .95rem; }
+.revolt-casualties { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.revolt-casualties li { display: flex; gap: 8px; align-items: baseline; }
+.revolt-casualties strong { min-width: 2em; text-align: right; }
+.revolt-preview .revolt-condition { font-size: .8rem; line-height: 1.4; }
+.revolt-destruction small { display: block; line-height: 1.4; }
+.revolt-stolen { margin-top: 14px; padding-top: 10px; border-top: 1px solid #d9bd97; }
+.revolt-stolen summary { font-size: .9rem; line-height: 1.4; }
+#summary .revolt-loss-table { width: 100%; min-width: 0; margin: 10px 0 0; font-size: .85rem; }
+.revolt-loss-table th, .revolt-loss-table td { padding: 7px; }
+.revolt-loss-table td:last-child { text-align: right; white-space: nowrap; }
+.revolt-preview p { margin: 8px 0; overflow-wrap: anywhere; }
+.festival-panel button { white-space: normal; }
+@media (max-width: 600px) { .festival-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* Hôtel des ventes : mêmes panneaux, contrôles et couleurs que Gestion. */
+#auctionHouse { max-width: 1400px; margin: 0 auto; color: #333; }
+.auction-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 20px; align-items: center; margin-bottom: 20px; }
+.auction-heading h2 { margin: 0; font-size: 1.35rem; }
+.auction-heading > p { grid-column: 1; margin: 0; }
+.auction-heading > button { grid-column: 2; grid-row: 1 / 3; }
+.auction-note { color: #647083; font-size: .85rem; line-height: 1.5; }
+.auction-card { background: #fff; border: 1px solid #ccd3dc; border-radius: 8px; box-shadow: 0 2px 6px rgba(0, 0, 0, .04); }
+.auction-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.auction-metric { display: flex; flex-direction: column; gap: 8px; padding: 16px 18px; }
+.auction-metric-label { color: #647083; font-size: .8rem; }
+.auction-metric > strong { font-size: 1.35rem; font-weight: 700; color: #273c59; font-variant-numeric: tabular-nums; }
+.auction-metric > .auction-note { font-size: .78rem; }
+.auction-rules { margin: 14px 0 22px; font-size: .85rem; }
+.auction-rules summary { cursor: pointer; color: #1d56a4; font-weight: 600; }
+.auction-rules[open] { padding: 14px 16px; background: #edf1f6; border-radius: 6px; }
+.auction-rules p { margin: 10px 0; }
+.auction-rules ul { padding-left: 20px; line-height: 1.7; }
+.auction-layout { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 20px; align-items: start; }
+.auction-market, .auction-sidebar { min-width: 0; }
+.auction-toolbar { padding: 16px 18px 0; }
+.auction-navigation { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; background: #edf1f6; border-radius: 6px; width: fit-content; max-width: 100%; }
+.auction-navigation .control-btn { background: transparent; color: #647083; padding: 9px 12px; border-radius: 4px; }
+.auction-navigation .control-btn:hover { background: #e1e7f0; color: #1d56a4; }
+.auction-navigation [aria-pressed="true"] { background: #fff; color: #1d56a4; font-weight: 600; box-shadow: 0 1px 4px #273c591a; }
+.auction-market-description { margin: 14px 18px; }
+.auction-table-wrap { width: 100%; overflow-x: auto; }
+#auctionHouse .auction-table-wrap table { border: 0; border-top: 1px solid #e2e6ec; border-radius: 0 0 8px 8px; margin: 0; min-width: 630px; font-size: .85rem; }
+#auctionHouse .auction-table-wrap th { padding: 12px 14px; font-size: .78rem; color: #647083; font-weight: 600; }
+#auctionHouse .auction-table-wrap td { padding: 16px 14px; vertical-align: middle; }
+.auction-goods strong, .auction-goods span, .auction-prices strong, .auction-prices span { display: block; }
+.auction-goods strong { font-size: 1.2rem; color: #273c59; font-variant-numeric: tabular-nums; }
+.auction-goods span { margin-top: 4px; color: #647083; }
+.auction-prices strong { font-weight: 600; color: #273c59; }
+.auction-prices span { margin-top: 6px; color: #647083; font-size: .8rem; }
+.auction-badge { display: inline-block; border-radius: 4px; padding: 4px 7px; font-size: .75rem; font-weight: 600; white-space: nowrap; background: #edf1f6; color: #647083; }
+.auction-badge-open { background: #edf5ff; color: #1d56a4; }
+.auction-badge-sold { background: #eff8f0; color: #23733d; }
+.auction-badge-withdrawn { background: #fff3e3; color: #865717; }
+.auction-sidebar { display: grid; gap: 14px; }
+.auction-deposit > summary { padding: 17px 18px; font-weight: 600; color: #273c59; cursor: pointer; }
+.auction-deposit[open] > summary { border-bottom: 1px solid #e2e6ec; }
+.auction-deposit form { padding: 16px 18px 18px; }
+.auction-form-group { border: 0; border-bottom: 1px solid #e2e6ec; margin: 0 0 16px; padding: 0 0 16px; min-width: 0; }
+.auction-form-group legend { font-size: .85rem; font-weight: 600; padding: 0 0 12px; color: #273c59; }
+.auction-fields { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 10px; }
+.auction-deposit label, .auction-dialog label { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: .8rem; color: #647083; }
+.auction-deposit :is(input, select), .auction-dialog :is(input, select) { box-sizing: border-box; width: 100%; min-width: 0; min-height: 40px; border: 1px solid #b8c4d3; border-radius: 4px; padding: 8px; background: #fff; color: #333; font: inherit; font-size: .85rem; }
+#auctionHouse :is(input, select, button, summary):focus-visible, .auction-dialog :is(select, button):focus-visible { outline: 2px solid #1d56a4; outline-offset: 3px; }
+.auction-preview { padding: 12px; margin: 16px 0 12px; background: #edf5ff; border: 1px solid #d6e4f7; border-radius: 6px; color: #273c59; font-size: .8rem; line-height: 1.5; }
+.auction-preview p { margin: 0; }
+.auction-preview p + p { margin-top: 6px; }
+.auction-submit { width: 100%; min-height: 40px; margin-top: 4px; }
+.auction-help { padding: 16px 18px; }
+.auction-help h3 { font-size: .9rem; color: #273c59; margin: 0 0 10px; }
+.auction-help p { margin: 8px 0 0; }
+.auction-empty { text-align: center; padding: 40px 20px; border-top: 1px solid #e2e6ec; }
+.auction-empty h3 { margin: 0 0 10px; font-size: 1rem; color: #273c59; }
+.auction-empty p { max-width: 380px; margin: 0 auto; }
+.auction-list-footer { padding: 16px 18px; text-align: center; border-top: 1px solid #e2e6ec; }
+#auctionHouse .auction-secondary, .auction-dialog .auction-secondary { background: #fff; border: 1px solid #b8c4d3; color: #1d56a4; }
+#auctionHouse .auction-secondary:hover, .auction-dialog .auction-secondary:hover { background: #edf1f6; }
+.auction-status { font-size: .85rem; color: #647083; margin: 0 0 14px; }
+.auction-status:empty { display: none; }
+.auction-status.error, .auction-access-note { background: #fff3e3; border: 1px solid #e2c6a0; border-radius: 6px; padding: 12px 16px; color: #865717; line-height: 1.5; }
+.auction-dialog { width: 460px; max-width: calc(100vw - 48px); box-sizing: border-box; border: 1px solid #ccd3dc; border-radius: 8px; padding: 24px; box-shadow: 0 12px 40px #273c5933; color: #333; }
+.auction-dialog h3 { font-size: 1.1rem; color: #273c59; margin: 0 0 16px; }
+.auction-dialog-lot { background: #edf1f6; border-radius: 6px; padding: 14px; color: #273c59; font-weight: 600; }
+.auction-dialog label { margin: 16px 0; }
+.auction-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; border-top: 1px solid #e2e6ec; padding-top: 16px; }
+.auction-dialog-actions button { min-height: 40px; }
+.auction-dialog::backdrop { background: #172b4680; }
+@media (max-width: 1100px) {
+  .auction-layout { grid-template-columns: minmax(0, 1fr); }
+  .auction-sidebar { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); align-items: start; }
+}
+@media (max-width: 600px) {
+  .auction-heading { gap: 8px; }
+  .auction-heading h2 { font-size: 1.15rem; }
+  .auction-heading > p { grid-column: 1 / -1; grid-row: 2; }
+  .auction-heading > button { grid-row: 1; }
+  .auction-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .auction-metric { padding: 12px; gap: 6px; }
+  .auction-metric > strong { font-size: 1.15rem; }
+  .auction-metric-label { font-size: .75rem; }
+  .auction-sidebar { grid-template-columns: minmax(0, 1fr); }
+  .auction-toolbar { padding: 12px 10px 0; }
+  .auction-navigation { width: 100%; box-sizing: border-box; gap: 2px; }
+  .auction-navigation .control-btn { flex: 1; font-size: .75rem; padding: 9px 5px; }
+  .auction-market-description { margin: 12px 14px; }
+  #auctionHouse .auction-table-wrap table { min-width: 0; display: block; background: transparent; border: 0; overflow: visible; }
+  #auctionHouse .auction-table-wrap thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  #auctionHouse .auction-table-wrap tbody { display: block; }
+  #auctionHouse .auction-table-wrap tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 0 14px 14px; padding: 16px; border: 1px solid #ccd3dc; border-radius: 6px; background: #fff; }
+  #auctionHouse .auction-table-wrap td { display: flex; flex-direction: column; gap: 6px; padding: 0; border: 0; overflow-wrap: anywhere; }
+  #auctionHouse .auction-table-wrap td::before { content: attr(data-label); font-size: .7rem; color: #647083; }
+  #auctionHouse .auction-table-wrap .auction-goods { gap: 0; }
+  #auctionHouse .auction-table-wrap .auction-goods::before { display: none; }
+  #auctionHouse .auction-table-wrap .auction-goods strong { font-size: 1.4rem; }
+  #auctionHouse .auction-table-wrap .auction-badge { width: fit-content; }
+  #auctionHouse .auction-table-wrap .auction-actions { grid-column: 1 / -1; }
+  #auctionHouse .auction-table-wrap .auction-actions::before { display: none; }
+  #auctionHouse .auction-table-wrap .auction-actions button { min-height: 40px; width: 100%; }
+  #auctionHouse .auction-history td:last-child { grid-column: 1 / -1; }
+  .auction-dialog { padding: 20px; }
+  .auction-dialog-actions { flex-wrap: wrap; }
+  .auction-dialog-actions button { flex: 1; }
+}
+#tableBuildingProps .effect-row, #tableInfraProps .effect-row { flex-wrap: wrap; min-width: 300px; }
+#tableBuildingProps .effect-row select, #tableInfraProps .effect-row select { min-width: 260px; flex-basis: 260px; }
+#tableBuildingProps .effect-row input[data-role="qty"], #tableInfraProps .effect-row input[data-role="qty"] { min-width: 80px; }
+/* Soldes et conversion, dans le style compact des tableaux du Sommaire. */
+.influence-section { grid-column: 1 / -1; min-width: 0; margin-bottom: 16px; border: 1px solid #c9d2e0; border-radius: 6px; background: #fff; }
+.influence-section > summary { padding: 12px 16px; cursor: pointer; font-weight: 600; color: #344155; background: #eef2f8; border-radius: 6px; }
+.influence-section > summary:focus-visible { outline: 2px solid #496187; outline-offset: -3px; }
+.influence-section[open] > summary { border-bottom: 1px solid #c9d2e0; border-radius: 6px 6px 0 0; }
+#influencePanel { display: grid; grid-template-columns: 260px minmax(0,1fr); gap: 12px 20px; align-items: center; padding: 14px 16px; margin: 0; }
+#influenceAdminForm, .influence-stock { display: contents; }
+.influence-metrics { grid-column: 1; grid-row: 1; display: grid; grid-template-columns: 1fr 1fr; border: 1px solid #c9d2e0; border-radius: 4px; overflow: hidden; }
+.influence-metric { display: grid; gap: 6px; text-align: center; padding-bottom: 8px; }
+.influence-metric + .influence-metric { border-left: 1px solid #c9d2e0; }
+.metric-label, .duchy-balance > label { padding: 7px 8px; background: #eef2f8; color: #344155; font-size: 13px; font-weight: 600; }
+.metric-value { font-size: 18px; font-variant-numeric: tabular-nums; color: #344155; }
+.is-negative { color: #a53030; }
+.influence-grid { grid-column: 1 / -1; grid-row: 2; display: grid; grid-template-columns: repeat(auto-fit,minmax(100px,1fr)); border: 1px solid #c9d2e0; border-radius: 4px; overflow: hidden; }
+.duchy-balance { display: grid; gap: 6px; text-align: center; padding-bottom: 8px; }
+.duchy-balance + .duchy-balance { border-left: 1px solid #c9d2e0; }
+.duchy-balance strong { font-size: 16px; color: #344155; font-variant-numeric: tabular-nums; }
+.duchy-balance.is-home > label { background: #e0e8f4; }
+#influencePanel input, #influencePanel select { box-sizing: border-box; padding: 6px 8px; border: 1px solid #bdc8d8; border-radius: 4px; font: inherit; font-size: 14px; color: #293448; background: #fff; max-width: 100%; }
+#influencePanel input[type=number] { width: 76px; }
+#influencePanel .influence-metric input, #influencePanel .duchy-balance input { justify-self: center; text-align: center; width: 80px; }
+.influence-conversion { grid-column: 2; grid-row: 1; min-width: 0; }
+.influence-form-fields { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; }
+.influence-form-fields label { display: grid; gap: 5px; font-size: 12px; color: #5b6575; min-width: 0; }
+.influence-form-fields label:has(select) { flex: 1; }
+#influencePanel .control-btn { padding: 7px 12px; margin: 0; white-space: nowrap; }
+#influencePanel [role=status] { color: #9f3434; font-size: 12px; margin: 0; }
+#influencePanel [role=status]:empty { display: none; }
+.influence-save-status { grid-column: 1 / -1; grid-row: 3; }
+.influence-conversion [role=status] { padding-top: 6px; }
+.influence-transfer { grid-column: 1 / -1; grid-row: 4; }
+.influence-transfer summary { font-size: 13px; color: #496187; cursor: pointer; }
+.influence-transfer form { padding-top: 10px; }
+.influence-transfer form > p { flex-basis: 100%; }
+#tradeRouteHint { margin-top: 16px; }
+.trade-cost-card { border: 1px solid #d9e2ed; background: #f5f8fc; border-radius: 7px; padding: 13px 15px; }
+.trade-cost-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+.trade-cost-heading strong { font-size: 13px; color: #344155; }
+.trade-cost-heading span { font-size: 11px; color: #718095; }
+.trade-cost-card dl { display: grid; gap: 8px; margin: 0; }
+.trade-cost-card dl > div { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+.trade-cost-card dt { font-size: 13px; color: #5b6575; }
+.trade-cost-card dd { margin: 0; font-size: 16px; font-weight: 600; color: #293e5c; font-variant-numeric: tabular-nums; }
+@media (max-width: 600px) {
+  #influencePanel { grid-template-columns: minmax(0,1fr); padding: 12px; gap: 12px; }
+  .influence-metrics { grid-column: 1; }
+  .influence-conversion { grid-column: 1; grid-row: 2; }
+  .influence-grid { grid-row: 3; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1px; background: #c9d2e0; }
+  .duchy-balance { background: #fff; border: 0; }
+  .duchy-balance + .duchy-balance { border: 0; }
+  .duchy-balance:last-child:nth-child(odd) { grid-column: 1 / -1; }
+  .influence-save-status { grid-row: 4; }
+  .influence-transfer { grid-row: 5; }
+  .influence-conversion .influence-form-fields { display: grid; grid-template-columns: 76px minmax(0,1fr); gap: 8px; }
+  .influence-conversion .influence-form-fields label:first-child { white-space: nowrap; font-size: 11px; }
+  .influence-conversion .influence-form-fields label:first-child input { max-width: 100%; }
+  .influence-conversion .control-btn { justify-self: start; }
+  .influence-form-fields select { width: 100%; }
+}
+
+.infra-workers { width: 4.5em; text-align: center; white-space: nowrap; }
+.auction-section-title { padding: 16px 14px 8px; margin: 0; }
+.auction-list-section + .auction-list-section { margin-top: 24px; }
+.auction-list-section > summary { padding: 16px 14px; cursor: pointer; }
+.trade-preview-caption { padding: 10px 14px; border-left: 4px solid #e9a400; background: #fff7d6; color: #302c1f; overflow-wrap: anywhere; }
+
+.construction-types {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+
+.construction-types button[aria-pressed="true"] {
+  font-weight: bold;
+  outline: 2px solid currentColor;
+  outline-offset: -2px;
 }

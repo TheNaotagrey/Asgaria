@@ -1,5 +1,24 @@
 # Validation visuelle du sommaire
 
+Les info-bulles des coûts de construction sont contrôlées par `node scripts/validateGestionActionsUI.cjs` : bâtiments et infrastructures, survol, clavier et toucher, affichage du stock possédé (41 puis 79 rhums), disparition lorsque le stock suffit, en joueur/admin à 1440 et 390 px. Les captures `*-cout-batiment.png` et `*-cout-infrastructure.png` sont dans `output/gestion-actions-ui/`.
+
+Pour l’historique commercial, exécuter `node scripts/validateTradeHistoryUI.cjs`
+avec les variables Playwright ci-dessous. Il contrôle le bouton/modal, les deux sens,
+les cinq statuts, les dates UTC, 65 transactions sur deux pages sans doublon,
+fermeture/Échap, erreur et reprise, état vide, sécurité du texte et changement de
+personnage administrateur avec réponse en vol. Les captures joueur/admin à 1440
+et 390 px sont dans `output/trade-history-ui/`, sans modification des données du jeu.
+
+Pour les fêtes et révoltes, exécuter `node scripts/validateHappinessUI.cjs` avec les variables Playwright ci-dessous. Le script contrôle joueur/admin à 1440 et 390 px : changement immédiat du risque avec la taxe (0/45/75%), refus et restauration, détail conservé ouvert, tableau de 20 ressources volées, formulaire éditable, bonus et risque, erreur serveur sans perte de saisie, contexte administrateur, fête prévue, relevé de révolte, expiration et exemption débutante. Il contrôle aussi la case « Destructible par révolte » de la table administrative : défaut coché et sauvegarde dans les deux sens. Les captures sont enregistrées dans `output/happiness-ui/`, sans modification de la base du jeu.
+
+Pour l’onglet Messagerie, exécuter également `node scripts/validateMessagingUI.cjs`
+avec les mêmes variables Playwright. Les captures sont enregistrées par défaut dans
+`artifacts/messaging-ui/`. Le contrôle couvre les modes joueur et administrateur à
+1440 et 390 px, l’ouverture d’un fil, les 30 messages récents, la pagination au
+défilement avec conservation de la position, la saisie et l’envoi, les erreurs réseau,
+les brouillons, le retour mobile et le rendu sécurisé du texte. Contrat détaillé
+dans `Documentation/MESSAGERIE.md`.
+
 Exécuter `npm test`, puis `node scripts/validateGestionUI.cjs` avec Playwright disponible.
 Ce script charge les véritables fichiers HTML, CSS et JavaScript du dépôt via un serveur
 local temporaire. Les réponses API sont des jeux de données contrôlés ; aucune base du

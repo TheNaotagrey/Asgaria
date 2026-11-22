@@ -33,10 +33,11 @@ test('les infrastructures réservent une colonne nommée uniquement aux actions 
   const source = fs.readFileSync(path.join(__dirname, '..', 'gestion.js'), 'utf8');
   const start = source.indexOf('function buildInfraTable(');
   const end = source.indexOf('\nfunction updateInstantCost(', start);
-  const context = { gameState: {}, safeParse: (value, fallback) => {
+  const context = { gameState: {}, GameRules: require('../src/gameRules'), safeParse: (value, fallback) => {
     try { return value ? JSON.parse(value) : fallback; } catch { return fallback; }
   } };
   vm.createContext(context);
+  vm.runInContext(source.slice(source.indexOf('function availableWorkers('), source.indexOf('\nfunction compareUpdateStatus(')), context);
   vm.runInContext(source.slice(start, end), context);
   for (const effects of ['[]', 'null', '{}', 'invalide']) {
     const html = context.buildInfraTable([{ id: 1, label: 'Caserne', effects }], {}, {}, 'test');
@@ -45,6 +46,19 @@ test('les infrastructures réservent une colonne nommée uniquement aux actions 
   const html = context.buildInfraTable([{ id: 1, label: 'Atelier', effects: '[{"type":"variable_workers"}]' }], {}, {}, 'test');
   assert.match(html, /<th class="multi-col">Actions spéciales<\/th>/);
   assert.match(html, /<td class="multi-col"><\/td>/);
+  context.gameState = { s: { population: 10 }, employment: { employed: 8, slaves: 0 } };
+  const market = [{ id: 2, label: 'Marché', workers_per_building: 3, effects: '[]', costs: '{}' }];
+  assert.match(context.buildInfraTable(market, {}, {}, 'test'), /infra-build-btn[^>]* disabled/);
+  assert.match(context.buildInfraTable(market, {}, {}, 'test'), /Travailleurs insuffisants/);
+  context.gameState.employment = { employed: 7, slaves: 0 };
+  assert.doesNotMatch(context.buildInfraTable(market, {}, {}, 'test'), / disabled/);
+  context.gameState.employment = { employed: 7, slaves: 3 };
+  market[0].costs = '{"esclaves":1}';
+  assert.match(context.buildInfraTable(market, {}, { esclaves: 3 }, 'test'), /infra-build-btn[^>]* disabled/);
+  context.gameState.employment = { employed: 12, slaves: 0 };
+  market[0].workers_per_building = 0;
+  market[0].costs = '{}';
+  assert.doesNotMatch(context.buildInfraTable(market, {}, {}, 'test'), / disabled/);
 });
 
 test('la prévision conserve le déficit complet des vivres et indique famine et stockage', () => {
@@ -73,10 +87,11 @@ test('le rendu des dates transmet chaque élément à timeago et prévoit un rep
   const end = source.indexOf('\nlet gameState', start);
   assert.ok(start >= 0 && end > start);
   const rendered = [];
-  const context = { window: { timeago: { render: (element, locale) => rendered.push([element, locale]) } } };
+  const context = { GameRules: require('../src/gameRules'), window: { timeago: { render: (element, locale) => rendered.push([element, locale]) } } };
   vm.createContext(context);
   vm.runInContext(source.slice(start, end), context);
   const dates = [{ dateTime: '2026-10-01T12:00:00Z' }, { dateTime: '2026-10-02T12:00:00Z' }];
+  dates.forEach(element => { element.getAttribute = () => element.dateTime; element.setAttribute = (key, value) => { element.dateTime = value; }; });
   context.renderTransactionDates({ querySelectorAll: () => dates });
   assert.deepStrictEqual(rendered, dates.map(element => [element, 'fr']));
   context.renderTransactionDates({ querySelectorAll: () => [] });

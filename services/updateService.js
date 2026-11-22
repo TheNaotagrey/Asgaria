@@ -1,6 +1,7 @@
 const sqlite3 = require('sqlite3');
 const { inventaireFields } = require('../transactions');
 const { calculateProjection } = require('../src/seigneurieProjection');
+const { resetMonthlyUses } = require('../src/gameRules');
 const { runSql, getSql, allSql, withImmediateTransaction } = require('../src/sqliteTransaction');
 const {
   compareUpdatePositions, formatUpdateLabel, getLatestUnlockedUpdate,
@@ -8,8 +9,10 @@ const {
   normalizeUpdatePosition
 } = require('../src/updateCycle');
 const { validateUpdatePolicy, getUpdatePolicyBlocker } = require('../src/updatePolicy');
+const { calculateIDH, revoltRisk, resolveRevolt } = require('../src/happinessRules');
 
-const RULESET_VERSION = '1026-1.0-initial';
+const { expireOffers } = require('./auctionHouseService');
+const RULESET_VERSION = '1026-1.4-duchy-influence';
 
 function serviceError(status, code, message) {
   const error = new Error(message);
@@ -32,6 +35,7 @@ function snapshot(row, inventory, position) {
     population: Number(row.population) || 0,
     update: position,
     inventory: fields,
+    infrastructures: safeParse(row.infrastructures, {}),
     counters: {
       land_transactions: Number(row.land_transactions) || 0,
       naval_transactions: Number(row.naval_transactions) || 0,
@@ -99,7 +103,7 @@ function presentReport(row) {
   };
 }
 
-async function advanceSeigneurieUpdate({ dbPath, actor, playerId, expectedUpdate, now = new Date() }) {
+async function advanceSeigneurieUpdate({ dbPath, actor, playerId, expectedUpdate, now = new Date(), random = Math.random }) {
   if (!dbPath) throw new Error('Le chemin de la base est requis.');
   if (!(now instanceof Date) || Number.isNaN(now.getTime())) throw new Error('La date est invalide.');
   if (!expectedUpdate || !Number.isInteger(expectedUpdate.year) ||
@@ -116,11 +120,14 @@ async function advanceSeigneurieUpdate({ dbPath, actor, playerId, expectedUpdate
     const next = getNextUpdatePosition(current);
     const inventory = await getSql(database, 'SELECT * FROM inventaire WHERE id=?', [row.inventaire_id]);
     if (!inventory) throw serviceError(400, 'inventory_missing', 'L’inventaire de cette seigneurie est introuvable.');
-    const [buildingProperties, infrastructureProperties, baronyProperties, policy] = await Promise.all([
+    const [buildingProperties, infrastructureProperties, baronyProperties, policy, lord, barony, festival] = await Promise.all([
       allSql(database, 'SELECT * FROM building_properties'),
       allSql(database, 'SELECT * FROM infrastructure_properties'),
       row.baronnie_id ? getSql(database, 'SELECT * FROM barony_properties WHERE barony_id=?', [row.baronnie_id]) : Promise.resolve(null),
-      readPolicy(database, now)
+      readPolicy(database, now),
+      getSql(database, 'SELECT * FROM seigneurs WHERE id=?', [row.seigneur_id]),
+      row.baronnie_id ? getSql(database, 'SELECT * FROM baronies WHERE id=?', [row.baronnie_id]) : Promise.resolve(null),
+      getSql(database, 'SELECT * FROM player_festivals WHERE player_id=?', [row.id])
     ]);
     const projection = calculateProjection({
       player: row, inventory, buildings: row.buildings, infrastructures: row.infrastructures,
@@ -140,6 +147,7 @@ async function advanceSeigneurieUpdate({ dbPath, actor, playerId, expectedUpdate
     const events = [];
     const overflow = {};
     let population = Number(row.population) || 0;
+    let famineDeaths = 0;
     for (const [resource, rawDelta] of Object.entries(projection.production)) {
       if (!inventaireFields.includes(resource)) continue;
       const change = Number(rawDelta) || 0;
@@ -149,11 +157,13 @@ async function advanceSeigneurieUpdate({ dbPath, actor, playerId, expectedUpdate
         const deaths = Math.min(population, Math.ceil(Math.ceil(Math.abs(value) / 15) / 2));
         if (deaths > 0) {
           population -= deaths;
+          famineDeaths = deaths;
           events.push({ type: 'famine', title: 'Famine', details: `${deaths} habitants sont morts faute de vivres.` });
         }
         value = 0;
       }
-      if (value < 0) value = 0;
+      // Livre p. 40 : une dette de renommée subsiste jusqu'à son remboursement.
+      if (value < 0 && resource !== 'renommee') value = 0;
       const cap = projection.capacities[resource];
       if (typeof cap === 'number' && value > cap) {
         overflow[resource] = (overflow[resource] || 0) + value - cap;
@@ -164,27 +174,65 @@ async function advanceSeigneurieUpdate({ dbPath, actor, playerId, expectedUpdate
     if (Object.keys(overflow).length) {
       events.push({ type: 'overflow', title: 'Perte par débordement', details: Object.entries(overflow).map(([r, n]) => `${n} ${r}`).join(', ') });
     }
+    const festivalBonus = festival && festival.update_year === current.year && festival.update_number === current.number ? festival.bonus : 0;
+    const happiness = calculateIDH({ player: { ...row, population }, inventory: state,
+      infrastructureProperties, lord: lord || {}, barony, baronyProperties, festivalBonus, famineDeaths });
+    const risk = revoltRisk(happiness.idh, row);
+    const infrastructures = safeParse(row.infrastructures, {});
+    const revolt = resolveRevolt({ risk, population, inventory: state, infrastructures, properties: infrastructureProperties, random });
+    if (festival) events.push({ type: 'festival', title: 'Fête populaire', details: `Bonus de +${festivalBonus} IDH utilisé pour cette mise à jour, puis expiré.`, bonus: festivalBonus, resources: safeParse(festival.resources_json, {}) });
+    if (revolt.occurred) {
+      population = Math.max(0, population - revolt.losses.civilians - revolt.losses.soldiers);
+      state.esclaves -= revolt.losses.slaves;
+      state.hommes_darmes -= revolt.losses.soldiers;
+      Object.entries(revolt.losses.stolen).forEach(([resource, amount]) => { state[resource] -= amount; });
+    }
+    const revoltDetails = revolt.occurred
+      ? `${revolt.chance}% de risque, tirage ${revolt.roll}/100 : ${revolt.losses.civilians} habitants, ${revolt.losses.soldiers} hommes d’armes et ${revolt.losses.slaves} esclaves morts. ${revolt.losses.stolenPercent}% des ressources volées. Infrastructures détruites : ${revolt.destroyed.map(item => item.label).join(', ') || 'aucune'}.`
+      : revolt.reason === 'protected' ? 'Aucune révolte : la protection débutante est active.'
+        : revolt.chance ? `${revolt.chance}% de risque, tirage ${revolt.roll}/100 : aucune révolte.` : 'Aucun risque de révolte pour cette mise à jour.';
+    events.push({ type: 'revolt', title: revolt.occurred ? 'Révolte' : 'Révolte : aucune', details: `IDH ${happiness.idh}. ${revoltDetails}`, ...revolt });
+    // Destruction can shrink storage: use the surviving infrastructure for overflow and deliveries.
+    const afterProjection = calculateProjection({ player: { ...row, population }, inventory: state,
+      buildings: row.buildings, infrastructures, buildingProperties, infrastructureProperties, baronyProperties });
+    const revoltOverflow = {};
+    Object.entries(afterProjection.capacities).forEach(([resource, capacity]) => {
+      if (capacity < projection.capacities[resource] && Number(state[resource]) > capacity) {
+        revoltOverflow[resource] = state[resource] - capacity;
+        overflow[resource] = (overflow[resource] || 0) + revoltOverflow[resource];
+        state[resource] = capacity;
+      }
+    });
+    if (Object.keys(revoltOverflow).length) events.push({ type: 'revolt_overflow', title: 'Perte de stockage après révolte', details: Object.entries(revoltOverflow).map(([key, amount]) => `${amount} ${key}`).join(', ') });
     await runSql(database,
       `UPDATE inventaire SET ${inventaireFields.map(field => `${field}=?`).join(',')} WHERE id=?`,
       [...inventaireFields.map(field => Number(state[field]) || 0), inventory.id]);
+    const renewedInfrastructures = resetMonthlyUses(infrastructures, infrastructureProperties);
     await runSql(database,
-      'UPDATE players SET population=?,update_year=?,update_number=?,land_transactions=0,naval_transactions=0 WHERE id=?',
-      [population, next.year, next.number, row.id]);
+      'UPDATE players SET population=?,update_year=?,update_number=?,land_transactions=0,naval_transactions=0,buildings=?,infrastructures=? WHERE id=?',
+      [population, next.year, next.number,
+        JSON.stringify(resetMonthlyUses(row.buildings, buildingProperties)),
+        JSON.stringify(renewedInfrastructures), row.id]);
+    await runSql(database, 'DELETE FROM player_festivals WHERE player_id=?', [row.id]);
     await runSql(database, 'UPDATE seigneuries_info SET spells_cast=0 WHERE player_id=?', [row.id]);
-    const delivery = await receiveTrade(database, row.id, next, projection.capacities, state, now);
+    const delivery = await receiveTrade(database, row.id, next, afterProjection.capacities, state, now);
     if (Object.keys(delivery.overflow).length) {
       events.push({ type: 'delivery_overflow', title: 'Réception partielle', details: `Certaines ressources reçues ont été perdues faute de place : ${Object.entries(delivery.overflow).map(([r, n]) => `${n} ${r}`).join(', ')}.` });
     }
-    const after = snapshot({ ...row, population, land_transactions: 0, naval_transactions: 0, spells_cast: 0 }, state, next);
+    const auctionReturns = await expireOffers(database, row.id, next, state, afterProjection.capacities, events);
+    const after = snapshot({ ...row, population, infrastructures: JSON.stringify(renewedInfrastructures), land_transactions: 0, naval_transactions: 0, spells_cast: 0 }, state, next);
     const delta = {
       population: after.population - before.population,
       inventory: Object.fromEntries(inventaireFields.map(field => [field, after.inventory[field] - before.inventory[field]])),
       production: projection.production,
       tax: projection.tax,
       consumption: projection.consumption,
+      happiness: { ...happiness, festivalBonus, famineDeaths },
+      revolt,
       received: delivery.received,
-      overflow: Object.fromEntries([...new Set([...Object.keys(overflow), ...Object.keys(delivery.overflow)])]
-        .map(field => [field, (overflow[field] || 0) + (delivery.overflow[field] || 0)]))
+      auctionReturns,
+      overflow: Object.fromEntries([...new Set([...Object.keys(overflow), ...Object.keys(delivery.overflow), ...Object.keys(auctionReturns.overflow)])]
+        .map(field => [field, (overflow[field] || 0) + (delivery.overflow[field] || 0) + (auctionReturns.overflow[field] || 0)]))
     };
     const inserted = await runSql(database,
       `INSERT INTO player_update_reports

@@ -15,7 +15,7 @@ test('le serveur refuse les infrastructures interdites avant de consommer les re
   for (const type of types) {
     const db = { get(sql, params, cb) {
       assert.match(sql, /FROM infrastructure_properties/);
-      cb(null, { [`available_${type.id}`]: 0 });
+      cb(null, { player_type: type.id === 'seigneur' ? 'eveque' : 'seigneur' });
     } };
     const error = await new Promise(resolve => context.canConstructInfra(db, { type: type.id, baronnie_id: 1 }, 1, 1, resolve));
     assert.match(error.message, /indisponible pour ce type/);
@@ -31,7 +31,7 @@ test('le serveur refuse chaque type interdit avant toute lecture de ressources',
     const db = { get(sql, params, cb) {
       reads++;
       assert.match(sql, /FROM building_properties/);
-      cb(null, { [`available_${type.id}`]: 0 });
+      cb(null, { player_type: type.id === 'seigneur' ? 'eveque' : 'seigneur' });
     } };
     const error = await new Promise(resolve => context.canConstruct(db, { type: type.id, baronnie_id: 1 }, 1, 1, resolve));
     assert.match(error.message, /indisponible pour ce type/);

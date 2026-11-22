@@ -1,8 +1,51 @@
 # Implémentation de Gestion : progression, protection et relevés
 
+Les conversions de prestige en renommée et influence, les soldes par duché et les débits corrigés des liaisons commerciales sont décrits dans [INFLUENCE_DUCALE.md](INFLUENCE_DUCALE.md). Ces actions immédiates utilisent leurs propres transactions et ne modifient pas l’ordre d’avancement de période.
+
 Ce document décrit le fonctionnement serveur des opérations de Gestion qui changent l’état d’une seigneurie : progression d’une mise à jour, construction, fixation de taxe et lecture du relevé associé. Toute donnée reçue du navigateur est une demande; le serveur relit l’état faisant autorité et valide l’action avant d’écrire.
 
 ## Architecture
+
+### Historique commercial
+
+Le bouton « Historique des transactions » de l’onglet Commerce ouvre une fenêtre
+en lecture seule : envois et réceptions, partenaire/baronnie, ressources, raison,
+date d’envoi, date de décision et statut. Les dates utilisent le même rendu que
+les transactions du sommaire, avec interprétation UTC des dates SQLite et date
+exacte en infobulle. Les statuts distinguent attente de décision, acceptation en
+attente de réception, réception effectuée, refus avec retour à récupérer ou effectué.
+L’ouverture ne déclenche ni décision, ni récupération des ressources.
+
+`GET /api/trade_transactions/history?limit=50&before=<id>` est privé, sans cache,
+et renvoie `{ transactions, has_more }`. Les entrées exposent `direction`
+(`incoming`/`outgoing`), identifiants origine/destination, noms, ressources, type,
+état, raison, `created_at`, `decision_time`, `received` et `returned`. La limite
+est de 1 à 100 ; le curseur doit appartenir au même historique. L’ordre décroissant
+utilise la date d’envoi puis l’identifiant. Aucun filtre de trois mois ne s’applique.
+`seigneurie_id` est réservé à un administrateur actif et sélectionne uniquement
+l’historique de ce personnage. Les réponses en vol ne peuvent repeupler une fenêtre
+fermée ou un autre contexte. Une erreur propose une reprise sans perdre les lignes
+déjà chargées. Sur mobile, chaque ligne devient une fiche avec libellés de champs.
+
+Validation : `npm test` et `node scripts/validateTradeHistoryUI.cjs` ; captures dans
+`output/trade-history-ui`, modes joueur/admin, ordinateur/mobile, sans écrire dans
+la base du jeu.
+
+### Fêtes et révoltes
+
+`src/happinessRules.js` partage le calcul d’IDH et les règles de fête/révolte. `services/festivalService.js` expose le service appelé par la route **privée** `POST /api/seigneurie/festival` : `resources` (quantités entières non négatives de vivres, rhum, or_, fourrure, huile, epices), `expected_update` obligatoire, et `seigneurie_id` réservé à un administrateur actif. Aucun coût ou bonus fourni par le navigateur ne fait autorité. Une fête par période : le débit, le journal de ressources et l’insertion dans `player_festivals` sont atomiques. Les envois concurrents ne peuvent doubler la fête. Une erreur explicite refuse tout stock insuffisant, ressource non admise, rôle autre que seigneur ou contexte non autorisé.
+
+La formule suit `L’Anus de la Loutre!CG83,CG85:CG88` du classeur : somme pondérée (vivres 1, rhum 35, or 100, fourrure/huile/épices 1250), comparée **strictement** aux seuils arrondis à la dizaine `max(200,0.333 × population)`, `max(400,0.666 × population)` et `max(600,population)`. Chaque seuil dépassé donne +1 IDH (maximum +3). Elle diffère des seuils du manuel : le choix du classeur est explicite dans la demande. Le bonus acquis lors de la fête est fixé, non cumulable, utilisé à la prochaine progression seulement et supprimé dans la transaction de progression. Les fêtes à bonus nul sont possibles : le formulaire les annonce avant dépense.
+
+À la progression, production/consommation/famine précèdent le calcul d’IDH et le tirage de révolte ; la réception commerciale intervient ensuite. L’IDH prend les effets d’infrastructure/baronnie, taxes, population, religion, esclaves, fête et famine de cette progression. Le serveur utilise le même calcul pour `GET /api/my_seigneurie` et la prévision après famine. L’ensemble des futurs modificateurs politiques/culturels reste hors de ce changement.
+
+Les révoltes concernent les seigneurs : IDH 4/3/2/1/0 ou moins donne 15/30/45/60/75% de risque. **La protection débutante persistante annule tout risque et tout tirage**, même avec un IDH bas. Les morts civils sont arrondis sur la population hors hommes d’armes et miliciens si ceux-ci sont modélisés ; les morts soldats sont retranchés aussi de la population. Les esclaves sont comptés séparément. Les pourcentages de la feuille sont 2/4/6/8/10% civils/esclaves et 1/2/3/4/5% soldats ; vols 10/20/40/60/80% sur biens et ressources de luxe, avec réduction de 25% si une trésorerie existe. Les spécialistes, unités, points magiques, prestige et renommée ne sont pas volés.
+
+Destruction : un grenier au premier niveau, le marché au second, puis 1/2/3 infrastructures tirées parmi les copies présentes, sans remplacement. `infrastructure_properties.revolt_destructible` (booléen, défaut 1, migration des définitions existantes incluse) détermine l’éligibilité, y compris pour un grenier ou marché ciblé. La colonne « Destructible par révolte » de l’administration permet de protéger toute infrastructure en la décochant ; il n’y a plus d’exclusions par nom ou catégorie. Une cible absente ou protégée n’est pas remplacée par une autre. Le serveur valide ce booléen et conserve sa valeur lors d’une modification qui ne le fournit pas. Les capacités sont recalculées après destruction avant réception. Les pertes, le tirage, l’IDH utilisé et l’expiration du bonus apparaissent dans les événements et `delta.happiness`/`delta.revolt` du relevé. Une erreur de relevé annule les pertes et la consommation du bonus.
+
+`gestion.js` propose un petit formulaire de fête, avec bonus et risque estimés avant paiement. Le résumé avertit d’un risque de révolte, la prévision expose morts/vols/destructions possibles et le relevé expose le résultat réel, y compris un tirage sans révolte ou l’exemption débutante.
+
+Le changement de taxe recalcule immédiatement l’IDH, la production d’or et le risque prévu, puis recharge la valeur validée par le serveur. L’avancement attend la fin de l’enregistrement ; un refus restaure l’ancienne taxe et sa prévision. Le détail de la prévision reste ouvert pendant l’actualisation. Les conséquences sont séparées en pertes humaines, destructions et tableau repliable des ressources volées, avec quantités alignées.
 
 ```mermaid
 flowchart LR
@@ -74,7 +117,7 @@ CREATE INDEX IF NOT EXISTS idx_player_update_reports_player_created
   ON player_update_reports (player_id, created_at DESC, id DESC);
 ```
 
-`before_json` et `after_json` contiennent la population, la période, l’inventaire connu et les compteurs de commerce/sorts. `delta_json` détaille les changements de population et d’inventaire, la production, les taxes, la consommation, les ressources reçues et les pertes par capacité. `events_json` contient les événements montrés au joueur, par exemple la famine ou une réception partielle. Le format d’inventaire est limité aux ressources listées par `inventaireFields`. La version de règles actuelle est `1026-1.0-initial`.
+`before_json` et `after_json` contiennent la population, la période, l’inventaire connu et les compteurs de commerce/sorts. `delta_json` détaille les changements de population et d’inventaire, la production, les taxes, la consommation, les ressources reçues et les pertes par capacité. `events_json` contient les événements montrés au joueur, par exemple la famine ou une réception partielle. Le format d’inventaire est limité aux ressources listées par `inventaireFields`. La version de règles actuelle est `1026-1.4-duchy-influence`.
 
 L’unicité `(player_id, to_year, to_number)` empêche d’insérer deux relevés pour la même période de la même seigneurie. La création du relevé et les changements de jeu ont lieu dans la même transaction : il n’existe pas de rapport confirmé si l’avancement a été annulé.
 
@@ -177,7 +220,7 @@ Une erreur technique non munie d’un statut métier passe par le gestionnaire d
 5. Calculer la position suivante; relire inventaire, règles de bâtiments/infrastructures, propriétés de baronnie et politique d’avancement.
 6. Calculer la projection économique partagée et refuser si l’emploi excède la population, si la date de déblocage n’est pas atteinte ou si la politique bloque la période.
 7. Produire le snapshot initial; calculer les variations. La consommation alimentaire correspond à 15 vivres par habitant et 5 par esclave. Si le solde alimentaire devient négatif, l’implémentation actuelle calcule les morts comme `min(population, ceil(ceil(déficit / 15) / 2))`, puis ramène le stock à zéro. Les capacités plafonnent les stocks et l’excédent est consigné comme débordement.
-8. Écrire l’inventaire, la population et la nouvelle période; remettre à zéro les compteurs terrestres, maritimes et de sorts.
+8. Écrire l’inventaire, la population et la nouvelle période; remettre à zéro les compteurs terrestres, maritimes et de sorts. Renouveler les usages des effets `instant_production` des bâtiments et infrastructures à `uses_per_month × built`, ou simplement `uses_per_month` si `per_building:false`, en conservant activations et travailleurs affectés.
 9. Recevoir les échanges approuvés encore non reçus, quand leur période d’origine est atteinte. L’application respecte la capacité restante, journalise les ressources effectivement reçues et l’excédent; les lignes traitées sont marquées reçues.
 10. Construire `after`, `delta` et `events`, insérer `player_update_reports`, puis valider par `COMMIT`.
 
@@ -203,7 +246,7 @@ L’ordre exact de production, famine, plafonds et réception est celui du code 
 - Une erreur pendant une mise à jour ou une construction annule les débits et écritures effectués dans cette transaction.
 - Le relevé décrit l’état réellement validé, y compris les réceptions et les pertes reportées par le service.
 - La protection débutante est persistante et monotone. Une baisse de population ne rend pas de nouveau disponible le taux réduit.
-- La version de règles est actuellement une constante de code (`1026-1.0-initial`); le système ne conserve pas encore une copie complète de chaque définition de règle avec le rapport.
+- La version de règles est actuellement une constante de code (`1026-1.4-duchy-influence`); le système ne conserve pas encore une copie complète de chaque définition de règle avec le rapport.
 - Les JSON du relevé sont des snapshots applicatifs; leur contenu n’est pas normalisé en tables de détail et dépend des ressources connues lors de la création.
 - Le calcul actuel de famine et l’ordre des actions doivent être vérifiés contre le règlement applicable. Le relevé rend le résultat traçable, mais ne certifie pas à lui seul la conformité complète aux règles du jeu.
 - Les routes de construction, d'activation et de destruction de bâtiment, les actions d'infrastructure, le lancement de sort et le retour d'un échange refusé sont transactionnels. Cette garantie ne s'étend pas automatiquement aux autres actions de Gestion.
@@ -212,3 +255,32 @@ L’ordre exact de production, famine, plafonds et réception est celui du code 
 ## Contrôles fonctionnels à maintenir
 
 La validation doit couvrir période périmée et concurrente, date verrouillée, gel et plafond, population employée excessive, famine, débordement de capacité, réception complète ou partielle, remise à zéro des compteurs, relevé après succès, autorisations propriétaire/administrateur, migration d’une base ancienne, irréversibilité de la protection, taux de taxe à 5 et au-dessus, et annulation complète lors d’un refus de construction ou d’une erreur d’écriture.
+
+
+## Corrections des règles et du contexte de Gestion
+
+`src/gameRules.js` partage les règles suivantes entre serveur et navigateur : la haute mer exige un port même avec les anciennes définitions vides ; un quota commercial nul interdit tout envoi. Les quotas et les prérequis des transports sont relus sous la transaction du débit, ce qui empêche des envois concurrents de dépasser le plafond. Les échanges déjà en cours gardent leur cycle de réception.
+
+Le sommaire utilise le nom du propriétaire renvoyé par la route privée `GET /api/my_seigneurie` (`seigneur.player_name`). Les dates SQLite sans suffixe sont interprétées en UTC avant leur affichage local dans les transactions et notifications. La messagerie utilise le contexte sélectionné par un administrateur actif, conformément à `MESSAGERIE.md`.
+
+Validation ciblée : `node scripts/validateSimulationFixesUI.cjs`, avec les mêmes variables Playwright que les autres validations. Les données restent isolées ; les captures couvrent joueur et administrateur sur ordinateur et mobile.
+
+## Construction, activation et routes commerciales
+
+Les boutons de construction des infrastructures tiennent compte des travailleurs fixes et de la perte éventuelle d’esclaves dans les coûts, selon la même règle de surcharge que le serveur. La colonne Activer propose « Appliquer », bloque les doubles envois pendant l’enregistrement et restaure la valeur précédente en cas de refus. « Nouvelle route » ouvre une sélection explicite des destinations accessibles avant le dialogue de trajet ; l’absence de liaison existante ne bloque pas la création. Les erreurs de chargement et l’absence de destination donnent un message visible distinct. Validation isolée : `node scripts/validateGestionActionsUI.cjs`, avec les variables Playwright usuelles et captures dans `output/gestion-actions-ui`.
+
+## Hôtel des ventes
+
+L’onglet conditionnel, les ventes immédiates, les effets administratifs et l’expiration atomique sont décrits dans [HOTEL_DES_VENTES.md](HOTEL_DES_VENTES.md). `gestionAuctionHouse.js` réutilise les événements de contexte Gestion et invalide les réponses lors du chargement/changement de personnage. `src/auctionRules.js` fournit les prévisions et le calcul serveur des modificateurs ; les règles effectives sont relues sous verrou avant chaque mutation. Les tables privées ne font pas partie de l’API publique.
+
+## Ajustements des échanges et infrastructures
+
+Les voisins terrestres directs sont accessibles sans route commerciale. Ils sont dérivés de barony_connections pour l’affichage et relus sous verrou côté serveur avant débit. Un envoi consomme le quota de caravane habituel, sans construire de route. Les étapes des trajets sont surlignées à une opacité de 0,75, sans lignes ni marqueurs. Les couleurs se combinent aux croisements et les couleurs de départ/arrivée restent inchangées, au survol de la carte, du tableau ou au focus clavier ; leur détail reste lisible sous la carte. Les infrastructures affichent la colonne compacte « Trav./bât. », issue de workers_per_building.
+
+### Catalogues communs aux quatre types de personnages
+
+`building_properties` contient les bâtiments et spécialistes de tous les types de joueurs. `infrastructure_properties` contient leurs infrastructures. Chacune de ces deux tables possède son identifiant `id` normal. Les champs `player_type`, les coûts et les règles sont édités dans les quatre sous-onglets de l’administration. L’interface utilise un formulaire commun adapté au rôle, sur les deux routes de catalogue existantes.
+
+La migration `src/constructionCatalogMigration.js` restaure ces deux tables pour les bases précédemment fusionnées dans `construction_catalog`. Elle conserve les identifiants utilisés par les possessions et les prérequis. Les anciens spécialistes rejoignent les bâtiments et reçoivent un autre identifiant uniquement si leur numéro est déjà occupé par un bâtiment. La migration se fait sous transaction et supprime le catalogue consolidé et ses vues. Une base historique à deux tables reçoit simplement les champs facultatifs des spécialistes.
+
+Le recrutement, les constructions pirates localisées et le débit de PC attendent encore leurs mécanismes de jeu. Le serveur refuse ces actions explicitement.

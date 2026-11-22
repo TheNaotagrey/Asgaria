@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Gestion de la seigneurie</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="messaging.css">
 </head>
 <body class="gestion-page">
   <script src="renderHeader.js"></script>
@@ -20,6 +21,8 @@
         <button class="tab-btn" data-tab="ost">Ost</button>
         <button class="tab-btn" data-tab="magie" style="display:none">Magie</button>
         <button class="tab-btn" data-tab="commerce">Commerce</button>
+        <button class="tab-btn" data-tab="hotel_des_ventes" style="display:none">Hôtel des ventes</button>
+        <button class="tab-btn" data-tab="messagerie">Messagerie <span id="messagingBadge" hidden></span></button>
         <button class="tab-btn push-right" data-tab="proprietes">Propriétés</button>
       </div>
       <div class="tab-panels">
@@ -37,6 +40,7 @@
           <div id="militaryInfra"></div>
         </div>
         <div id="tab-ost" class="tab-panel"></div>
+        <div id="tab-hotel_des_ventes" class="tab-panel"><div id="auctionHouse"></div></div>
         <div id="tab-commerce" class="tab-panel">
           <h2>Infrastructures Commerciales</h2>
           <div id="commercialAndTx" class="resource-tables">
@@ -46,11 +50,13 @@
             <div class="resource-table-container">
               <h2>Transactions effectuées</h2>
               <table id="tradeLimitsTable" class="admin-table"></table>
+              <button id="tradeHistoryBtn" class="control-btn">Historique des transactions</button>
             </div>
           </div>
           <h2>Chemins commerciaux</h2>
           <div class="trade-controls" style="margin-bottom:10px">
             <button id="newTradeRouteBtn" class="control-btn">Nouvelle route</button>
+            <p id="tradeCreationStatus" role="status" aria-live="polite"></p>
           </div>
           <div id="tradeSection" class="trade-section">
             <div id="tradeMap" class="trade-map">
@@ -66,6 +72,33 @@
         </div>
         <div id="tab-proprietes" class="tab-panel">
           <div id="baronyProps"></div>
+        </div>
+        <div id="tab-messagerie" class="tab-panel">
+          <div class="messaging-workspace" id="messagingWorkspace">
+            <aside class="messaging-sidebar" aria-label="Conversations individuelles">
+              <h2>Messagerie</h2>
+              <label for="messagingRecipient">Nouvelle conversation</label>
+              <select id="messagingRecipient"><option value="">Choisir un personnage…</option></select>
+              <button type="button" id="messagingStart" class="control-btn">Ouvrir la conversation</button>
+              <h3>Conversations</h3>
+              <div id="messagingConversations"></div>
+            </aside>
+            <section class="messaging-thread" aria-label="Fil de discussion">
+              <header class="messaging-heading">
+                <button type="button" id="messagingBack" class="control-btn">← Conversations</button>
+                <h2 id="messagingTitle">Vos conversations individuelles</h2>
+              </header>
+              <div id="messagingMessages" tabindex="0" aria-label="Messages, du plus ancien au plus récent">
+                <p class="messaging-empty">Sélectionnez une conversation ou choisissez un personnage pour lui écrire.</p>
+              </div>
+              <form id="messagingForm" class="messaging-composer" hidden>
+                <label for="messagingBody">Votre message</label>
+                <textarea id="messagingBody" rows="3" maxlength="4000" placeholder="Écrivez votre message…" required></textarea>
+                <div><span id="messagingCount">0 / 4 000</span><button class="control-btn" type="submit" id="messagingSend">Envoyer</button></div>
+              </form>
+            </section>
+          </div>
+          <div class="messaging-status" role="status" aria-live="polite"><span id="messagingStatus"></span> <button id="messagingRetry" type="button" class="control-btn" hidden>Réessayer</button></div>
         </div>
         <div id="tab-magie" class="tab-panel" style="display:none">
           <div id="spellInfo"></div>
@@ -93,6 +126,16 @@
       <button id="tradeSend" class="control-btn">Envoyer</button>
     </div>
   </dialog>
+  <dialog id="tradeDestinationDialog" class="confirm-dialog" aria-labelledby="tradeDestinationTitle">
+    <h2 id="tradeDestinationTitle">Choisir une destination</h2>
+    <p>Choisissez la baronnie à relier, puis vérifiez le trajet et son coût.</p>
+    <label for="tradeDestinationSelect">Baronnie de destination</label>
+    <select id="tradeDestinationSelect"></select>
+    <div class="dialog-buttons">
+      <button id="tradeDestinationCancel" class="control-btn">Annuler</button>
+      <button id="tradeDestinationContinue" class="control-btn">Choisir le trajet</button>
+    </div>
+  </dialog>
   <dialog id="tradeRouteDialog" class="confirm-dialog">
     <h3 id="tradeRouteDialogTitle">Nouvelle liaison commerciale</h3>
     <p id="tradeRouteDialogTarget"></p>
@@ -102,7 +145,7 @@
       <strong>Chemin</strong>
       <div id="tradeRoutePathSteps" style="margin-top:8px"></div>
     </div>
-    <p id="tradeRouteHint" style="margin-top:10px"></p>
+    <div id="tradeRouteHint" role="status" aria-live="polite"></div>
     <div class="dialog-buttons">
       <button id="tradeRouteCancel" class="control-btn">Annuler</button>
       <button id="tradeRouteSave" class="control-btn">Construire</button>
@@ -116,6 +159,16 @@
       <button id="txClose" class="control-btn">Fermer</button>
     </div>
   </dialog>
+  <dialog id="tradeHistoryDialog" class="confirm-dialog" aria-labelledby="tradeHistoryTitle">
+    <h2 id="tradeHistoryTitle">Historique des transactions</h2>
+    <p class="trade-history-note">Envois et réceptions, du plus récent au plus ancien.</p>
+    <p id="tradeHistoryStatus" role="status" aria-live="polite"></p>
+    <div class="trade-history-scroll"><table id="tradeHistoryTable" class="admin-table"></table></div>
+    <div class="dialog-buttons">
+      <button id="tradeHistoryMore" class="control-btn" hidden>Voir les transactions précédentes</button>
+      <button id="tradeHistoryClose" class="control-btn">Fermer</button>
+    </div>
+  </dialog>
   <dialog id="updateReportDialog" class="confirm-dialog">
     <div id="updateReportContent"></div>
     <div class="dialog-buttons">
@@ -124,11 +177,16 @@
   </dialog>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/timeago.js/4.0.2/timeago.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/timeago.js/4.0.2/locale/fr.min.js"></script>
+<script src="src/gameRules.js"></script>
+<script src="src/auctionRules.js"></script>
+<script src="src/happinessRules.js"></script>
 <script src="auth.js"></script>
 <script src="src/mapCore.js"></script>
   <script src="src/bfs.js"></script>
 <script src="src/playerTypes.js"></script>
 <script src="gestion.js"></script>
+<script src="gestionMessaging.js"></script>
+<script src="gestionAuctionHouse.js"></script>
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       const buttons = document.querySelectorAll('.tab-btn');

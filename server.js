@@ -1,4 +1,4 @@
-const { availabilityFields, availabilityDefaults, isValidType, isBuildingAvailable } = require('./src/playerTypes');
+const { isValidType, isBuildingAvailable } = require('./src/playerTypes');
 const express = require('express');
 const sqlite3 = require('sqlite3');
 const zlib = require('zlib');
@@ -24,14 +24,27 @@ const { createTradeTransactionAtomically, createTradeLinkAtomically } = require(
 const { compareUpdatePositions, formatUpdateLabel, getLatestUnlockedUpdate, getNextUpdatePosition, getUnlockDateForUpdate, getUpdateKey, isUpdateUnlocked, normalizeUpdatePosition } = require('./src/updateCycle');
 const { validateUpdatePolicy, getUpdatePolicyBlocker } = require('./src/updatePolicy');
 const { calculateProjection } = require('./src/seigneurieProjection');
+const { tradeCapacity, buildingRequirements, constructionPopulationLimit, constructionWorkers } = require('./src/gameRules');
 const { employmentAllowed } = require('./src/employmentPolicy');
 const { advanceSeigneurieUpdate } = require('./services/updateService');
+const { festivalSchema, organizeFestival } = require('./services/festivalService');
+const { calculateIDH, updateHappinessPreview } = require('./src/happinessRules');
 const { castSpellAtomically } = require('./services/spellCastService');
-const { withImmediateTransaction, getSql, runSql } = require('./src/sqliteTransaction');
+const { buildingFields, validateBuildingDefinition } = require('./services/buildingCatalogService');
+const { migrateConstructionCatalog } = require('./src/constructionCatalogMigration');
+const { migrateConstructionTypes } = require('./src/constructionTypeMigration');
+const { withImmediateTransaction, getSql, allSql, runSql } = require('./src/sqliteTransaction');
 const { UPDATE_DEFINITIONS } = require('./src/updateCycle');
 const app = express();
+const { messagingSchema, createMessagingRouter, migrateCharacterMessages } = require('./services/messagingService');
+const { recordTradeMessage, backfillTradeMessages } = require('./services/tradeMessagingService');
 
-const DATABASE_PATH = 'asgaria.db';
+const { auctionSchema, createAuctionRouter } = require('./services/auctionHouseService');
+const AuctionRules = require('./src/auctionRules');
+const { influenceSchema, createInfluenceRouter } = require('./services/influenceService');
+const configuredDatabasePath = (process.env.DATABASE_PATH || '').trim();
+const DATABASE_PATH = configuredDatabasePath && !['null', 'undefined'].includes(configuredDatabasePath.toLowerCase())
+  ? configuredDatabasePath : 'asgaria.db';
 const db = new sqlite3.Database(DATABASE_PATH);
 db.configure('busyTimeout', 5000);
 const gunzip = promisify(zlib.gunzip);
@@ -68,6 +81,10 @@ app.set('adminTables', ADMIN_TABLES);
 
 // create tables if they do not exist
 const initSql = `
+${festivalSchema}
+${messagingSchema}
+${auctionSchema}
+${influenceSchema}
 CREATE TABLE IF NOT EXISTS update_policy (id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -402,7 +419,8 @@ CREATE TABLE IF NOT EXISTS infrastructure_properties (
   costs TEXT,
   absolute_restrictions TEXT,
   restrictions TEXT,
-  description TEXT
+  description TEXT,
+  revolt_destructible INTEGER NOT NULL DEFAULT 1 CHECK(revolt_destructible IN (0,1))
 );
 CREATE TABLE IF NOT EXISTS spells (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1130,9 +1148,6 @@ db.serialize(() => {
     }
   });
   db.all("PRAGMA table_info(building_properties)", (err, rows) => {
-    if (!err && rows) availabilityFields.forEach(field => {
-      if (!rows.some(row => row.name === field)) db.run(`ALTER TABLE building_properties ADD COLUMN ${field} INTEGER NOT NULL DEFAULT ${availabilityDefaults[field]}`);
-    });
     if (err || !rows) return;
     if (!rows.some(r => r.name === 'label')) {
       db.run('ALTER TABLE building_properties ADD COLUMN label TEXT');
@@ -1152,9 +1167,9 @@ db.serialize(() => {
     });
     db.all("PRAGMA table_info(infrastructure_properties)", (err, rows) => {
       if (err || !rows) return;
-      availabilityFields.forEach(field => {
-        if (!rows.some(row => row.name === field)) db.run(`ALTER TABLE infrastructure_properties ADD COLUMN ${field} INTEGER NOT NULL DEFAULT ${availabilityDefaults[field]}`);
-      });
+      if (!rows.some(row => row.name === 'revolt_destructible')) {
+        db.run('ALTER TABLE infrastructure_properties ADD COLUMN revolt_destructible INTEGER NOT NULL DEFAULT 1 CHECK(revolt_destructible IN (0,1))');
+      }
       if (!rows.some(r => r.name === 'absolute_restrictions')) {
         db.run('ALTER TABLE infrastructure_properties ADD COLUMN absolute_restrictions TEXT');
       }
@@ -1268,6 +1283,9 @@ app.use((req,res,next)=>{
   next();
 });
 const browserSourceScripts = new Set([
+  'src/auctionrules.js',
+  'src/happinessrules.js',
+  'src/gamerules.js',
   'src/playertypes.js', 'src/mapcore.js', 'src/bfs.js', 'src/viewmodellabels.js',
   'src/mapcanvasruntime.js', 'src/duchypiety.js', 'src/mapfilterruntime.js',
   'src/mapfilterregistry.js', 'src/mapdataloader.js', 'src/mapinfopanel.js',
@@ -1361,6 +1379,9 @@ function getSeigneurie(req, select, cb) {
 }
 
 // Authentication endpoints
+app.use('/api/messaging', createMessagingRouter(db, DATABASE_PATH));
+app.use('/api/auction_house', createAuctionRouter(DATABASE_PATH, isAdminActive));
+app.use('/api/seigneurie/influence', createInfluenceRouter(DATABASE_PATH, isAdminActive));
 app.post('/api/register', async (req, res) => {
   try {
     const { email, password, first_name, last_name } = req.body;
@@ -1758,7 +1779,9 @@ app.delete('/api/seigneurs/:id', requireAdmin, (req, res) => {
       { table: 'viscounties', column: 'seigneur_id', label: 'vicomté(s)' },
       { table: 'baronies', column: 'seigneur_id', label: 'baronnie(s)' },
       { table: 'maritime_zones', column: 'seigneur_id', label: 'zone(s) maritimes' },
-      { table: 'seigneurs', column: 'overlord_id', label: 'vassal(aux)' }
+      { table: 'seigneurs', column: 'overlord_id', label: 'vassal(aux)' },
+      { table: 'character_messages', column: 'sender_id', label: 'message(s) envoyé(s)' },
+      { table: 'character_messages', column: 'recipient_id', label: 'message(s) reçu(s)' }
     ];
     Promise.all(references.map(ref => new Promise((resolve, reject) => {
       db.get(`SELECT COUNT(*) as count FROM ${ref.table} WHERE ${ref.column}=?`, [id], (err2, row) => {
@@ -2031,11 +2054,19 @@ app.get('/api/my_seigneurie', loadUpdatePolicy, (req, res) => {
   const overrideId = isAdminActive(req.session.user) && req.query.seigneurie_id ? parseInt(req.query.seigneurie_id, 10) : null;
   db.serialize(() => {
     function respond(seig, s) {
+      // Only expose the public display name, never the owner's credentials.
+      db.get('SELECT u.first_name,u.last_name FROM users u JOIN seigneurs g ON g.user_id=u.id WHERE g.id=?', [s.seigneur_id], (ownerError, owner) => {
+        if (ownerError) return handleError(res, ownerError);
+        seig.player_name = owner ? `${owner.first_name || ''} ${owner.last_name || ''}`.trim() : '';
+        respondWithOwner(seig, s);
+      });
+    }
+    function respondWithOwner(seig, s) {
       db.get('SELECT * FROM inventaire WHERE id=?', [s.inventaire_id], (err, inventaire) => {
         if (err) return handleError(res, err);
         const buildings = s.buildings ? JSON.parse(s.buildings) : {};
         const infrastructures = s.infrastructures ? JSON.parse(s.infrastructures) : {};
-        db.all('SELECT id, type, label, produces, production, workers_per_building FROM building_properties', [], (err2, bprops) => {
+        db.all('SELECT id, type, label, produces, production, workers_per_building, effects FROM building_properties', [], (err2, bprops) => {
           if (err2) return handleError(res, err2);
           const props = bprops || [];
           const bpMap = Object.fromEntries(props.map(b => [String(b.id), b]));
@@ -2050,7 +2081,7 @@ app.get('/api/my_seigneurie', loadUpdatePolicy, (req, res) => {
           for (const bp of props) {
             const info = buildings[bp.id] || { built: 0, active: 0 };
             const active = info.active || 0;
-            const workers = active * (bp.workers_per_building || 0);
+            const workers = active * constructionWorkers(s, bp);
             employed += workers;
             if (workers) {
               employmentDetails.push({ label: bp.label || bp.type, amount: workers, source: active });
@@ -2109,7 +2140,7 @@ app.get('/api/my_seigneurie', loadUpdatePolicy, (req, res) => {
               const entry = infrastructures[ip.id] || infrastructures[String(ip.id)] || 0;
               const count = typeof entry === 'object' ? (entry.built || 0) : entry;
               if (!count) { delete effectCtx.currentInfraId; continue; }
-              const workers = count * (ip.workers_per_building || 0);
+              const workers = count * constructionWorkers(s, ip, true);
               if (workers) {
                 employed += workers;
                 employmentDetails.push({ label: ip.label || ip.type, amount: workers, source: count });
@@ -2222,52 +2253,14 @@ app.get('/api/my_seigneurie', loadUpdatePolicy, (req, res) => {
                   });
                 });
               }
-              const idhDetails = effectCtx.idhDetails || [];
-              let idh = effectCtx.idh;
-              if (taxRate === 0) {
-                idh += 3;
-                idhDetails.push({ label: 'Taxes', amount: 3, source: taxRate });
-              } else if (taxRate <= 2) {
-                idh += 2;
-                idhDetails.push({ label: 'Taxes', amount: 2, source: taxRate });
-              } else if (taxRate <= 4) {
-                idh += 1;
-                idhDetails.push({ label: 'Taxes', amount: 1, source: taxRate });
-              } else {
-                const malus = -(taxRate - 5);
-                idh += malus;
-                idhDetails.push({ label: 'Taxes', amount: malus, source: taxRate });
-              }
-              const popPenalty = -Math.min(Math.floor(s.population / 1000), 5);
-              if (popPenalty) {
-                idh += popPenalty;
-                idhDetails.push({ label: 'Population', amount: popPenalty, source: s.population });
-              }
-              if (!seig.religion_id) {
-                idh -= 1;
-                idhDetails.push({ label: 'Sans religion', amount: -1, source: 1 });
-              }
-              if (barony && seig.religion_id !== barony.religion_pop_id) {
-                idh -= 1;
-                idhDetails.push({ label: 'Religion différente', amount: -1, source: 1 });
-              }
-              const totalPop = s.population + slaves;
-              if (totalPop > 0) {
-                let slavePenalty = Math.floor((20 * slaves) / totalPop) - 1;
-                if (slavePenalty < 0) slavePenalty = 0;
-                if (slavePenalty > 5) slavePenalty = 5;
-                if (slavePenalty) {
-                  idh -= slavePenalty;
-                  idhDetails.push({ label: 'Esclaves', amount: -slavePenalty, source: slaves });
-                }
-              }
               const spellSuccess = 75 + (effectCtx.spellSuccessBonus || 0);
               const basicSpellDiscount = effectCtx.basicSpellDiscount || 0;
               const advancedSpellDiscount = effectCtx.advancedSpellDiscount || 0;
               const spellRange = 5 + (effectCtx.spellRangeBonus || 0);
               const spellMax = effectCtx.spellMax || 0;
-              const landTxMax = effectCtx.landTxMax || 0;
-              const navalTxMax = effectCtx.navalTxMax || 0;
+              const tradeLimits = tradeCapacity(infrastructures, infraList, baronyProps);
+              const landTxMax = tradeLimits.land;
+              const navalTxMax = tradeLimits.naval;
               const blockers = [];
               if (sharedProjection.employment.employed > (s.population || 0)) {
                 blockers.push({
@@ -2285,8 +2278,15 @@ app.get('/api/my_seigneurie', loadUpdatePolicy, (req, res) => {
                   });
                 }
               }
-              db.get('SELECT id FROM player_update_reports WHERE player_id=? ORDER BY created_at DESC, id DESC LIMIT 1', [s.id], (reportErr, latestReport) => {
+              db.get('SELECT id FROM player_update_reports WHERE player_id=? ORDER BY created_at DESC, id DESC LIMIT 1', [s.id], async (reportErr, latestReport) => {
                 if (reportErr) return handleError(res, reportErr);
+                let festival;
+                try { festival = await getSql(db, 'SELECT * FROM player_festivals WHERE player_id=?', [s.id]); }
+                catch (error) { return handleError(res, error); }
+                const festivalBonus = festival && festival.update_year === updateStatus.current.year && festival.update_number === updateStatus.current.number ? festival.bonus : 0;
+                const happinessInput = { player: s, inventory: inventaire, infrastructures, infrastructureProperties: infraList, lord: seig, barony, baronyProperties: baronyProps, festivalBonus };
+                const { idh, idhDetails } = calculateIDH(happinessInput);
+                const revoltPreview = updateHappinessPreview({ ...happinessInput, projection: sharedProjection });
               res.json({
                 seigneur: seig,
                 seigneurie: s,
@@ -2305,7 +2305,9 @@ app.get('/api/my_seigneurie', loadUpdatePolicy, (req, res) => {
                 buildingProductionBonusDetails,
                 idh,
                 idhDetails,
-                unlockedPages: effectCtx.unlockedPages,
+                festival: festival && festival.update_year === updateStatus.current.year && festival.update_number === updateStatus.current.number ? { bonus: festivalBonus, value: festival.value, resources: safeParse(festival.resources_json, {}) } : null,
+                revoltPreview,
+                unlockedPages: { ...effectCtx.unlockedPages, hotel_des_ventes: AuctionRules.calculateRules(s, props, infraList).unlocked },
                 spellSuccess,
                 basicSpellDiscount,
                 advancedSpellDiscount,
@@ -2511,6 +2513,19 @@ app.get('/api/admin/update_reports', requireAdmin, (req, res) => {
   });
 });
 
+app.post('/api/seigneurie/festival', async (req, res) => {
+  if (!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
+  try {
+    const festival = await organizeFestival({ dbPath: DATABASE_PATH,
+      actor: { id: req.session.user.id, isAdminActive: !!isAdminActive(req.session.user) },
+      playerId: req.body.seigneurie_id, resources: req.body.resources, expectedUpdate: req.body.expected_update });
+    res.json({ ok: true, festival });
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ code: error.code, error: error.message });
+    handleError(res, error);
+  }
+});
+
 app.post('/api/seigneurie/advance_update', async (req, res) => {
   if (!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
   try {
@@ -2707,43 +2722,92 @@ tagsRouter.use((req,res,next)=>{
 });
 app.use('/api/tags', tagsRouter);
 
-const buildingPropFields = [...availabilityFields,'label','produces','production','costs','max','workers_per_building','absolute_restrictions','infra_restrictions','effects','description'];
-const buildingPropsRouter = crudRoutes('building_properties', buildingPropFields);
+const buildingPropsRouter = crudRoutes('building_properties', buildingFields);
 buildingPropsRouter.use((req,res,next)=>{
   if(['POST','PUT','DELETE'].includes(req.method)) return requireAdmin(req,res,next);
   next();
 });
-function validateBuildingAvailability(table) { return (req, res, next) => {
-  if (['POST', 'PUT'].includes(req.method)) {
-    if (!isAdminActive(req.session ? req.session.user : null)) return res.status(403).json({ error: 'Accès interdit' });
-    for (const field of availabilityFields) {
-      const value = req.body[field];
-      if (value === undefined) {
-        if (req.method === 'POST') req.body[field] = availabilityDefaults[field];
-      } else if (![0, 1, true, false, '0', '1'].includes(value)) {
-        return res.status(400).json({ error: 'Disponibilité de bâtiment invalide' });
-      } else req.body[field] = Number(value);
-    }
+function validateWorkers(req, res, next) {
+  if (req.body.player_type !== 'eveque') return next();
+  const raw = req.body.workers_per_building;
+  if (raw == null || raw === '') {
+    req.body.workers_per_building = 0;
+    return next();
   }
-  if (req.method === 'PUT' && availabilityFields.some(field => req.body[field] === undefined)) {
-    return db.get(`SELECT * FROM ${table} WHERE id=?`, [req.path.split('/')[1]], (err, row) => {
-      if (err) return handleError(res, err);
-      if (!row) return res.status(404).json({ error: 'Introuvable' });
-      availabilityFields.forEach(field => { if (req.body[field] === undefined) req.body[field] = row[field]; });
-      next();
-    });
+  const ratio = Number(typeof raw === 'string' ? raw.replace(',', '.') : raw);
+  if (!['number', 'string'].includes(typeof raw) || !Number.isFinite(ratio) || ratio < 0 ||
+      (ratio > 0 && ratio < 1e-6)) {
+    return res.status(400).json({ error: 'Le nombre de moines par exemplaire doit être nul ou un nombre positif d’au moins 0,000001.' });
   }
+  req.body.workers_per_building = ratio;
   next();
-}; }
-app.use('/api/building_properties', validateBuildingAvailability('building_properties'), buildingPropsRouter);
+}
+function validateConstructionType(table) {
+  return async (req, res, next) => {
+    if (!['POST', 'PUT'].includes(req.method)) return next();
+    if (!isAdminActive(req.session?.user)) return res.status(403).json({ error: 'Accès interdit' });
+    const type = req.body.player_type;
+    if (type !== undefined && !isValidType(type)) {
+      return res.status(400).json({ error: 'Type de joueur invalide pour cette construction.' });
+    }
+    if (req.method === 'POST') {
+      req.body.player_type = type ?? 'seigneur';
+      return validateWorkers(req, res, next);
+    }
+    try {
+      const row = await getSql(db, `SELECT player_type, workers_per_building FROM ${table} WHERE id=?`, [req.path.split('/')[1]]);
+      if (!row) return res.status(404).json({ error: 'Introuvable' });
+      if (type !== undefined && type !== row.player_type) {
+        return res.status(400).json({ error: 'Pour un autre type de joueur, créez une définition distincte.' });
+      }
+      req.body.player_type = row.player_type;
+      if (req.body.player_type === 'eveque' && req.body.workers_per_building === undefined) {
+        req.body.workers_per_building = row.workers_per_building;
+      }
+      validateWorkers(req, res, next);
+    } catch (error) {
+      handleError(res, error);
+    }
+  };
+}
+function validateAuctionEffects(req, res, next) {
+  if (!['POST', 'PUT'].includes(req.method) || req.body.effects === undefined) return next();
+  if (!isAdminActive(req.session ? req.session.user : null)) return res.status(403).json({ error: 'Accès interdit' });
+  try { AuctionRules.validateEffects(req.body.effects); next(); }
+  catch (error) { res.status(400).json({ error: error.message }); }
+}
+app.use('/api/building_properties', validateAuctionEffects, validateConstructionType('building_properties'), validateBuildingDefinition(db), buildingPropsRouter);
 
-const infraPropFields = [...availabilityFields,'label','type','max','workers_per_building','effects','costs','absolute_restrictions','restrictions','description'];
+const infraPropFields = ['player_type','pirate_site','revolt_destructible','label','type','max','workers_per_building','effects','costs','absolute_restrictions','restrictions','description'];
 const infraPropsRouter = crudRoutes('infrastructure_properties', infraPropFields);
 infraPropsRouter.use((req,res,next)=>{
   if(['POST','PUT','DELETE'].includes(req.method)) return requireAdmin(req,res,next);
   next();
 });
-app.use('/api/infrastructure_properties', validateBuildingAvailability('infrastructure_properties'), infraPropsRouter);
+app.use('/api/infrastructure_properties', validateAuctionEffects, validateConstructionType('infrastructure_properties'), (req, res, next) => {
+  if (!['POST', 'PUT'].includes(req.method)) return next();
+  if (!isAdminActive(req.session.user)) return res.status(403).json({ error: 'Accès interdit' });
+  if (req.body.player_type === 'pirate') {
+    if (!['repaire', 'depot_cotier'].includes(req.body.pirate_site)) {
+      return res.status(400).json({ error: 'Choisissez le lieu de construction pirate : repaire ou dépôt côtier.' });
+    }
+  } else if (req.body.pirate_site) {
+    return res.status(400).json({ error: 'Ce lieu est réservé aux infrastructures pirates.' });
+  }
+  const value = req.body.revolt_destructible;
+  if (value === undefined) {
+    if (req.method === 'POST') { req.body.revolt_destructible = 1; return next(); }
+    return db.get('SELECT revolt_destructible FROM infrastructure_properties WHERE id=?', [req.path.split('/')[1]], (error, row) => {
+      if (error) return handleError(res, error);
+      if (!row) return res.status(404).json({ error: 'Infrastructure introuvable' });
+      req.body.revolt_destructible = row.revolt_destructible;
+      next();
+    });
+  }
+  if (![0, 1, true, false, '0', '1'].includes(value)) return res.status(400).json({ error: 'Le réglage de destruction par révolte doit être un booléen.' });
+  req.body.revolt_destructible = Number(value);
+  next();
+}, infraPropsRouter);
 
 const spellFields = ['label','type','costs','effects','description'];
 const spellsRouter = crudRoutes('spells', spellFields);
@@ -3100,8 +3164,14 @@ function canConstruct(db, srow, id, qty, cb){
     if (err) return cb(err);
     if (!bprops) return cb(new Error('Type inconnu'));
     if (!isBuildingAvailable(bprops, srow.type)) return cb(new Error('Ce bâtiment est indisponible pour ce type de joueur.'));
+    if (['pirate', 'mercenaire'].includes(srow.type)) {
+      return cb(Object.assign(new Error('Le recrutement des spécialistes n’est pas encore disponible.'), { status: 400 }));
+    }
     if (!srow.baronnie_id) return cb(new Error('Aucune baronnie associée'));
     const costObj = safeParse(bprops.costs, {});
+    if (Number(costObj.points_croyance) > 0) {
+      return cb(Object.assign(new Error('Le paiement en points de croyance n’est pas encore disponible.'), { status: 400 }));
+    }
     const absReq = safeParse(bprops.absolute_restrictions, []);
     const infraReq = safeParse(bprops.infra_restrictions, {});
     const maxObj = safeParse(bprops.max, null);
@@ -3133,6 +3203,26 @@ function canConstruct(db, srow, id, qty, cb){
       }
       const buildings = safeParse(srow.buildings, {});
       const infrastructures = safeParse(srow.infrastructures, {});
+      // The port prerequisite also applies to legacy definitions with empty restrictions.
+      if (bprops.max === 'high_sea_boat_limit' || bprops.type === 'high_sea_boat') {
+        return db.all('SELECT id,type,label FROM infrastructure_properties', [], (portError, infrastructureProperties) => {
+          if (portError) return cb(portError);
+          const requirements = buildingRequirements(bprops, infrastructureProperties || []);
+          for (const [iid, required] of Object.entries(requirements.infrastructures)) {
+            const entry = infrastructures[iid];
+            const built = typeof entry === 'object' ? Number(entry?.built) || 0 : Number(entry) || 0;
+            if (built < required) {
+              const error = new Error('Un port est requis pour construire un bateau en haute mer.');
+              error.status = 400;
+              return cb(error);
+            }
+          }
+          // Continue using the normal construction validator after this mandatory check.
+          validateRequirements();
+        });
+      }
+      validateRequirements();
+      function validateRequirements() {
       if (infraReq.buildings) {
         for (const [bid, count] of Object.entries(infraReq.buildings)) {
           const builtCount = buildings[bid] ? (buildings[bid].built || 0) : 0;
@@ -3153,6 +3243,9 @@ function canConstruct(db, srow, id, qty, cb){
         const binfo = buildings[id] || { built: 0, active: 0 };
         const built = binfo.built;
         const active = binfo.active;
+        if (built + qty > constructionPopulationLimit(srow, bprops)) {
+          return cb(Object.assign(new Error('Nombre de moines insuffisant pour construire un exemplaire supplémentaire.'), { status: 400 }));
+        }
         if (built + qty > max) return cb(new Error('Limite atteinte'));
         db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err4, inv) => {
           if (err4) return cb(err4);
@@ -3226,6 +3319,7 @@ function canConstruct(db, srow, id, qty, cb){
       } else {
         applyTagLimit(finalize);
       }
+      }
     });
   });
 }
@@ -3235,8 +3329,14 @@ function canConstructInfra(db, srow, id, qty, cb){
     if(err) return cb(err);
     if(!iprop) return cb(new Error('Type inconnu'));
     if (!isBuildingAvailable(iprop, srow.type)) return cb(new Error('Cette infrastructure est indisponible pour ce type de joueur.'));
+    if (iprop.pirate_site) {
+      return cb(Object.assign(new Error('La construction sur un repaire ou un dépôt pirate n’est pas encore ouverte.'), { status: 400 }));
+    }
     if(!srow.baronnie_id) return cb(new Error('Aucune baronnie associée'));
     const costObj = safeParse(iprop.costs, {});
+    if (Number(costObj.points_croyance) > 0) {
+      return cb(Object.assign(new Error('Le paiement en points de croyance n’est pas encore disponible.'), { status: 400 }));
+    }
     const absReq = safeParse(iprop.absolute_restrictions, []);
     const restrictions = safeParse(iprop.restrictions, {});
     const effects = safeParse(iprop.effects, []);
@@ -3279,6 +3379,9 @@ function canConstructInfra(db, srow, id, qty, cb){
       const finalize = () => {
         const entry = infrastructures[id] || infrastructures[String(id)] || 0;
         const built = typeof entry === 'object' ? (entry.built || 0) : entry;
+        if (built + qty > constructionPopulationLimit(srow, iprop)) {
+          return cb(Object.assign(new Error('Nombre de moines insuffisant pour construire un exemplaire supplémentaire.'), { status: 400 }));
+        }
         if(built + qty > max) return cb(new Error('Limite atteinte'));
         db.get('SELECT * FROM inventaire WHERE id=?', [srow.inventaire_id], (err3, inv) => {
           if(err3) return cb(err3);
@@ -3646,44 +3749,18 @@ app.post('/api/send_transaction', (req, res) => {
     const seigneurieId = srow.id;
     const infrastructures = safeParse(srow.infrastructures, {});
     const count = txType === 'naval' ? (srow.naval_transactions || 0) : (srow.land_transactions || 0);
-    db.all('SELECT id, label, effects FROM infrastructure_properties', [], (err2, iprops) => {
+    db.all('SELECT id, label, effects, restrictions FROM infrastructure_properties', [], (err2, iprops) => {
       if (err2) return handleError(res, err2);
-      const effectCtx = { landTxMax:0, navalTxMax:0 };
-      (iprops || []).forEach(ip => {
-        const entry = infrastructures[ip.id] || infrastructures[String(ip.id)] || 0;
-        const c = typeof entry === 'object' ? (entry.built || 0) : entry;
-        if (!c) return;
-        const effs = safeParse(ip.effects, []);
-        effs.forEach(def => {
-          let effObj = null;
-          if (def.type === 'land_transaction_max_per_month') {
-            effObj = new LandTransactionMaxPerMonthEffect(def.amount || 0);
-          } else if (def.type === 'naval_transaction_max_per_month') {
-            effObj = new NavalTransactionMaxPerMonthEffect(def.amount || 0);
-          }
-          if (effObj) effObj.apply(effectCtx, c, ip.label || ip.type);
-        });
-      });
       const applyBarony = cb => {
-        if (!srow.baronnie_id) return cb();
+        if (!srow.baronnie_id) return cb(null);
         db.get('SELECT effects FROM barony_properties WHERE barony_id=?', [srow.baronnie_id], (err3, bprops) => {
           if (err3) return handleError(res, err3);
-          const beffs = safeParse(bprops && bprops.effects, []);
-          beffs.forEach(def => {
-            let effObj = null;
-            if (def.type === 'land_transaction_max_per_month') {
-              effObj = new LandTransactionMaxPerMonthEffect(def.amount || 0);
-            } else if (def.type === 'naval_transaction_max_per_month') {
-              effObj = new NavalTransactionMaxPerMonthEffect(def.amount || 0);
-            }
-            if (effObj) effObj.apply(effectCtx, 1, 'Baronnie');
-          });
-          cb();
+          cb(bprops);
         });
       };
-      applyBarony(() => {
-        const max = txType === 'naval' ? effectCtx.navalTxMax : effectCtx.landTxMax;
-        if (max && count >= max) return res.status(400).json({ error: 'Limite de transactions atteinte' });
+      applyBarony(baronyProperties => {
+        const max = tradeCapacity(infrastructures, iprops || [], baronyProperties)[txType];
+        if (count >= max) return res.status(400).json({ error: max ? 'Limite de transactions atteinte' : 'Aucun transport commercial disponible : construisez une caravane avec son marché, ou un navire marchand avec son port.' });
         return db.get(`SELECT seigneuries.id, seigneurs.user_id as user_id FROM seigneuries JOIN seigneurs ON seigneurs.id=seigneuries.seigneur_id WHERE seigneuries.baronnie_id=?`, [targetBaronyId], (err4, dest) => {
           if (err4) return handleError(res, err4);
           if (!dest) return res.status(400).json({ error: 'Destination invalide' });
@@ -3740,6 +3817,45 @@ app.get('/api/trade_transactions', (req, res) => {
       }));
       res.json(mapped);
     });
+  });
+});
+
+app.get('/api/trade_transactions/history', (req, res) => {
+  if (!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
+  const validId = value => /^[1-9]\d*$/.test(String(value)) && Number.isSafeInteger(Number(value));
+  if (req.query.seigneurie_id !== undefined) {
+    if (!isAdminActive(req.session.user)) return res.status(403).json({ error: 'Seul un administrateur actif peut consulter l’historique d’un autre personnage.' });
+    if (!validId(req.query.seigneurie_id)) return res.status(400).json({ error: 'Seigneurie invalide.' });
+  }
+  const limit = req.query.limit === undefined ? 50 : Number(req.query.limit);
+  if (!validId(limit) || limit > 100 || (req.query.before !== undefined && !validId(req.query.before))) {
+    return res.status(400).json({ error: 'Pagination invalide : limite de 1 à 100 transactions.' });
+  }
+  getSeigneurie(req, 'seigneuries.id', async (err, player) => {
+    if (err) return handleError(res, err);
+    if (!player) return res.status(404).json({ error: 'Seigneurie introuvable.' });
+    try {
+      res.set('Cache-Control', 'no-store');
+      const anchor = req.query.before === undefined ? null : await getSql(db,
+        `SELECT id,COALESCE(julianday(created_at),0) AS date_stamp FROM trade_transactions
+         WHERE id=? AND (origin_id=? OR destination_id=?)`, [Number(req.query.before), player.id, player.id]);
+      if (req.query.before !== undefined && !anchor) return res.status(400).json({ error: 'Curseur absent de cet historique.' });
+      const rows = await allSql(db, `SELECT tt.id,tt.origin_id,tt.destination_id,tt.resources,tt.type,tt.state,
+        tt.reason,tt.created_at,tt.decision_time,tt.received,tt.returned,
+        so.name AS origin_name,bo.name AS origin_barony_name,sd.name AS dest_name,bd.name AS dest_barony_name
+        FROM trade_transactions tt
+        LEFT JOIN players po ON po.id=tt.origin_id LEFT JOIN seigneurs so ON so.id=po.seigneur_id
+        LEFT JOIN seigneuries_info io ON io.player_id=po.id LEFT JOIN baronies bo ON bo.id=io.baronnie_id
+        LEFT JOIN players pd ON pd.id=tt.destination_id LEFT JOIN seigneurs sd ON sd.id=pd.seigneur_id
+        LEFT JOIN seigneuries_info di ON di.player_id=pd.id LEFT JOIN baronies bd ON bd.id=di.baronnie_id
+        WHERE (tt.origin_id=? OR tt.destination_id=?)
+          ${anchor ? 'AND (COALESCE(julianday(tt.created_at),0),tt.id)<(?,?)' : ''}
+        ORDER BY COALESCE(julianday(tt.created_at),0) DESC,tt.id DESC LIMIT ?`,
+      [player.id, player.id, ...(anchor ? [anchor.date_stamp, anchor.id] : []), limit + 1]);
+      res.json({ transactions: rows.slice(0, limit).map(row => ({ ...row,
+        direction: row.origin_id === player.id ? 'outgoing' : 'incoming', resources: safeParse(row.resources, {}) })),
+        has_more: rows.length > limit });
+    } catch (error) { handleError(res, error); }
   });
 });
 
@@ -3814,11 +3930,12 @@ app.post('/api/trade_transactions/:id/decision', async (req, res) => {
       }
       const newState = action === 'accept' ? 'Approuvée' : 'Refusée';
       const changed = await runSql(transactionDb,
-        "UPDATE trade_transactions SET state=?, decision_time=CURRENT_TIMESTAMP WHERE id=? AND state='En Attente'",
+        "UPDATE trade_transactions SET state=?, decision_time=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND state='En Attente'",
         [newState, id]);
       if (changed.changes !== 1) {
         const error = new Error('Cette transaction a déjà été traitée.'); error.status = 409; throw error;
       }
+      await recordTradeMessage(transactionDb, id, action === 'accept' ? 'accepted' : 'refused');
       return action === 'refuse' ? { userId: trade.origin_user_id, name: trade.dest_name } : null;
     });
     if (notification) {
@@ -4231,6 +4348,7 @@ app.delete('/api/trade_lines/:id', requireAdmin, (req, res) => {
 
 app.post('/api/users/me/trade_links/build', (req, res) => {
   if (!req.session.user) return res.status(401).json({ error: 'Non autorisé' });
+  if (req.body.type !== undefined && !['land', 'naval'].includes(req.body.type)) return res.status(400).json({ error: 'Type de liaison invalide.' });
   const targetId = parseInt(req.body.barony_id, 10);
   const routeType = req.body.type === 'naval' ? 'naval' : 'land';
   if (!targetId) return res.status(400).json({ error: 'ID invalide' });
@@ -4249,10 +4367,12 @@ app.post('/api/users/me/trade_links/build', (req, res) => {
           startId,
           targetId,
           type: routeType,
+          actor: { id: req.session.user.id, isAdminActive: !!isAdminActive(req.session.user) },
+          playerId: isAdminActive(req.session.user) ? req.body.seigneurie_id : undefined,
           storedPath,
           distance
-        }).then(id => {
-          res.json({ id, cost: distance * 3, distance, type: routeType, path: responsePath });
+        }).then(result => {
+          res.json({ ...result, type: routeType, path: responsePath });
         }).catch(error => {
           if (error.status) return res.status(error.status).json({ error: error.message });
           handleError(res, error);
@@ -4589,9 +4709,7 @@ async function startServerWhenSchemaReady(attempt = 0) {
     const checks = [
       'SELECT id, update_year, update_number, beginner_protection FROM seigneuries LIMIT 1',
       'SELECT id FROM player_update_reports LIMIT 1',
-      'SELECT available_seigneur FROM building_properties LIMIT 0',
-      'SELECT available_seigneur FROM infrastructure_properties LIMIT 0',
-      'SELECT origin_update_year, origin_update_number, received, returned FROM trade_transactions LIMIT 0'
+      'SELECT origin_update_year, origin_update_number, received, returned, decision_time FROM trade_transactions LIMIT 0'
     ];
     for (const sql of checks) await getSql(db, sql);
     const protectionRule = await getSql(db, "SELECT name FROM sqlite_master WHERE type='trigger' AND name='players_beginner_protection_irreversible'");
@@ -4600,6 +4718,12 @@ async function startServerWhenSchemaReady(attempt = 0) {
       WHERE COALESCE(p.player_type, 'seigneurie')='seigneurie'
       AND NOT EXISTS (SELECT 1 FROM seigneuries_info si WHERE si.player_id=p.id)`);
     if (missing.count) throw new Error(`${missing.count} joueur(s) attendent la migration des seigneuries.`);
+    const buildingStorage = await getSql(db, "SELECT type FROM sqlite_master WHERE name='building_properties'");
+    if (buildingStorage?.type === 'table') await migrateConstructionTypes(DATABASE_PATH);
+    await migrateConstructionCatalog(DATABASE_PATH);
+    await migrateConstructionTypes(DATABASE_PATH);
+    await migrateCharacterMessages(DATABASE_PATH);
+    await backfillTradeMessages(DATABASE_PATH);
   } catch (error) {
     if (attempt < 200) return setTimeout(() => startServerWhenSchemaReady(attempt + 1), 50);
     logger.error(`Initialisation SQLite impossible : ${error.message}`);

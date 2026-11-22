@@ -102,9 +102,11 @@
         </div>
         <div id="tab-batiments" class="tab-panel">
           <div class="tab-loading" style="display:none">Chargement...</div>
-          <h2>Production</h2>
+          <div id="constructionTypes" class="construction-types" role="group" aria-label="Type de personnage"></div>
+          <h2 id="constructionProductionTitle">Production</h2>
+          <p id="constructionRecruitmentStatus" hidden>Le recrutement et les affectations ne sont pas encore ouverts.</p>
           <div id="tableBuildingProps"></div>
-          <h2>Infrastructures Civiles</h2>
+          <h2 id="constructionInfrastructureTitle">Infrastructures</h2>
           <div id="tableInfraProps"></div>
         </div>
         <div id="tab-spells" class="tab-panel">
@@ -274,8 +276,10 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/timeago.js/4.0.2/timeago.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/timeago.js/4.0.2/locale/fr.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script src="auth.js"></script>
+  <script src="src/gameRules.js"></script>
+<script src="auth.js"></script>
   <script src="src/playerTypes.js"></script>
+<script src="src/auctionRules.js"></script>
 <script src="admin.js"></script>
 <script src="adminUpdateReports.js"></script>
 </body>

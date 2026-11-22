@@ -72,9 +72,8 @@ const baronyLabels = {
   color:'Couleur'
 };
 
-const buildingPropFields = [...PlayerTypes.availabilityFields,'label','produces','production','costs','max','workers_per_building','absolute_restrictions','infra_restrictions','effects','description'];
+const buildingPropFields = ['label','produces','production','costs','max','workers_per_building','absolute_restrictions','infra_restrictions','effects','description'];
 const buildingPropLabels = {
-  ...Object.fromEntries(PlayerTypes.types.map(type => [`available_${type.id}`, type.name])),
   label:'Nom',
   produces:'Ressource produite',
   production:'Production',
@@ -86,9 +85,9 @@ const buildingPropLabels = {
   effects:'Effets',
   description:'Description'
 };
-const infraPropFields = [...PlayerTypes.availabilityFields,'label','type','max','workers_per_building','effects','costs','absolute_restrictions','restrictions','description'];
+const infraPropFields = ['revolt_destructible','label','type','max','workers_per_building','effects','costs','absolute_restrictions','restrictions','description'];
 const infraPropLabels = {
-  ...Object.fromEntries(PlayerTypes.types.map(type => [`available_${type.id}`, type.name])),
+  revolt_destructible: 'Destructible par révolte',
   label:'Nom',
   type:'Type',
   max:'Max',
@@ -101,7 +100,7 @@ const infraPropLabels = {
 };
 const typeSelect = [{id:'civil',name:'Civil'},{id:'militaire',name:'Militaire'},{id:'commercial',name:'Commercial'}];
 const resourceSelect = Object.entries(inventaireLabels).map(([id, name]) => ({ id, name }));
-const pageSelect = [{id:'magie', name:'Magie'}];
+const pageSelect = [{ id: 'magie', name: 'Magie' }, { id: 'hotel_des_ventes', name: 'Hôtel des ventes' }];
 let buildingPropsSelect = [];
 let infraPropsSelect = [];
 let tagsSelect = [];
@@ -218,7 +217,13 @@ const spellLabels = {
 
 async function fetchJSON(url, options){
   const resp = await fetch(API_BASE + url, options);
-  return resp.json();
+  const data = await resp.json();
+  if (!resp.ok) throw new Error(data.error || 'Impossible d’enregistrer la modification.');
+  if (options && options.method && options.method !== 'GET') {
+    Object.keys(dataCache).forEach(key => delete dataCache[key]);
+    Object.keys(tabLoaded).forEach(key => delete tabLoaded[key]);
+  }
+  return data;
 }
 
 async function getData(key, url){
@@ -882,7 +887,7 @@ function createBooleanToggle(val){
   return container;
 }
 
-function createCostEditor(val) {
+function createCostEditor(val, resources = resourceSelect) {
   const container = document.createElement('div');
   const list = document.createElement('div');
   container.appendChild(list);
@@ -897,7 +902,7 @@ function createCostEditor(val) {
     const blank = document.createElement('option');
     blank.value = '';
     sel.appendChild(blank);
-    resourceSelect.forEach(o => {
+    resources.forEach(o => {
       const op = document.createElement('option');
       op.value = o.id;
       op.textContent = o.name;
@@ -940,6 +945,30 @@ function createCostEditor(val) {
     });
     return JSON.stringify(res);
   };
+  return container;
+}
+
+function createRankCostEditor(value) {
+  const container = document.createElement('div');
+  const list = document.createElement('ol');
+  const add = document.createElement('button');
+  add.type = 'button';
+  add.textContent = 'Ajouter un rang';
+  function addRank(cost = {}) {
+    const row = document.createElement('li');
+    const editor = createCostEditor(JSON.stringify(cost));
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.textContent = 'Retirer ce rang';
+    remove.addEventListener('click', () => row.remove());
+    row.append(editor, remove);
+    row.getValue = () => JSON.parse(editor.getValue());
+    list.append(row);
+  }
+  for (const cost of JSON.parse(value || '[]')) addRank(cost);
+  add.addEventListener('click', () => addRank());
+  container.append(list, add);
+  container.getValue = () => JSON.stringify(Array.from(list.children, row => row.getValue()));
   return container;
 }
 
@@ -1866,6 +1895,7 @@ function makeEffectsInput(val, allowedTypes){
       {id:'spell_max_per_month', name:'Sorts max/mois'},
       {id:'land_transaction_max_per_month', name:'Transactions terrestres max/mois'},
       {id:'naval_transaction_max_per_month', name:'Transactions navales max/mois'},
+      ...Object.entries(AuctionRules.effectLabels).map(([id, name]) => ({ id, name })),
       {id:'tag', name:'Tag'},
       {id:'variable_production', name:'Production ressource variable'},
       {id:'random_luxury', name:'Ressource de luxe aléatoire'}
@@ -2019,6 +2049,12 @@ function makeEffectsInput(val, allowedTypes){
         qty.placeholder = 'Quantité';
         qty.value = data.amount ?? '';
         return;
+      }else if(Object.prototype.hasOwnProperty.call(AuctionRules.effectLabels, typeSel.value)){
+        qty.style.display = '';
+        qty.step = ['auction_max_offers_bonus', 'auction_duration_bonus'].includes(typeSel.value) ? '1' : 'any';
+        qty.placeholder = typeSel.value.endsWith('_discount') ? 'Points de pourcentage' : 'Quantité';
+        qty.value = data.amount ?? '';
+        return;
       }else if(['idh','spell_success','spell_basic_discount','spell_advanced_discount','spell_range','spell_max_per_month','land_transaction_max_per_month','naval_transaction_max_per_month'].includes(typeSel.value)){
         qty.style.display = '';
       }else if(typeSel.value === 'unlock_page'){
@@ -2112,6 +2148,9 @@ function makeEffectsInput(val, allowedTypes){
         if(tag){
           res.push({ type, tag: parseInt(tag,10), amount: amt });
         }
+      }else if(Object.prototype.hasOwnProperty.call(AuctionRules.effectLabels, type)){
+        const amount = Number(rw.querySelector('input[data-role="qty"]').value);
+        res.push({ type, amount });
       }else if(['idh','spell_success','spell_basic_discount','spell_advanced_discount','spell_range','spell_max_per_month','land_transaction_max_per_month','naval_transaction_max_per_month'].includes(type)){
         const amt = parseInt(rw.querySelector('input[data-role="qty"]').value,10);
         if(type && !isNaN(amt)){
@@ -2296,11 +2335,10 @@ function renderTable(container, rows, opts){
   };
 
   const makeInput = (val, field, item)=>{
-    if (['building_properties', 'infrastructure_properties'].includes(opts.endpoint) && PlayerTypes.availabilityFields.includes(field) && (val == null || val === '')) val = PlayerTypes.availabilityDefaults[field];
+    if (opts.endpoint === 'infrastructure_properties' && field === 'revolt_destructible' && (val == null || val === '')) val = 1;
     if (opts.endpoint === 'seigneuries' && field === 'type' && !val) val = 'seigneur';
-    if(field === 'costs'){
-      return createCostEditor(val);
-    }
+    if (field === 'rank_costs') return createRankCostEditor(val);
+    if (field === 'costs' || field === 'production_costs') return createCostEditor(val, opts.costResources);
     if(field === 'absolute_restrictions'){
       const container = document.createElement('div');
       const list = document.createElement('div');
@@ -2423,6 +2461,10 @@ function renderTable(container, rows, opts){
       const blank = document.createElement('option');
       blank.value = '';
       sel.appendChild(blank);
+      const custom = document.createElement('option');
+      custom.value = 'custom';
+      custom.textContent = 'Valeur personnalisée';
+      sel.appendChild(custom);
       maxOptions.forEach(o=>{
         const op = document.createElement('option');
         op.value = o.id;
@@ -2446,18 +2488,32 @@ function renderTable(container, rows, opts){
       qty.min = '0';
       qty.style.width = '6em';
       qty.value = per;
+      qty.setAttribute('aria-label', 'Valeur du maximum');
+      if (!isTag && val != null && val !== '' && !maxOptions.some(option => String(option.id) === String(val))) {
+        if (Number.isFinite(Number(val))) {
+          sel.value = 'custom';
+          qty.value = val;
+        } else {
+          const historical = document.createElement('option');
+          historical.value = val;
+          historical.textContent = val;
+          sel.appendChild(historical);
+          sel.value = val;
+        }
+      }
       container.appendChild(sel);
       container.appendChild(tagSel);
       container.appendChild(qty);
       function update(){
         const show = sel.value === 'tag';
         tagSel.style.display = show ? '' : 'none';
-        qty.style.display = show ? '' : 'none';
+        qty.style.display = show || sel.value === 'custom' ? '' : 'none';
       }
       sel.addEventListener('change', update);
       if(isTag){ sel.value = 'tag'; }
       update();
       container.getValue = ()=>{
+        if (sel.value === 'custom') return qty.value || null;
         if(sel.value === 'tag'){
           if(!tagSel.value) return null;
           const p = parseInt(qty.value,10) || 1;
@@ -2568,11 +2624,17 @@ function renderTable(container, rows, opts){
         }
       });
       if (opts.beforeSave) opts.beforeSave(payload, item);
-      const resp = await fetchJSON(`/api/${opts.endpoint}/${item.id}`, {
-        method:'PUT',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify(payload)
-      });
+      let resp;
+      try {
+        resp = await fetchJSON(`/api/${opts.endpoint}/${item.id}`, {
+          method:'PUT',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify(payload)
+        });
+      } catch (error) {
+        alert(error.message);
+        return;
+      }
       showSaveIndicator(btn.parentElement);
       const updated = { ...item, ...payload, ...(resp && typeof resp === 'object' ? resp : {}) };
       let updatedRef = updated;
@@ -2667,11 +2729,17 @@ function renderTable(container, rows, opts){
           }
         });
         if (opts.beforeSave) opts.beforeSave(payload, null);
-        const created = await fetchJSON(`/api/${opts.endpoint}`,{
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body:JSON.stringify(payload)
-        });
+        let created;
+        try {
+          created = await fetchJSON(`/api/${opts.endpoint}`, {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify(payload)
+          });
+        } catch (error) {
+          alert(error.message);
+          return;
+        }
         showSaveIndicator(addBtn.parentElement);
         const newItem = { ...payload, ...created };
         rows.push(newItem);
@@ -3996,31 +4064,94 @@ async function loadBaronyProps(){
   });
 }
 
-async function loadBatiments(){
+async function loadBatiments() {
   await ensureEffectsData();
-  const [buildingProps, infraProps] = await Promise.all([
-    getData('building_properties','/api/building_properties'),
-    getData('infrastructure_properties','/api/infrastructure_properties'),
+  const [buildingProps, infrastructureProps] = await Promise.all([
+    getData('building_properties', '/api/building_properties'),
+    getData('infrastructure_properties', '/api/infrastructure_properties')
   ]);
-  const buildingPropsById = buildingProps.slice().sort((a,b)=>a.id - b.id);
-  renderTable(document.getElementById('tableBuildingProps'), buildingPropsById, {
-    endpoint:'building_properties',
-    fields:buildingPropFields,
-    booleanFields:PlayerTypes.availabilityFields,
-    labels:buildingPropLabels,
-    selects:{produces: resourceSelect, ...Object.fromEntries(PlayerTypes.availabilityFields.map(field => [field, yesNoSelect]))},
-    allowedEffectTypes:['tag'],
-    deleteConfig: defaultDeleteConfig('le bâtiment', 'label')
+  const tabs = document.getElementById('constructionTypes');
+  const production = document.getElementById('tableBuildingProps');
+  const infrastructure = document.getElementById('tableInfraProps');
+  const productionTitle = document.getElementById('constructionProductionTitle');
+  const infrastructureTitle = document.getElementById('constructionInfrastructureTitle');
+  const recruitmentStatus = document.getElementById('constructionRecruitmentStatus');
+  tabs.replaceChildren();
+
+  function renderCatalog(container, rows, role, infrastructureSlot) {
+    const mobileRole = ['pirate', 'mercenaire'].includes(role.id);
+    const pirate = role.id === 'pirate';
+    const commonFields = ['label', 'costs', 'max'];
+    const fields = infrastructureSlot
+      ? [...commonFields, 'type', ...(pirate ? ['pirate_site'] : ['workers_per_building']), 'revolt_destructible']
+      : [...commonFields, ...(mobileRole ? ['rank_costs'] : ['workers_per_building']), 'produces', 'production'];
+    if (pirate && !infrastructureSlot) {
+      fields.push('location', 'prerequisite_id', 'per_infrastructure', 'per_ship', 'production_costs', 'monthly_limit');
+    }
+    fields.push(infrastructureSlot ? 'restrictions' : 'infra_restrictions', 'absolute_restrictions', 'effects', 'description');
+    renderTable(container, rows, {
+      endpoint: infrastructureSlot ? 'infrastructure_properties' : 'building_properties',
+      tableKey: infrastructureSlot ? 'infrastructure_properties' : 'building_properties',
+      fields,
+      labels: {
+        ...buildingPropLabels, ...infraPropLabels,
+        max: 'Maximum (vide = illimité)', restrictions: 'Requis',
+        workers_per_building: role.id === 'eveque' ? 'Moines par exemplaire' : 'Travailleurs par exemplaire',
+        rank_costs: 'Coûts par rang', location: 'Affectation possible', pirate_site: 'Lieu de construction',
+        prerequisite_id: 'Infrastructure requise', per_infrastructure: 'Maximum par infrastructure',
+        per_ship: 'Maximum par navire', production_costs: 'Intrants par production',
+        monthly_limit: 'Maximum produit par mise à jour', production: 'Quantité produite'
+      },
+      costResources: role.id === 'eveque'
+        ? [...resourceSelect, { id: 'points_croyance', name: 'Points de croyance' }] : resourceSelect,
+      booleanFields: ['revolt_destructible'],
+      selects: {
+        type: typeSelect,
+        produces: resourceSelect,
+        pirate_site: [{ id: 'repaire', name: 'Repaire' }, { id: 'depot_cotier', name: 'Baronnie côtière (dépôt)' }],
+        location: [{ id: 'repaire', name: 'Repaire' }, { id: 'navire', name: 'Navire' }, { id: 'repaire_ou_navire', name: 'Repaire ou navire' }],
+        prerequisite_id: () => infrastructureProps.filter(row =>
+          row.player_type === 'pirate' && row.pirate_site === 'repaire')
+          .map(row => ({ id: row.id, name: row.label }))
+      },
+      allowedEffectTypes: infrastructureSlot ? undefined
+        : mobileRole ? ['storage', 'unlock_page', ...Object.keys(AuctionRules.effectLabels)]
+          : ['tag', 'unlock_page', ...Object.keys(AuctionRules.effectLabels)],
+      deleteConfig: defaultDeleteConfig('la fiche', 'label'),
+      allowAdd: !infrastructureSlot || role.id !== 'mercenaire',
+      beforeSave(payload) {
+        payload.player_type = role.id;
+      }
+    });
+  }
+
+  const sections = PlayerTypes.types.map(role => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = role.name;
+    tabs.append(button);
+    const primary = document.createElement('div');
+    const secondary = document.createElement('div');
+    const forRole = rows => rows.filter(row => row.player_type === role.id).sort((a, b) => a.id - b.id);
+    const primaryRows = forRole(buildingProps);
+    const infrastructureRows = forRole(infrastructureProps);
+    renderCatalog(primary, primaryRows, role, false);
+    const showInfrastructures = role.id !== 'mercenaire' || infrastructureRows.length > 0;
+    if (showInfrastructures) renderCatalog(secondary, infrastructureRows, role, true);
+    const section = { button, primary, secondary, showInfrastructures, role };
+    button.addEventListener('click', () => select(section));
+    return section;
   });
-  const infraPropsById = infraProps.slice().sort((a,b)=>a.id - b.id);
-  renderTable(document.getElementById('tableInfraProps'), infraPropsById, {
-    endpoint:'infrastructure_properties',
-    fields:infraPropFields,
-    booleanFields:PlayerTypes.availabilityFields,
-    labels:infraPropLabels,
-    selects:{type:typeSelect},
-    deleteConfig: defaultDeleteConfig("l'infrastructure", 'label')
-  });
+  function select(active) {
+    for (const section of sections) section.button.setAttribute('aria-pressed', String(section === active));
+    const role = active.role.id;
+    productionTitle.textContent = role === 'pirate' ? 'Spécialistes pirates' : role === 'mercenaire' ? 'Experts mercenaires' : 'Production';
+    recruitmentStatus.hidden = !['pirate', 'mercenaire'].includes(role);
+    production.replaceChildren(active.primary);
+    infrastructureTitle.hidden = infrastructure.hidden = !active.showInfrastructures;
+    infrastructure.replaceChildren(active.secondary);
+  }
+  select(sections[0]);
 }
 
 async function loadSpells(){

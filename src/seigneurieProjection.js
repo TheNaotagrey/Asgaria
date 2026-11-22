@@ -1,3 +1,4 @@
+const { constructionWorkers } = require('./gameRules');
 const {
   StorageEffect, ResourceProductionEffect, BuildingProductionEffect,
   InfraProductionEffect, VariableWorkersEffect
@@ -40,7 +41,7 @@ function calculateProjection({ player, inventory, buildings, infrastructures,
   for (const entry of bp) {
     const info = built[entry.id] || built[String(entry.id)] || {};
     const active = amount(info.active);
-    const workers = active * amount(entry.workers_per_building);
+    const workers = active * constructionWorkers(state, entry);
     employed += workers;
     if (workers) employmentDetails.push({ label: entry.label || entry.type, amount: workers, source: active });
     if (active && entry.produces && amount(entry.production)) {
@@ -75,7 +76,7 @@ function calculateProjection({ player, inventory, buildings, infrastructures,
     const raw = infra[entry.id] || infra[String(entry.id)] || 0;
     const count = typeof raw === 'object' ? amount(raw.built) : amount(raw);
     if (!count) continue;
-    const workers = count * amount(entry.workers_per_building);
+    const workers = count * constructionWorkers(state, entry, true);
     employed += workers;
     if (workers) employmentDetails.push({ label: entry.label || entry.type, amount: workers, source: count });
     ctx.currentInfraId = entry.id;

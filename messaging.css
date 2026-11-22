@@ -1,0 +1,47 @@
+/* Panneaux et couleurs accordés aux tableaux de Gestion. */
+.messaging-workspace { display: grid; grid-template-columns: 290px minmax(0, 1fr); height: min(720px, calc(100dvh - 200px)); min-height: 390px; border: 1px solid #d8dee7; border-radius: 10px; background: #fff; overflow: hidden; }
+.messaging-sidebar { padding: 18px; background: #f5f7fa; border-right: 1px solid #d8dee7; overflow-y: auto; min-width: 0; }
+.messaging-sidebar h2, .messaging-heading h2 { margin: 0 0 14px; font-size: 1.15rem; }
+.messaging-sidebar h3 { margin: 24px 0 10px; font-size: 0.9rem; color: #526176; }
+.messaging-sidebar label { display: block; font-size: 0.9rem; margin-bottom: 6px; }
+.messaging-sidebar select { width: 100%; min-width: 0; padding: 8px; margin-bottom: 8px; border: 1px solid #cbd3df; border-radius: 6px; background: white; }
+.messaging-conversation { display: block; width: 100%; text-align: left; padding: 12px; margin: 5px 0; border: 1px solid transparent; border-radius: 8px; background: transparent; color: #25364c; cursor: pointer; }
+.messaging-conversation:hover { background: #e8edf4; }
+.messaging-conversation.selected { background: #e0e9f5; border-color: #9ab2d2; }
+.messaging-conversation strong { display: block; overflow-wrap: anywhere; }
+.messaging-preview { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 6px; color: #526176; font-size: 0.85rem; }
+.messaging-unread, #messagingBadge { display: inline-block; border-radius: 12px; background: #315c8a; color: #fff; font-size: 0.75rem; padding: 2px 7px; margin-top: 4px; }
+#messagingBadge[hidden] { display: none; }
+.messaging-thread { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.messaging-heading { padding: 16px 20px; border-bottom: 1px solid #e2e6ec; background: #f9fafc; }
+.messaging-heading h2 { margin: 0; overflow-wrap: anywhere; }
+#messagingBack { display: none; }
+#messagingMessages { flex: 1; min-height: 0; overflow-y: auto; padding: 20px; overscroll-behavior: contain; overflow-anchor: none; }
+.messaging-empty { color: #526176; line-height: 1.6; margin: 16px 0; }
+.messaging-message { width: fit-content; max-width: 80%; margin: 0 auto 12px 0; padding: 10px 14px; border: 1px solid #d8dee7; border-radius: 12px 12px 12px 3px; background: #f4f6f9; }
+.messaging-message.own { margin-left: auto; margin-right: 0; background: #e6eef9; border-color: #c3d4ea; border-radius: 12px 12px 3px 12px; }
+.messaging-message p { margin: 0 0 7px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
+.messaging-message time { display: block; color: #526176; font-size: 0.73rem; }
+.messaging-trade-event { margin: 16px auto; max-width: 92%; color: #667386; text-align: center; font-size: .82rem; line-height: 1.5; }
+.messaging-trade-event p { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.messaging-trade-event time { display: block; margin-top: 3px; font-size: .7rem; color: #758195; }
+.messaging-older { display: block; margin: 0 auto 20px; }
+.messaging-composer { padding: 14px 20px; border-top: 1px solid #e2e6ec; }
+.messaging-composer[hidden] { display: none; }
+.messaging-composer label { display: block; font-size: 0.9rem; margin-bottom: 6px; }
+.messaging-composer textarea { box-sizing: border-box; width: 100%; padding: 10px; min-height: 70px; max-height: 160px; resize: vertical; font: inherit; border: 1px solid #cbd3df; border-radius: 8px; }
+.messaging-composer > div { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 8px; }
+#messagingCount { font-size: 0.8rem; color: #526176; }
+.messaging-status { min-height: 24px; padding: 8px 0; color: #85420d; }
+.messaging-workspace :is(button, select, textarea):focus-visible { outline: 2px solid #315c8a; outline-offset: 2px; }
+@media (max-width: 700px) {
+  .messaging-workspace { grid-template-columns: minmax(0, 1fr); height: calc(100dvh - 200px); min-height: 370px; }
+  .messaging-sidebar { border-right: 0; }
+  .messaging-thread { display: none; }
+  .messaging-workspace.has-conversation .messaging-sidebar { display: none; }
+  .messaging-workspace.has-conversation .messaging-thread { display: flex; }
+  #messagingBack { display: inline-block; margin-bottom: 10px; }
+  .messaging-heading, .messaging-composer { padding: 12px; }
+  #messagingMessages { padding: 12px; }
+  .messaging-message { max-width: 88%; }
+}

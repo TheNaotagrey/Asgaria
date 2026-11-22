@@ -298,3 +298,15 @@ curl "https://www.asgaria.org/api/barony_pixels?ids=42,43,44"
 
 ## 7) Règle de maintenance
 Toute évolution de l'API publique de lecture (routes `GET`, paramètres, structure JSON, tables/champs exposés) doit être répercutée dans ce fichier lors du même changement.
+
+## Influence ducale (hors API publique)
+
+Les tables `player_duchy_influence` et `influence_events` ainsi que les routes `/api/seigneurie/influence` sont privées et exclues de cette API publique. Les schémas publics des routes et lignes commerciales restent inchangés ; leur création par un joueur débite désormais les coûts documentés dans [INFLUENCE_DUCALE.md](INFLUENCE_DUCALE.md).
+
+## Effets de l’Hôtel des ventes
+
+Les lectures authentifiées `GET /api/building_properties` et `GET /api/infrastructure_properties` exposent, pour chaque définition, le champ texte `player_type`. Il vaut `seigneur`, `eveque`, `pirate` ou `mercenaire` et désigne le seul type de joueur autorisé à construire cette définition. La valeur par défaut est `seigneur`. Ce champ remplace les anciens indicateurs `available_*`. Pour les définitions épiscopales, `workers_per_building` exprime le nombre de moines par exemplaire. Un ratio nul désactive le plafond par population. Le champ facultatif `pirate_site` des infrastructures décrit le lieu prévu pour la construction (`repaire` ou `depot_cotier`). Les spécialistes pirates et experts mercenaires sont enregistrés dans `building_properties`, avec les autres types de bâtiments.
+
+Les champs JSON `effects` des définitions accessibles après connexion `building_properties` et `infrastructure_properties` peuvent contenir `{ "type": "unlock_page", "page": "hotel_des_ventes" }` et les modificateurs `{ "type": "…", "amount": nombre }` suivants : `auction_commission_discount`, `auction_withdrawal_loss_discount`, `auction_expiration_loss_discount` (réductions positives ou nulles en points de pourcentage), `auction_max_offers_bonus` et `auction_duration_bonus` (entiers positifs ou nuls). Les bâtiments contribuent par exemplaire actif, les infrastructures par exemplaire construit. Les valeurs effectives et les ventes sont privées, hors de cette API en lecture seule. Voir [HOTEL_DES_VENTES.md](HOTEL_DES_VENTES.md) pour le contrat des routes authentifiées et les règles de calcul.
+
+Les deux catalogues restent distincts par nature. `building_properties` accueille les bâtiments et spécialistes des quatre types de personnages. `infrastructure_properties` accueille leurs infrastructures. Chaque table possède un identifiant `id` normal et un `player_type` exclusif. Le tableau des bâtiments expose aussi les champs facultatifs `rank_costs`, `location`, `prerequisite_id`, `per_infrastructure`, `per_ship`, `production_costs` et `monthly_limit`. `prerequisite_id` référence directement `infrastructure_properties.id`. Les champs existants `max`, `infra_restrictions` des bâtiments et `restrictions`/`pirate_site` des infrastructures gardent leurs noms. Il n’y a plus de routes `/api/construction_catalog` ou `/api/specialist_properties`. Les lectures de ces deux catalogues restent authentifiées et leurs écritures réservées aux administrateurs.

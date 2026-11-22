@@ -79,7 +79,10 @@ test('la migration conserve les joueurs historiques et reste idempotente', async
         spells_cast INTEGER DEFAULT 0
       );
       INSERT INTO players (id, baronnie_id, tax_rate, spells_cast) VALUES
-        (1, 42, 11, 3), (2, NULL, 5, 0);`);
+        (1, 42, 11, 3), (2, NULL, 5, 0);
+      CREATE TABLE infrastructure_properties (id INTEGER PRIMARY KEY, label TEXT, type TEXT,
+        max TEXT, workers_per_building INTEGER, effects TEXT, costs TEXT, restrictions TEXT, description TEXT);
+      INSERT INTO infrastructure_properties (id,label,type) VALUES (1,'Cathédrale','civil');`);
     } finally {
       await new Promise(resolve => database.close(resolve));
     }
@@ -94,6 +97,7 @@ test('la migration conserve les joueurs historiques et reste idempotente', async
     try {
       const reports = await query(migrated, "SELECT name FROM sqlite_master WHERE name IN ('player_update_reports','idx_player_update_reports_player_created') ORDER BY name");
       assert.deepEqual(reports.map(row => row.name), ['idx_player_update_reports_player_created', 'player_update_reports']);
+      assert.deepEqual(await query(migrated, 'SELECT revolt_destructible FROM infrastructure_properties'), [{ revolt_destructible: 1 }]);
     } finally { await new Promise(resolve => migrated.close(resolve)); }
   } finally {
     const resolved = fs.realpathSync(directory);

@@ -132,9 +132,11 @@ document.addEventListener('DOMContentLoaded', async () => {
           div.appendChild(msgSpan);
 
           const timeEl = document.createElement('time');
-          timeEl.dateTime = n.created_at;
-          timeEl.title = new Date(n.created_at).toLocaleString('fr-FR');
-          timeEl.textContent = timeago.format(n.created_at, 'fr');
+          const timestamp = GameRules.utcTimestamp(n.created_at);
+          timeEl.dateTime = timestamp;
+          timeEl.title = new Date(timestamp).toLocaleString('fr-FR');
+          timeEl.textContent = typeof timeago !== 'undefined'
+            ? timeago.format(timestamp, 'fr') : timeEl.title;
           div.appendChild(timeEl);
 
           div.addEventListener('click', async () => {

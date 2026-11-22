@@ -69,7 +69,7 @@ test('le serveur valide construction, taxe, période, relevé et confidentialit�
   const previous = next.number === 1 ? { year: next.year - 1, number: 10 }
     : { year: next.year, number: next.number - 1 };
   assert.deepEqual(getNextUpdatePosition(previous), next);
-  const child = spawn(process.execPath, [path.join(root, 'server.js')], {
+  let child = spawn(process.execPath, [path.join(root, 'server.js')], {
     cwd: dir, env: { ...process.env, PORT: String(port), SESSION_SECRET: 'test-gestion-secret' },
     stdio: 'ignore'
   });
@@ -96,7 +96,7 @@ test('le serveur valide construction, taxe, période, relevé et confidentialit�
       await run(database, 'INSERT INTO building_properties (id,type,label,produces,production,costs,max,workers_per_building) VALUES (1,?,?,?,?,?,?,?)',
         ['field', 'Champ', 'vivres', 75, '{"or_":3}', 'field_limit', 3]);
       await run(database, 'INSERT INTO infrastructure_properties (id,type,label,effects,workers_per_building,costs) VALUES (3,?,?,?,0,?)',
-        ['granary', 'Grenier', '[{"type":"storage","resource":"vivres","amount":500}]', '{"or_":4}']);
+        ['granary', 'Grenier', '[{"type":"storage","resource":"vivres","amount":500},{"type":"idh","amount":2}]', '{"or_":4}']);
     } finally { await new Promise(resolve => database.close(resolve)); }
 
     const login = await request(port, 'POST', '/api/login', { email: 'joueur@test.invalid', password: 'mot-de-passe' });
@@ -120,6 +120,18 @@ test('le serveur valide construction, taxe, période, relevé et confidentialit�
     assert.equal(state.data.production.vivres, -2175);
     assert.equal(state.data.production.or_, 12);
     assert.equal(state.data.latest_update_report_id, null);
+    assert.equal((await request(port, 'POST', '/api/seigneurie/festival', { resources: { or_: 1 }, expected_update: previous })).status, 401);
+    assert.equal((await request(port, 'POST', '/api/seigneurie/festival', { seigneurie_id: 2, resources: { vivres: 201 }, expected_update: previous }, cookie)).status, 403);
+    assert.equal((await request(port, 'GET', '/api/player_festivals', undefined, cookie)).status, 404);
+    assert.equal((await request(port, 'GET', '/src/happinessRules.js')).status, 200);
+    const auctionScript = await request(port, 'GET', '/src/auctionRules.js');
+    assert.equal(auctionScript.status, 200);
+    assert.match(auctionScript.headers['content-type'], /javascript/);
+    const browserContext = {};
+    require('node:vm').runInNewContext(auctionScript.data, browserContext);
+    assert.equal(browserContext.AuctionRules.resources.or_, 'Or');
+    assert.equal(browserContext.AuctionRules.netAmount(210, 5), 199);
+    assert.equal((await request(port, 'GET', '/src/sqliteTransaction.js')).status, 404);
     const advance = await request(port, 'POST', '/api/seigneurie/advance_update',
       { expected_update: previous }, cookie);
     assert.equal(advance.status, 200, JSON.stringify(advance.data));
@@ -136,6 +148,67 @@ test('le serveur valide construction, taxe, période, relevé et confidentialit�
     assert.notEqual(nonAdminList.status, 200);
     const adminLogin = await request(port, 'POST', '/api/login', { email: 'admin@test.invalid', password: 'mot-de-passe' });
     assert.equal(adminLogin.status, 200);
+    assert.equal((await request(port, 'GET', '/api/auction_house')).status, 401);
+    const auctionStatus = await request(port, 'GET', '/api/auction_house', undefined, cookie);
+    assert.equal(auctionStatus.status, 200);
+    assert.equal(auctionStatus.data.rules.unlocked, false);
+    for (const table of ['building_properties', 'infrastructure_properties']) {
+      const invalidEffect = await request(port, 'POST', `/api/${table}`,
+        { label: 'Bonus HV invalide', effects: '[{"type":"auction_duration_bonus","amount":1.5}]' }, adminLogin.cookie);
+      assert.equal(invalidEffect.status, 400);
+      assert.match(invalidEffect.data.error, /Conservation/);
+      const validEffect = await request(port, 'POST', `/api/${table}`,
+        { label: 'Bonus HV valide', effects: '[{"type":"auction_commission_discount","amount":2.5}]' }, adminLogin.cookie);
+      assert.equal(validEffect.status, 200);
+      const definitionPath = `/api/${table}/${validEffect.data.id}`;
+      const definition = await request(port, 'GET', definitionPath, undefined, cookie);
+      assert.equal(definition.data.player_type, 'seigneur');
+      assert.ok(!Object.keys(definition.data).some(field => field.startsWith('available_')));
+      assert.equal((await request(port, 'POST', `/api/${table}`,
+        { label: 'Type inconnu', player_type: 'inconnu' }, adminLogin.cookie)).status, 400);
+      const episcopal = await request(port, 'POST', `/api/${table}`,
+        { label: 'Définition épiscopale', player_type: 'eveque' }, adminLogin.cookie);
+      assert.equal(episcopal.status, 200);
+      const route = table === 'building_properties' ? '/api/building' : '/api/infrastructure';
+      const wrongRole = await request(port, 'POST', route, { id: episcopal.data.id, quantity: 1 }, cookie);
+      assert.equal(wrongRole.status, 400);
+      assert.match(wrongRole.data.error, /indisponible pour ce type/);
+      const episcopalPath = `/api/${table}/${episcopal.data.id}`;
+      assert.equal((await request(port, 'PUT', episcopalPath,
+        { label: 'Définition renommée' }, adminLogin.cookie)).status, 200);
+      assert.equal((await request(port, 'GET', episcopalPath, undefined, cookie)).data.player_type, 'eveque');
+      assert.equal((await request(port, 'DELETE', episcopalPath, undefined, adminLogin.cookie)).status, 200);
+      assert.equal((await request(port, 'DELETE', `/api/${table}/${validEffect.data.id}`, undefined, adminLogin.cookie)).status, 200);
+    }
+    const specialist = { player_type: 'mercenaire', label: 'Trésorier', max: 3,
+      rank_costs: [{ or_: 12 }, { or_: 15 }, { or_: 25 }] };
+    const specialistsPath = '/api/building_properties';
+    assert.equal((await request(port, 'GET', specialistsPath, undefined, cookie)).status, 200);
+    assert.equal((await request(port, 'POST', specialistsPath,
+      { ...specialist, max: 2 }, adminLogin.cookie)).status, 400);
+    const expert = await request(port, 'POST', specialistsPath, specialist, adminLogin.cookie);
+    assert.equal(expert.status, 200, JSON.stringify(expert.data));
+    const expertRow = await request(port, 'GET', `${specialistsPath}/${expert.data.id}`, undefined, adminLogin.cookie);
+    assert.deepEqual(JSON.parse(expertRow.data.rank_costs), specialist.rank_costs);
+    await request(port, 'DELETE', `${specialistsPath}/${expert.data.id}`, undefined, adminLogin.cookie);
+    const infraDefinitions = await request(port, 'GET', '/api/infrastructure_properties', undefined, adminLogin.cookie);
+    const granaryDefinition = infraDefinitions.data.find(row => row.id === 3);
+    assert.equal(granaryDefinition.revolt_destructible, 1);
+    assert.equal((await request(port, 'PUT', '/api/infrastructure_properties/3',
+      { ...granaryDefinition, revolt_destructible: 0 }, cookie)).status, 403);
+    assert.equal((await request(port, 'PUT', '/api/infrastructure_properties/3',
+      { ...granaryDefinition, revolt_destructible: 2 }, adminLogin.cookie)).status, 400);
+    assert.equal((await request(port, 'PUT', '/api/infrastructure_properties/3',
+      { ...granaryDefinition, revolt_destructible: false }, adminLogin.cookie)).status, 200);
+    const { revolt_destructible, ...legacyDefinition } = granaryDefinition;
+    assert.equal((await request(port, 'PUT', '/api/infrastructure_properties/3', legacyDefinition, adminLogin.cookie)).status, 200);
+    assert.equal((await request(port, 'GET', '/api/infrastructure_properties', undefined, cookie)).data.find(row => row.id === 3).revolt_destructible, 0);
+    assert.equal((await request(port, 'PUT', '/api/infrastructure_properties/3',
+      { ...granaryDefinition, revolt_destructible: true }, adminLogin.cookie)).status, 200);
+    const newInfrastructure = await request(port, 'POST', '/api/infrastructure_properties',
+      { label: 'Infrastructure sans réglage', type: 'civil', effects: '[]', costs: '{}' }, adminLogin.cookie);
+    assert.equal(newInfrastructure.status, 200, JSON.stringify(newInfrastructure.data));
+    assert.equal((await request(port, 'GET', '/api/infrastructure_properties', undefined, cookie)).data.find(row => row.id === newInfrastructure.data.id).revolt_destructible, 1);
     const adminSeigneuries = await request(port, 'GET', '/api/seigneuries', undefined, adminLogin.cookie);
     assert.equal(adminSeigneuries.status, 200, JSON.stringify(adminSeigneuries.data));
     const protectedRow = adminSeigneuries.data.find(row => row.id === 2);
@@ -144,6 +217,17 @@ test('le serveur valide construction, taxe, période, relevé et confidentialit�
     assert.equal(protectedRow.spells_cast, 0);
     assert.equal(protectedRow.land_transactions, 0);
     assert.equal(protectedRow.naval_transactions, 0);
+    const festivalOtherLogin = await request(port, 'POST', '/api/login', { email: 'autre@test.invalid', password: 'mot-de-passe' });
+    const adminFestival = await request(port, 'POST', '/api/seigneurie/festival',
+      { seigneurie_id: 2, resources: { vivres: 601 }, expected_update: previous }, adminLogin.cookie);
+    assert.equal(adminFestival.status, 200, JSON.stringify(adminFestival.data));
+    assert.equal(adminFestival.data.festival.bonus, 3);
+    const otherState = await request(port, 'GET', '/api/my_seigneurie', undefined, festivalOtherLogin.cookie);
+    assert.equal(otherState.data.festival.bonus, 3);
+    assert.equal(otherState.data.revoltPreview.chance, 0);
+    assert.equal(otherState.data.revoltPreview.reason, 'protected');
+    assert.equal((await request(port, 'POST', '/api/seigneurie/festival',
+      { resources: { vivres: 601 }, expected_update: previous }, festivalOtherLogin.cookie)).status, 409);
     const protectionFixture = new sqlite3.Database(path.join(dir, 'asgaria.db'));
     try {
       await run(protectionFixture, 'INSERT INTO inventaire (id) VALUES (10)');
@@ -241,6 +325,9 @@ test('le serveur valide construction, taxe, période, relevé et confidentialit�
           (id,origin_id,destination_id,origin_update_year,origin_update_number,resources,type,state)
           VALUES (?,1,2,?,?,'{"or_":1}','land','En Attente')`, [id, period.year, period.number]);
       }
+      await run(dbForReturns, "UPDATE trade_transactions SET created_at='2020-01-01 12:00:00' WHERE id=80");
+      await run(dbForReturns, `INSERT INTO trade_transactions (id,origin_id,destination_id,resources,type,state)
+        VALUES (90,2,10,'{"or_":4}','land','En Attente')`);
       await run(dbForReturns, `CREATE TRIGGER reject_test_return BEFORE UPDATE OF returned ON trade_transactions
         WHEN NEW.id=81 BEGIN SELECT RAISE(ABORT, 'erreur de test'); END`);
     } finally { await new Promise(resolve => dbForReturns.close(resolve)); }
@@ -283,6 +370,34 @@ test('le serveur valide construction, taxe, période, relevé et confidentialit�
     assert.equal(refusal.status, 200, JSON.stringify(refusal.data));
     const secondDecision = await request(port, 'POST', '/api/trade_transactions/82/decision', { action: 'accept' }, otherCookie);
     assert.equal(secondDecision.status, 409);
+    const tradeThread = await request(port, 'GET', '/api/messaging/conversations/2/messages?limit=100', undefined, cookie);
+    assert.equal(tradeThread.status, 200);
+    assert.equal(tradeThread.data.messages.filter(item => item.event?.trade_id === 82 && item.event.kind === 'refused').length, 1);
+    assert.equal(tradeThread.data.messages.find(item => item.event?.trade_id === 84).event.kind, 'accepted');
+    assert.equal(tradeThread.data.messages.some(item => item.event?.trade_id === 83), false);
+    assert.equal((await request(port, 'GET', '/api/trade_transactions/history')).status, 401);
+    const history = await request(port, 'GET', '/api/trade_transactions/history?limit=100', undefined, cookie);
+    assert.equal(history.status, 200, JSON.stringify(history.data));
+    assert.equal(history.headers['cache-control'], 'no-store');
+    assert.equal(history.data.transactions.length, 7);
+    assert.ok(history.data.transactions.every(tx => tx.direction === 'outgoing' && tx.dest_name === 'Seigneur B'));
+    assert.equal(history.data.transactions.some(tx => tx.id === 90), false);
+    assert.equal(history.data.transactions[history.data.transactions.length - 1].id, 80);
+    assert.equal(history.data.transactions[history.data.transactions.length - 1].returned, 1);
+    assert.equal(history.data.transactions.find(tx => tx.id === 82).state, 'Refusée');
+    const incomingHistory = await request(port, 'GET', '/api/trade_transactions/history?limit=100', undefined, otherCookie);
+    assert.equal(incomingHistory.data.transactions.filter(tx => tx.direction === 'incoming').length, 7);
+    assert.equal(incomingHistory.data.transactions.find(tx => tx.id === 90).direction, 'outgoing');
+    const adminHistory = await request(port, 'GET', '/api/trade_transactions/history?seigneurie_id=2&limit=100', undefined, adminLogin.cookie);
+    assert.deepEqual(adminHistory.data, incomingHistory.data);
+    assert.equal((await request(port, 'GET', '/api/trade_transactions/history?seigneurie_id=2', undefined, cookie)).status, 403);
+    for (const query of ['limit=0', 'limit=101', 'before=-1', 'before=90', 'before=9999']) {
+      assert.equal((await request(port, 'GET', '/api/trade_transactions/history?' + query, undefined, cookie)).status, 400);
+    }
+    const firstHistoryPage = await request(port, 'GET', '/api/trade_transactions/history?limit=2', undefined, cookie);
+    assert.equal(firstHistoryPage.data.has_more, true);
+    const restHistory = await request(port, 'GET', `/api/trade_transactions/history?before=${firstHistoryPage.data.transactions[1].id}&limit=100`, undefined, cookie);
+    assert.deepEqual([...firstHistoryPage.data.transactions, ...restHistory.data.transactions], history.data.transactions);
     const forbidden = await request(port, 'GET', `/api/seigneurie/update_reports/${reportId}`, undefined, otherCookie);
     assert.equal(forbidden.status, 404);
     const noMoney = await request(port, 'POST', '/api/building', { id: 1, quantity: 1 }, otherCookie);
@@ -316,7 +431,7 @@ test('le serveur valide construction, taxe, période, relevé et confidentialit�
     try {
       assert.equal((await get(verify, 'SELECT or_ FROM inventaire WHERE id=2')).or_, 3);
       assert.equal((await get(verify, 'SELECT buildings FROM players WHERE id=2')).buildings, '{}');
-      assert.equal((await get(verify, 'SELECT COUNT(*) AS count FROM transactions WHERE seigneurie_id=2')).count, 0);
+      assert.equal((await get(verify, 'SELECT COUNT(*) AS count FROM transactions WHERE seigneurie_id=2')).count, 1); // fête déjà journalisée
       await run(verify, 'UPDATE inventaire SET or_=4 WHERE id=2');
       await run(verify, `CREATE TRIGGER reject_test_infrastructure BEFORE UPDATE OF infrastructures ON players
         WHEN NEW.id=2 BEGIN SELECT RAISE(ABORT, 'erreur de test'); END`);
@@ -327,8 +442,102 @@ test('le serveur valide construction, taxe, période, relevé et confidentialit�
     try {
       assert.equal((await get(verifyInfrastructure, 'SELECT or_ FROM inventaire WHERE id=2')).or_, 4);
       assert.equal((await get(verifyInfrastructure, 'SELECT infrastructures FROM players WHERE id=2')).infrastructures, '{}');
-      assert.equal((await get(verifyInfrastructure, 'SELECT COUNT(*) AS count FROM transactions WHERE seigneurie_id=2')).count, 0);
+      assert.equal((await get(verifyInfrastructure, 'SELECT COUNT(*) AS count FROM transactions WHERE seigneurie_id=2')).count, 1); // aucune écriture en plus de la fête
     } finally { await new Promise(resolve => verifyInfrastructure.close(resolve)); }
+    const portFixture = new sqlite3.Database(path.join(dir, 'asgaria.db'));
+    try {
+      await run(portFixture, 'UPDATE users SET first_name=?,last_name=? WHERE id=4', ['Propriétaire','Valmont']);
+      await run(portFixture, 'UPDATE barony_properties SET sea_access=1,high_sea_boat_limit=4 WHERE barony_id=1');
+      await run(portFixture, 'INSERT INTO infrastructure_properties (id,type,label,effects,costs) VALUES (7,?,?,?,?)', ['civil','Port','[]','{}']);
+      await run(portFixture, 'INSERT INTO building_properties (id,label,max,costs,infra_restrictions) VALUES (4,?,?,?,?)', ['Bateau en Haute-Mer','high_sea_boat_limit','{"or_":1}','{}']);
+    } finally { await new Promise(resolve => portFixture.close(resolve)); }
+    const beforeBoat = await request(port,'GET','/api/my_seigneurie',undefined,cookie);
+    const noPort = await request(port,'POST','/api/building',{id:4,quantity:1},cookie);
+    assert.equal(noPort.status,400);
+    assert.match(noPort.data.error,/port est requis/);
+    const afterBoat = await request(port,'GET','/api/my_seigneurie',undefined,cookie);
+    assert.equal(afterBoat.data.inventaire.or_,beforeBoat.data.inventaire.or_);
+    assert.deepEqual(afterBoat.data.buildings,beforeBoat.data.buildings);
+    const adminOwner = await request(port,'GET','/api/my_seigneurie?seigneurie_id=1',undefined,adminLogin.cookie);
+    assert.equal(adminOwner.data.seigneur.player_name,'Propriétaire Valmont');
+    assert.equal(adminOwner.data.landTxMax,0);
+    const withPort = new sqlite3.Database(path.join(dir,'asgaria.db'));
+    try {
+      await run(withPort,'UPDATE players SET infrastructures=? WHERE id=1',[JSON.stringify({...beforeBoat.data.infrastructures,7:{built:1}})]);
+    } finally { await new Promise(resolve => withPort.close(resolve)); }
+    const boat = await request(port,'POST','/api/building',{id:4,quantity:1},cookie);
+    assert.equal(boat.status,200,JSON.stringify(boat.data));
+    assert.equal(boat.data.inventaire.or_,beforeBoat.data.inventaire.or_-1);
+    const sharedBuilding = await request(port, 'GET', '/api/building_properties', undefined, adminLogin.cookie);
+    assert.ok(sharedBuilding.data.every(row => !('category' in row) && !('legacy_id' in row)));
+    const definitionRoles = [
+      { player_type: 'eveque', label: 'Champ ratio', workers_per_building: '3,333333', costs: '{}', effects: '[]' },
+      { player_type: 'mercenaire', label: 'Trésorier partagé', max: '3', costs: '{}',
+        rank_costs: '[{"or_":12},{"or_":15},{"or_":25}]', effects: '[]' },
+      { player_type: 'pirate', label: 'Pêcheur', costs: '{}', location: 'repaire_ou_navire',
+        produces: 'vivres', production: 20, effects: '[]' }
+    ];
+    for (const definition of definitionRoles) {
+      const created = await request(port, 'POST', '/api/building_properties', definition, adminLogin.cookie);
+      assert.equal(created.status, 200, JSON.stringify(created.data));
+      const rowPath = `/api/building_properties/${created.data.id}`;
+      const row = await request(port, 'GET', rowPath, undefined, adminLogin.cookie);
+      assert.equal(row.data.player_type, definition.player_type);
+      assert.ok(!('category' in row.data) && !('legacy_id' in row.data));
+      assert.equal((await request(port, 'PUT', rowPath, { label: definition.label + ' renommé' }, adminLogin.cookie)).status, 200);
+      assert.equal((await request(port, 'DELETE', rowPath, undefined, adminLogin.cookie)).data.changes, 1);
+    }
+    const testDatabase = new sqlite3.Database(path.join(dir, 'asgaria.db'));
+    try {
+      await run(testDatabase, "UPDATE players SET type='eveque', population=10, buildings='{}', infrastructures='{}' WHERE id=1");
+      await run(testDatabase, 'UPDATE inventaire SET or_=50, hommes_darmes=0 WHERE id=1');
+      const field = await request(port, 'POST', '/api/building_properties', {
+        player_type: 'eveque', label: 'Champ épiscopal', produces: 'vivres', production: 75,
+        workers_per_building: '3,333333', costs: '{"or_":1}', max: '20'
+      }, adminLogin.cookie);
+      assert.equal(field.status, 200);
+      const flock = await request(port, 'POST', '/api/infrastructure_properties', {
+        player_type: 'eveque', label: 'Troupeau épiscopal', type: 'civil',
+        workers_per_building: 10, costs: '{"or_":1}', max: '5'
+      }, adminLogin.cookie);
+      assert.equal(flock.status, 200);
+      const construct = (route, id, quantity) => request(port, 'POST', route, { id, quantity }, cookie);
+      assert.equal((await construct('/api/building', field.data.id, 3)).status, 200);
+      assert.equal((await construct('/api/infrastructure', flock.data.id, 1)).status, 200);
+      const fourthField = await construct('/api/building', field.data.id, 1);
+      assert.equal(fourthField.status, 400);
+      assert.match(fourthField.data.error, /moines insuffisant/);
+      assert.equal((await construct('/api/infrastructure', flock.data.id, 1)).status, 400);
+      const projection = await request(port, 'GET', '/api/my_seigneurie', undefined, cookie);
+      assert.equal(projection.data.employment.employed, 0);
+      assert.equal((await get(testDatabase, 'SELECT or_ FROM inventaire WHERE id=1')).or_, 46);
+    } finally { await new Promise(resolve => testDatabase.close(resolve)); }
+    {
+      // Complete the deliberately minimal players added by earlier action tests before checking startup.
+      const restartFixture = new sqlite3.Database(path.join(dir, 'asgaria.db'));
+      try {
+        await run(restartFixture, `INSERT INTO seigneuries_info(player_id)
+          SELECT id FROM players WHERE id NOT IN (SELECT player_id FROM seigneuries_info)`);
+      } finally { await new Promise(resolve => restartFixture.close(resolve)); }
+      const stopped = new Promise(resolve => child.once('exit', resolve));
+      child.kill();
+      await stopped;
+      child = spawn(process.execPath, [path.join(root, 'server.js')], {
+        cwd: dir, env: { ...process.env, PORT: String(port), SESSION_SECRET: 'test-gestion-secret' },
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+      let restartOutput = '';
+      child.stdout.on('data', data => { restartOutput += data.toString(); });
+      child.stderr.on('data', data => { restartOutput += data.toString(); });
+      try { await waitForServer(port, child); }
+      catch (error) { throw new Error(error.message + '\n' + restartOutput); }
+      const schema = new sqlite3.Database(path.join(dir, 'asgaria.db'));
+      try {
+        const catalogStorage = await get(schema, `SELECT COUNT(*) AS count FROM sqlite_master
+          WHERE type='table' AND name IN ('construction_catalog','building_properties','infrastructure_properties','specialist_properties')`);
+        assert.equal(catalogStorage.count, 2);
+      } finally { await new Promise(resolve => schema.close(resolve)); }
+    }
   } finally {
     if (child.exitCode === null) {
       const exited = new Promise(resolve => child.once('exit', resolve));

@@ -4,4 +4,14 @@ sessions.db
 /tmp/
 app.log
 *.db
-/artifacts/gestion-ui/
+
+# Fichiers générés par les validations et les tests
+/output/
+/artifacts/
+/screenshots/
+/test-results/
+/playwright-report/
+*.log
+*.db-journal
+*.db-wal
+*.db-shm
